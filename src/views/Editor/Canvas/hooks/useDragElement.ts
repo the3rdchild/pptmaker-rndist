@@ -34,7 +34,7 @@ export default (
     const originElementList: PPTElement[] = JSON.parse(JSON.stringify(elementList.value))
     let originActiveElementList = originElementList.filter(el => activeElementIdList.value.includes(el.id))
 
-    // 拖拽目标元素和初始属性声明，Ctrl+拖拽复制时会替换为副本元素及其属性
+    // Drag target element and initial property declarations; when Ctrl+drag copies, these are replaced with the duplicated element and its properties
     let dragTargetElement = element
     let elOriginLeft = element.left
     let elOriginTop = element.top
@@ -46,16 +46,16 @@ export default (
     const startPageY = isTouchEvent ? e.changedTouches[0].pageY : e.pageY
 
     let isMisoperation: boolean | null = null
-    let duplicateTriggered = false // 标记是否已触发 Ctrl+拖拽复制
+    let duplicateTriggered = false // Marks whether Ctrl+drag copy has already been triggered
 
     const isActiveGroupElement = element.id === activeGroupElementId.value
 
-    // 单元素拖拽：仅选中一个元素，或正在操作组合中的激活成员
+    // Single-element dragging: only one element is selected, or an activated member within a group is being operated
     const dragSingleElement = activeElementIdList.value.length === 1 || isActiveGroupElement
 
-    // 收集对齐对齐吸附线
-    // 包括页面内除目标元素外的其他元素在画布中的各个可吸附对齐位置：上下左右四边，水平中心、垂直中心
-    // 其中线条和被旋转过的元素需要重新计算他们在画布中的中心点位置的范围
+    // Collect alignment snapping lines
+    // This includes all the snappable alignment positions in the canvas of other elements on the page except the target element: top, bottom, left and right edges, horizontal center, vertical center
+    // Lines and rotated elements need to recompute the range of their center point positions in the canvas
     let horizontalLines: AlignLine[] = []
     let verticalLines: AlignLine[] = []
 
@@ -101,7 +101,7 @@ export default (
       verticalLines.push(leftLine, rightLine, verticalCenterLine)
     }
 
-    // 画布可视区域的四个边界、水平中心、垂直中心
+    // The four boundaries of the canvas visible area, horizontal center, vertical center
     const edgeTopLine: AlignLine = { value: 0, range: [0, edgeWidth] }
     const edgeBottomLine: AlignLine = { value: edgeHeight, range: [0, edgeWidth] }
     const edgeHorizontalCenterLine: AlignLine = { value: edgeHeight / 2, range: [0, edgeWidth] }
@@ -112,14 +112,14 @@ export default (
     horizontalLines.push(edgeTopLine, edgeBottomLine, edgeHorizontalCenterLine)
     verticalLines.push(edgeLeftLine, edgeRightLine, edgeVerticalCenterLine)
     
-    // 对齐吸附线去重
+    // Deduplicate alignment snapping lines
     horizontalLines = uniqAlignLines(horizontalLines)
     verticalLines = uniqAlignLines(verticalLines)
 
-    // Ctrl+拖拽复制：拷贝选中元素并将副本插入画布，
-    // 然后将拖拽目标切换为副本元素，后续移动操作作用于副本上
+    // Ctrl+drag copy: copy the selected elements and insert the duplicates into the canvas,
+    // then switch the drag target to the duplicate element; subsequent move operations act on the duplicate
     const duplicateElement = () => {
-      // 拷贝源元素，单选时仅复制目标元素，多选时复制所有选中元素
+      // Copy the source element(s); for single selection only the target element is copied, for multi-selection all selected elements are copied
       const sourceElements = JSON.parse(JSON.stringify(dragSingleElement ? [dragTargetElement] : originActiveElementList)) as PPTElement[]
 
       const { groupIdMap, elIdMap } = createElementIdMap(sourceElements)
@@ -134,7 +134,7 @@ export default (
       elementList.value = [...elementList.value, ...duplicatedElements]
       slidesStore.updateSlide({ elements: elementList.value })
 
-      // 将选中状态切换到副本元素
+      // Switch the selected state to the duplicate elements
       const duplicatedActiveElementIdList = duplicatedElements.map(item => item.id)
       const duplicatedHandleElementId = elIdMap[dragTargetElement.id]
       const duplicatedHandleElement = duplicatedElements.find(item => item.id === duplicatedHandleElementId)
@@ -144,7 +144,7 @@ export default (
       mainStore.setHandleElementId(duplicatedHandleElementId)
       mainStore.setActiveGroupElementId('')
 
-      // 将拖拽目标和初始属性替换为副本
+      // Replace the drag target and initial properties with the duplicates
       dragTargetElement = duplicatedHandleElement
       originActiveElementList = duplicatedElements
 
@@ -161,17 +161,17 @@ export default (
       const currentPageX = e instanceof MouseEvent ? e.pageX : e.changedTouches[0].pageX
       const currentPageY = e instanceof MouseEvent ? e.pageY : e.changedTouches[0].pageY
 
-      // 如果鼠标滑动距离过小，则将操作判定为误操作：
-      // 如果误操作标记为null，表示是第一次触发移动，需要计算当前是否是误操作
-      // 如果误操作标记为true，表示当前还处在误操作范围内，但仍然需要继续计算检查后续操作是否还处于误操作
-      // 如果误操作标记为false，表示已经脱离了误操作范围，不需要再次计算
+      // If the mouse sliding distance is too small, the operation is judged as a misoperation:
+      // If the misoperation flag is null, this is the first move trigger, so we need to calculate whether it is currently a misoperation
+      // If the misoperation flag is true, it means we are still within the misoperation range, but we still need to continue checking whether subsequent operations remain a misoperation
+      // If the misoperation flag is false, it means we have moved out of the misoperation range and no longer need to calculate again
       if (isMisoperation !== false) {
         isMisoperation = Math.abs(startPageX - currentPageX) < sorptionRange && 
                          Math.abs(startPageY - currentPageY) < sorptionRange
       }
       if (!isMouseDown || isMisoperation) return
 
-      // 拖拽过程中按住Ctrl键且尚未复制过，则触发复制
+      // During dragging, if the Ctrl key is held down and no copy has been triggered yet, trigger the copy
       if (!duplicateTriggered && ctrlKeyState.value) duplicateElement()
       
       let moveX = (currentPageX - startPageX) / canvasScale.value
@@ -182,12 +182,12 @@ export default (
         if (Math.abs(moveX) < Math.abs(moveY)) moveX = 0
       }
 
-      // 基础目标位置
+      // Base target position
       let targetLeft = elOriginLeft + moveX
       let targetTop = elOriginTop + moveY
 
-      // 计算目标元素在画布中的位置范围，用于吸附对齐
-      // 需要区分单选和多选两种情况，其中多选状态下需要计算多选元素的整体范围；单选状态下需要继续区分线条、普通元素、旋转后的普通元素三种情况
+      // Calculate the target element's position range in the canvas for snap alignment
+      // Need to distinguish between single-select and multi-select cases; in multi-select state, the overall range of multi-selected elements needs to be computed; in single-select state, we further distinguish three cases: lines, normal elements, and rotated normal elements
       let targetMinX: number, targetMaxX: number, targetMinY: number, targetMaxY: number
 
       if (dragSingleElement) {
@@ -261,8 +261,8 @@ export default (
       const targetCenterX = targetMinX + (targetMaxX - targetMinX) / 2
       const targetCenterY = targetMinY + (targetMaxY - targetMinY) / 2
 
-      // 将收集到的对齐吸附线与计算的目标元素位置范围做对比，二者的差小于设定的值时执行自动对齐校正
-      // 水平和垂直两个方向需要分开计算
+      // Compare the collected alignment snapping lines with the computed target element position range; when the difference is less than the set value, perform automatic alignment correction
+      // Horizontal and vertical directions need to be calculated separately
       const _alignmentLines: AlignmentLineProps[] = []
       let isVerticalAdsorbed = false
       let isHorizontalAdsorbed = false
@@ -310,15 +310,15 @@ export default (
       }
       alignmentLines.value = _alignmentLines
       
-      // 单选状态下，或者当前选中的多个元素中存在正在操作的元素时，仅修改正在操作的元素的位置
+      // In single-select state, or when the currently operated element exists among the multiple selected elements, only modify the position of the currently operated element
       if (dragSingleElement) {
         elementList.value = elementList.value.map(el => {
           return el.id === dragTargetElement.id ? { ...el, left: targetLeft, top: targetTop } : el
         })
       }
 
-      // 多选状态下，除了修改正在操作的元素的位置，其他被选中的元素也需要修改位置信息
-      // 其他被选中的元素的位置信息通过正在操作的元素的移动偏移量来进行计算
+      // In multi-select state, besides modifying the position of the currently operated element, the other selected elements also need to have their positions updated
+      // The positions of other selected elements are computed based on the move offset of the currently operated element
       else {
         const handleElement = elementList.value.find(el => el.id === dragTargetElement.id)
         if (!handleElement) return

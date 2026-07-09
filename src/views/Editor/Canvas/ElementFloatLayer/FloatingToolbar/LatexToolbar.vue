@@ -2,7 +2,7 @@
   <div class="toolbar-content">
     <button class="toolbar-btn" @click="openLatexEditor()">
       <i-icon-park-outline:edit class="icon" />
-      <span>编辑 LaTeX</span>
+      <span>Edit LaTeX</span>
     </button>
     <Popover trigger="click">
       <template #content>
@@ -10,7 +10,7 @@
       </template>
       <button class="toolbar-btn">
         <i-icon-park-outline:platte class="icon" />
-        <span>颜色</span>
+        <span>Color</span>
       </button>
     </Popover>
   </div>

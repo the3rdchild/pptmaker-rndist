@@ -12,14 +12,14 @@ export default (
   const { activeElementIdList, activeGroupElementId, handleElementId, editorAreaFocus } = storeToRefs(mainStore)
   const { ctrlKeyState, ctrlOrShiftKeyActive } = storeToRefs(useKeyboardStore())
 
-  // 选中元素
-  // startMove 表示是否需要再选中操作后进入到开始移动的状态
+  // Select element
+  // startMove indicates whether to enter the start-moving state after the selection operation
   const selectElement = (e: MouseEvent | TouchEvent, element: PPTElement, startMove = true) => {
     if (!editorAreaFocus.value) mainStore.setEditorareaFocus(true)
 
-    // 如果目标元素当前未被选中，则将他设为选中状态
-    // 此时如果按下Ctrl键或Shift键，则进入多选状态，将当前已选中的元素和目标元素一起设置为选中状态，否则仅将目标元素设置为选中状态
-    // 如果目标元素是分组成员，需要将该组合的其他元素一起设置为选中状态
+    // If the target element is not currently selected, set it to selected state
+    // At this point, if the Ctrl or Shift key is pressed, enter multi-select state and set both the currently selected elements and the target element to selected; otherwise only set the target element to selected
+    // If the target element is a group member, the other elements of that group need to be set to selected together
     if (!activeElementIdList.value.includes(element.id)) {
       let newActiveIdList: string[] = []
 
@@ -40,10 +40,10 @@ export default (
       mainStore.setHandleElementId(element.id)
     }
 
-    // 已选中元素上按下 Ctrl 且允许拖拽时，先不立刻取消选中
-    // 因为 Ctrl+点击 和 Ctrl+拖拽复制 共用同一 mousedown
-    // 所以需要先记录按下位置，等 mouseup 时再判断这次操作到底是”点击”还是”拖拽”
-    // 点击时在 mouseup 再取消选中，拖拽时交给拖拽逻辑处理
+    // When Ctrl is pressed on an already-selected element and dragging is allowed, do not deselect immediately
+    // Because Ctrl+click and Ctrl+drag-copy share the same mousedown
+    // So we first record the pressed position, and decide on mouseup whether this operation is a "click" or a "drag"
+    // On click, deselect on mouseup; on drag, let the drag logic handle it
     else if (ctrlKeyState.value && startMove) {
       const startPageX = e instanceof MouseEvent ? e.pageX : e.changedTouches[0].pageX
       const startPageY = e instanceof MouseEvent ? e.pageY : e.changedTouches[0].pageY
@@ -75,9 +75,9 @@ export default (
       }
     }
 
-    // 如果目标元素已被选中，且按下了Ctrl键或Shift键，则取消其被选中状态
-    // 除非目标元素是最后的一个被选中元素，或者目标元素所在的组合是最后一组选中组合
-    // 如果目标元素是分组成员，需要将该组合的其他元素一起取消选中状态
+    // If the target element is already selected and the Ctrl or Shift key is pressed, deselect it
+    // Unless the target element is the last selected element, or the group containing the target element is the last selected group
+    // If the target element is a group member, the other elements of that group also need to be deselected together
     else if (ctrlOrShiftKeyActive.value) {
       let newActiveIdList: string[] = []
 
@@ -97,12 +97,12 @@ export default (
       }
     }
 
-    // 如果目标元素已被选中，同时目标元素不是当前操作元素，则将其设置为当前操作元素
+    // If the target element is already selected and is not the currently operated element, set it as the currently operated element
     else if (handleElementId.value !== element.id) {
       mainStore.setHandleElementId(element.id)
     }
 
-    // 如果目标元素已被选中，同时也是当前操作元素，那么当目标元素在该状态下再次被点击时，将被设置为多选元素中的激活成员
+    // If the target element is already selected and is also the currently operated element, then when the target element is clicked again in this state, it will be set as the activated member of the multi-selected elements
     else if (activeGroupElementId.value !== element.id) {
       const startPageX = e instanceof MouseEvent ? e.pageX : e.changedTouches[0].pageX
       const startPageY = e instanceof MouseEvent ? e.pageY : e.changedTouches[0].pageY

@@ -6,7 +6,7 @@ export interface ScreenState {
 
 export const useScreenStore = defineStore('screen', {
   state: (): ScreenState => ({
-    screening: false, // 是否进入放映状态
+    screening: false, // Whether in presentation/slideshow mode
   }),
 
   actions: {

@@ -10,12 +10,12 @@
       display: 'flex',
       flexDirection: 'column',
     }"
-    title="图片库（来自 pexels.com）" 
+    title="Image Library (from pexels.com)"
     @close="close()"
   >
-    <div class="container" v-loading="{ state: loading, text: '加载中...' }">
+    <div class="container" v-loading="{ state: loading, text: 'Loading...' }">
       <div class="tools">
-        <Input class="input" v-model:value="searchWord" placeholder="搜索图片" @enter="search()">
+        <Input class="input" v-model:value="searchWord" placeholder="Search images" @enter="search()">
           <template #prefix>
             <Popover class="more-icon" trigger="click" v-model:value="orientationVisible">
               <template #content>
@@ -48,7 +48,7 @@
           <div class="img-item">
             <img :src="props.src">
             <div class="mask">
-              <Button type="primary" size="small" @click="createImageElement(props.src)">插入</Button>
+              <Button type="primary" size="small" @click="createImageElement(props.src)">Insert</Button>
             </div>
           </div>
         </template>
@@ -96,16 +96,16 @@ const orientationOptions: {
   key: Orientation
   label: string
 }[] = [
-  { key: 'all', label: '全部' },
-  { key: 'landscape', label: '横向' },
-  { key: 'portrait', label: '纵向' },
-  { key: 'square', label: '方形' },
+  { key: 'all', label: 'All' },
+  { key: 'landscape', label: 'Landscape' },
+  { key: 'portrait', label: 'Portrait' },
+  { key: 'square', label: 'Square' },
 ]
 const orientationMap: Record<string, string> = {
-  'all': '全部',
-  'landscape': '横向',
-  'portrait': '纵向',
-  'square': '方形',
+  'all': 'All',
+  'landscape': 'Landscape',
+  'portrait': 'Portrait',
+  'square': 'Square',
 }
 
 const close = () => {
@@ -113,12 +113,12 @@ const close = () => {
 }
 
 onMounted(() => {
-  search('风景')
+  search('landscape')
 })
 
-const search = (q?: string) => {  
+const search = (q?: string) => {
   const query = q || searchWord.value
-  if (!query) return message.error('请输入搜索关键词')
+  if (!query) return message.error('Please enter a search keyword')
 
   loading.value = true
   page.value = 1
@@ -153,7 +153,7 @@ const loadMore = () => {
   page.value += 1
 
   api.searchImage({
-    query: searchWord.value || '风景',
+    query: searchWord.value || 'landscape',
     per_page: perPage.value,
     page: page.value,
     orientation: orientation.value,

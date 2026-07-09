@@ -1,30 +1,30 @@
 import { padStart } from 'lodash'
 
 /**
- * 补足数字位数
- * @param digit 数字
- * @param len 位数
+ * Pad a number to the specified number of digits
+ * @param digit the number
+ * @param len the number of digits
  */
 export const fillDigit = (digit: number, len: number) => {
   return padStart('' + digit, len, '0')
 }
 
 /**
- * 判断设备
+ * Detect the device type
  */
 export const isPC = () => {
   return !navigator.userAgent.match(/(iPhone|iPod|iPad|Android|Mobile|BlackBerry|Symbian|Windows Phone)/i)
 }
 
 /**
- * 判断URL字符串
+ * Validate a URL string
  */
 export const isValidURL = (url: string) => {
   return /^(https?:\/\/)([\w-]+\.)+[\w-]{2,}(\/[\w-./?%&=]*)?$/i.test(url)
 }
 
 /**
- * HTML转纯文本
+ * Convert HTML to plain text
  */
 export const htmlToText = (html: string) => {
   const doc = new DOMParser().parseFromString(html, 'text/html')
@@ -32,14 +32,14 @@ export const htmlToText = (html: string) => {
 }
 
 /**
- * 浮点数比较
+ * Floating point comparison
  */
 export const isFloatEqual = (a: number, b: number, epsilon = 1e-10) => {
   return Math.abs(a - b) < epsilon
 }
 
 /**
- * 保留小数转换
+ * Rounding with fixed decimal places
  */
 export const toFixed = (num: number, fractionDigits = 1) => {
   if (num % 1 !== 0) {

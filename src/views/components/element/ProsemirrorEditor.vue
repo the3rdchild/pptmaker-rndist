@@ -52,10 +52,10 @@ const { ctrlOrShiftKeyActive } = storeToRefs(useKeyboardStore())
 const editorViewRef = useTemplateRef<HTMLElement>('editorViewRef')
 let editorView: EditorView
 
-// 富文本的各种交互事件监听：
-// 聚焦时取消全局快捷键事件
-// 输入文字时同步数据到vuex
-// 点击鼠标和键盘时同步富文本状态到工具栏
+// Various rich text interaction event listeners:
+// On focus, disable global shortcut key events
+// When text is entered, sync data to the store
+// On mouse click and keypress, sync rich text state to the toolbar
 const handleInput = debounce(function(isHanldeHistory = false) {
   if (props.value.replace(/ style=\"\"/g, '') === editorView.dom.innerHTML.replace(/ style=\"\"/g, '')) return
   emit('update', {
@@ -65,7 +65,7 @@ const handleInput = debounce(function(isHanldeHistory = false) {
 }, 300, { trailing: true })
 
 const handleFocus = () => {
-  // 多选且按下了ctrl或shift键时，不禁用全局快捷键
+  // When multi-selecting and ctrl or shift is pressed, do not disable global shortcuts
   if (!ctrlOrShiftKeyActive.value || activeElementIdList.value.length <= 1) {
     mainStore.setDisableHotkeysState(true)
   }
@@ -96,7 +96,7 @@ const handleKeydown = (editorView: EditorView, e: KeyboardEvent) => {
   handleClick()
 }
 
-// 将富文本内容同步到DOM
+// Sync rich text content to the DOM
 const textContent = computed(() => props.value)
 watch(textContent, () => {
   if (!editorView) return
@@ -106,17 +106,17 @@ watch(textContent, () => {
   editorView.dispatch(tr.replaceRangeWith(0, doc.content.size, createDocument(textContent.value)))
 })
 
-// 打开/关闭编辑器的编辑模式
+// Turn the editor's edit mode on/off
 watch(() => props.editable, () => {
   editorView.setProps({ editable: () => props.editable })
 })
 
-// 暴露 focus 方法
+// Expose the focus method
 const focus = () => editorView.focus()
 defineExpose({ focus })
 
-// 执行富文本命令（可以是一个或多个）
-// 部分命令在执行前先判断当前选区是否为空，如果选区为空先进行全选操作
+// Execute rich text commands (one or more)
+// For some commands, first check whether the current selection is empty; if empty, perform a select-all first
 const execCommand = ({ target, action }: RichTextCommand) => {
   if (!target && handleElementId.value !== props.elementId) return
   if (target && target !== props.elementId) return
@@ -130,7 +130,7 @@ const execCommand = ({ target, action }: RichTextCommand) => {
       addMark(editorView, mark)
 
       if (item.value && !document.fonts.check(`16px ${item.value}`)) {
-        message.warning('字体需要等待加载下载后生效，请稍等')
+        message.warning('The font needs to be downloaded before it takes effect, please wait')
       }
     }
     else if (item.command === 'fontsize' && item.value) {
@@ -269,7 +269,7 @@ const execCommand = ({ target, action }: RichTextCommand) => {
   handleClick()
 }
 
-// 鼠标抬起时，执行格式刷命令
+// On mouse up, execute the format painter command
 const handleMouseup = () => {
   if (!textFormatPainter.value) return
   const { keep, ...newProps } = textFormatPainter.value
@@ -285,7 +285,7 @@ const handleMouseup = () => {
   if (!keep) mainStore.setTextFormatPainter(null)
 }
 
-// Prosemirror编辑器的初始化和卸载
+// Initialization and teardown of the Prosemirror editor
 onMounted(() => {
   editorView = initProsemirrorEditor((editorViewRef.value as Element), textContent.value, {
     handleDOMEvents: {

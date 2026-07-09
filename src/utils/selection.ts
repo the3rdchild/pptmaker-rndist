@@ -1,4 +1,4 @@
-// 清除文字选区
+// Clear the text selection
 export const removeAllRanges = () => {
   const selection = window.getSelection()
   selection && selection.removeAllRanges()

@@ -2,7 +2,7 @@ import { ref, watch, type Ref } from 'vue'
 import type { TableTheme } from '@/types/slides'
 import { getTableSubThemeColor } from '@/utils/element'
 
-// 通过表格的主题色计算辅助颜色
+// Calculate auxiliary colors from the table's theme color
 
 export default (theme: Ref<TableTheme | undefined>) => {
   const subThemeColor = ref(['', ''])

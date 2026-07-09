@@ -18,7 +18,7 @@ export default (elementList: Ref<PPTElement[]>, viewportRef: ShallowRef<HTMLElem
     height: 0,
   })
 
-  // 更新鼠标框选范围
+  // Update mouse selection range
   const updateMouseSelection = (e: MouseEvent) => {
     if (!viewportRef.value) return
 
@@ -33,7 +33,7 @@ export default (elementList: Ref<PPTElement[]>, viewportRef: ShallowRef<HTMLElem
     const left = (startPageX - viewportRect.x) / canvasScale.value
     const top = (startPageY - viewportRect.y) / canvasScale.value
 
-    // 确定框选的起始位置和其他默认值初始化
+    // Determine the starting position of the selection and initialize other default values
     mouseSelection.value = {
       top: top,
       left: left,
@@ -57,15 +57,15 @@ export default (elementList: Ref<PPTElement[]>, viewportRef: ShallowRef<HTMLElem
 
       if ( width < minSelectionRange || height < minSelectionRange ) return
       
-      // 计算鼠标框选（移动）的方向
-      // 按四个象限的位置区分，如右下角为第四象限
+      // Calculate the direction of the mouse selection (movement)
+      // Distinguished by the position of the four quadrants, e.g. the bottom-right corner is the fourth quadrant
       let quadrant = 0
       if ( offsetWidth > 0 && offsetHeight > 0 ) quadrant = 4
       else if ( offsetWidth < 0 && offsetHeight < 0 ) quadrant = 2
       else if ( offsetWidth > 0 && offsetHeight < 0 ) quadrant = 1
       else if ( offsetWidth < 0 && offsetHeight > 0 ) quadrant = 3
 
-      // 更新框选范围
+      // Update selection range
       mouseSelection.value = {
         ...mouseSelection.value,
         width: width,
@@ -80,7 +80,7 @@ export default (elementList: Ref<PPTElement[]>, viewportRef: ShallowRef<HTMLElem
       document.onmouseup = null
       isMouseDown = false
 
-      // 计算画布中的元素是否处在鼠标选择范围中，处在范围中的元素设置为被选中状态
+      // Calculate whether the elements in the canvas are within the mouse selection range; elements within the range are set to selected state
       let inRangeElementList: PPTElement[] = []
       for (let i = 0; i < elementList.value.length; i++) {
         const element = elementList.value[i]
@@ -91,7 +91,7 @@ export default (elementList: Ref<PPTElement[]>, viewportRef: ShallowRef<HTMLElem
 
         const { minX, maxX, minY, maxY } = getElementRange(element)
 
-        // 计算元素是否处在框选范围内时，四个框选方向的计算方式有差异
+        // When calculating whether an element is within the selection range, the calculation method differs for the four selection directions
         let isInclude = false
         if (ctrlOrShiftKeyActive.value) {
           if (mouseSelectionQuadrant.value === 4) {
@@ -146,11 +146,11 @@ export default (elementList: Ref<PPTElement[]>, viewportRef: ShallowRef<HTMLElem
           }
         }
 
-        // 被锁定或被隐藏的元素即使在范围内，也不需要设置为选中状态
+        // Elements that are locked or hidden do not need to be set to selected state even if they are within the range
         if (isInclude && !element.lock && !hiddenElementIdList.value.includes(element.id)) inRangeElementList.push(element)
       }
 
-      // 如果范围内有组合元素的成员，需要该组全部成员都处在范围内，才会被设置为选中状态
+      // If there are group member elements within the range, all members of that group must be within the range to be set to selected state
       inRangeElementList = inRangeElementList.filter(inRangeElement => {
         if (inRangeElement.groupId) {
           const inRangeElementIdList = inRangeElementList.map(inRangeElement => inRangeElement.id)

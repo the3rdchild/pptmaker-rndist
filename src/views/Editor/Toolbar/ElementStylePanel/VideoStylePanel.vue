@@ -1,6 +1,6 @@
 <template>
   <div class="video-style-panel">
-    <div class="title">视频预览封面</div>
+    <div class="title">Video preview cover</div>
     <div class="background-image-wrapper">
       <FileInput @change="files => setVideoPoster(files)">
         <div class="background-image">
@@ -11,16 +11,16 @@
       </FileInput>
     </div>
     <div class="row">
-      <Button style="flex: 1;" @click="setVideoPosterFromFirstFrame()"><i-icon-park-outline:screenshot-one /> 设置首帧为封面</Button>
+      <Button style="flex: 1;" @click="setVideoPosterFromFirstFrame()"><i-icon-park-outline:screenshot-one /> Set first frame as cover</Button>
     </div>
     <div class="row" v-if="handleVideoElement.poster">
-      <Button style="flex: 1;" @click="updateVideo({ poster: '' })"><i-icon-park-outline:undo /> 重置封面</Button>
+      <Button style="flex: 1;" @click="updateVideo({ poster: '' })"><i-icon-park-outline:undo /> Reset cover</Button>
     </div>
 
     <Divider />
 
     <div class="row switch-row">
-      <div style="width: 40%;">自动播放：</div>
+      <div style="width: 40%;">Autoplay:</div>
       <div class="switch-wrapper" style="width: 60%;">
         <Switch 
           :value="handleVideoElement.autoplay" 
@@ -57,14 +57,14 @@ const updateVideo = (props: Partial<PPTVideoElement>) => {
   addHistorySnapshot()
 }
 
-// 设置视频预览封面
+// Set video preview cover
 const setVideoPoster = (files: FileList) => {
   const imageFile = files[0]
   if (!imageFile) return
   getImageDataURL(imageFile).then(dataURL => updateVideo({ poster: dataURL }))
 }
 
-// 获取视频首帧作为预览封面
+// Get the first frame of the video as the preview cover
 const setVideoPosterFromFirstFrame = () => {
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')

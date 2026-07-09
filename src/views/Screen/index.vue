@@ -32,7 +32,7 @@ const exitScreening = () => {
   _exitScreening()
 }
 
-// 快捷键退出放映（观众视图中 ESC 不响应，由用户直接关闭窗口）
+// Hotkey to exit the show (ESC does not respond in audience view; the user closes the window directly)
 const keydownListener = (e: KeyboardEvent) => {
   const key = e.key.toUpperCase()
   if (key === KEYS.ESC) exitScreening()

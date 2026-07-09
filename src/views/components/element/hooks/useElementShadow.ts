@@ -1,7 +1,7 @@
 import { computed, type Ref } from 'vue'
 import type { PPTElementShadow } from '@/types/slides'
 
-// 计算元素的阴影样式
+// Calculate the element's shadow style
 export default (shadow: Ref<PPTElementShadow | undefined>) => {
   const shadowStyle = computed(() => {
     if (shadow.value) {

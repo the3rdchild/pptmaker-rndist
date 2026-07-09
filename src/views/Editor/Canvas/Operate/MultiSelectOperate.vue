@@ -55,19 +55,19 @@ const range = ref({
   maxY: 0,
 })
 
-// 根据多选元素整体在画布中的范围，计算边框线和缩放点的位置信息
+// Based on the overall range of multi-selected elements in the canvas, compute the position info for border lines and scale handles
 const width = computed(() => (range.value.maxX - range.value.minX) * canvasScale.value)
 const height = computed(() => (range.value.maxY - range.value.minY) * canvasScale.value)
 const { resizeHandlers, borderLines } = useCommonOperate(width, height)
 
-// 计算多选元素整体在画布中的范围
+// Compute the overall range of multi-selected elements in the canvas
 const setRange = () => {
   const { minX, maxX, minY, maxY } = getElementListRange(localActiveElementList.value)
   range.value = { minX, maxX, minY, maxY }
 }
 watchEffect(setRange)
 
-// 禁用多选状态下缩放：仅未旋转的图片和形状可以在多选状态下缩放
+// Disable scaling in multi-select state: only non-rotated images and shapes can be scaled in multi-select state
 const disableResize = computed(() => {
   return localActiveElementList.value.some(item => {
     if (

@@ -1,74 +1,74 @@
 export const FORMULA_LIST = [
   {
-    label: '高斯公式',
+    label: 'Gauss Formula',
     latex: `\\int\\int\\int _ { \\Omega } \\left( \\frac { \\partial {P} } { \\partial {x} } + \\frac { \\partial {Q} } { \\partial {y} } + \\frac { \\partial {R} }{ \\partial {z} } \\right) \\mathrm { d } V = \\oint _ { \\partial \\Omega } ( P \\cos \\alpha + Q \\cos \\beta + R \\cos \\gamma ) \\mathrm{ d} S`
   },
   {
-    label: '傅里叶级数',
+    label: 'Fourier Series',
     latex: `f(x) = \\frac {a_0} 2 + \\sum_{n = 1}^\\infty {({a_n}\\cos {nx} + {b_n}\\sin {nx})}`,
   },
   {
-    label: '泰勒展开式',
+    label: 'Taylor Expansion',
     latex: `e ^ { x } = 1 + \\frac { x } { 1 ! } + \\frac { x ^ { 2 } } { 2 ! } + \\frac { x ^ { 3 } } { 3 ! } + ... , \\quad - \\infty < x < \\infty`,
   },
   {
-    label: '定积分',
+    label: 'Definite Integral',
     latex: `\\lim_ { n \\rightarrow + \\infty } \\sum _ { i = 1 } ^ { n } f \\left[ a + \\frac { i } { n } ( b - a ) \\right] \\frac { b - a } { n } = \\int _ { a } ^ { b } f ( x ) dx`,
   },
   {
-    label: '三角恒等式1',
+    label: 'Trigonometric Identity 1',
     latex: `\\sin \\alpha \\pm \\sin \\beta = 2 \\sin \\frac { 1 } { 2 } ( \\alpha \\pm \\beta ) \\cos \\frac { 1 } { 2 } ( \\alpha \\mp \\beta )`,
   },
   {
-    label: '三角恒等式2',
+    label: 'Trigonometric Identity 2',
     latex: `\\cos \\alpha + \\cos \\beta = 2 \\cos \\frac { 1 } { 2 } ( \\alpha + \\beta ) \\cos \\frac { 1 } { 2 } ( \\alpha - \\beta )`,
   },
   {
-    label: '和的展开式',
+    label: 'Binomial Expansion',
     latex: `( 1 + x ) ^ { n } = 1 + \\frac { n x } { 1 ! } + \\frac { n ( n - 1 ) x ^ { 2 } } { 2 ! } + ...`,
   },
   {
-    label: '欧拉公式',
+    label: "Euler's Formula",
     latex: ` e^{ix} = \\cos {x} + i\\sin {x}`,
   },
   {
-    label: '贝努利方程',
+    label: 'Bernoulli Equation',
     latex: `\\frac {dy} {dx} + P(x)y = Q(x) y^n ({n} \\not= {0,1})`,
   },
   {
-    label: '全微分方程',
+    label: 'Exact Differential Equation',
     latex: `du(x,y) = P(x,y)dx + Q(x,y)dy = 0`,
   },
   {
-    label: '非齐次方程',
+    label: 'Non-homogeneous Equation',
     latex: `y = (\\int Q(x) e^{\\int {P(x)dx}}dx + C)e^{-\\int {P(x)dx}}`,
   },
   {
-    label: '柯西中值定理',
+    label: "Cauchy's Mean Value Theorem",
     latex: `\\frac{{f(b) - f(a)}}{{F(b) - F(a)}} = \\frac{{f'(\\xi )}}{{F'(\\xi )}}`,
   },
   {
-    label: '拉格朗日中值定理',
+    label: "Lagrange's Mean Value Theorem",
     latex: `f(b) - f(a) = f'(\\xi )(b - a)`,
   },
   {
-    label: '导数公式',
+    label: 'Derivative Formula',
     latex: `(\\arcsin x)' = \\frac{1}{{\\sqrt {1 - x^2} }}`,
   },
   {
-    label: '三角函数积分',
+    label: 'Trigonometric Integral',
     latex: `\\int {tgxdx = - \\ln \\left| {\\cos x} \\right| + C}`,
   },
   {
-    label: '二次曲面',
+    label: 'Quadric Surface',
     latex: `\\frac{{{x^2}}}{{{a^2}}} + \\frac{{{y^2}}}{{{b^2}}} - \\frac{{{z^2}}}{{{c^2}}} = 1`,
   },
   {
-    label: '二阶微分',
+    label: 'Second-order Differential',
     latex: `\\frac {{d^2}y} {dx^2} + P(x) \\frac {dy} {dx} + Q(x)y = f(x)`,
   },
   {
-    label: '方向导数',
+    label: 'Directional Derivative',
     latex: `\\frac{{\\partial f}}{{\\partial l}} = \\frac{{\\partial f}}{{\\partial x}}\\cos \\phi + \\frac{{\\partial f}}{{\\partial y}}\\sin \\phi`,
   },
 ]
@@ -76,7 +76,7 @@ export const FORMULA_LIST = [
 export const SYMBOL_LIST = [
   {
     type: 'operators',
-    label: '数学',
+    label: 'Math',
     children: [
       { latex: '\\cdot' },
       { latex: '\\pm' },
@@ -152,7 +152,7 @@ export const SYMBOL_LIST = [
   },
   {
     type: 'group',
-    label: '组合',
+    label: 'Group',
     children: [
       { latex: '\\frac{a}{b}' },
       { latex: '\\frac{dx}{dx}' },
@@ -186,7 +186,7 @@ export const SYMBOL_LIST = [
   },
   {
     type: 'verbatim',
-    label: '函数',
+    label: 'Functions',
     children: [
       { latex: '\\log' },
       { latex: '\\ln' },
@@ -215,7 +215,7 @@ export const SYMBOL_LIST = [
   },
   {
     type: 'greek',
-    label: '希腊字母',
+    label: 'Greek Letters',
     children: [
       { latex: '\\alpha' },
       { latex: '\\beta' },

@@ -42,17 +42,17 @@ const slidesStore = useSlidesStore()
 const { slideWidth, slideHeight } = useSlideSize()
 const { execNext, execPrev, turnSlideToIndex, turnSlideToId, animationIndex, restoreAnimationState } = useExecPlay()
 
-// 画板覆盖层状态
+// Whiteboard overlay state
 const writingBoardVisible = ref(false)
 const writingBoardBlackboard = ref(false)
 const writingBoardDataURL = ref('')
 
-// 激光笔状态
+// Laser pen state
 const laserPenVisible = ref(false)
 const laserPenX = ref(0)
 const laserPenY = ref(0)
 
-// 建立接收频道，向主窗口请求当前状态，并处理同步指令
+// Establish the receiving channel, request the current state from the main window, and handle sync commands
 const syncChannel = new BroadcastChannel('pptist-audience-sync')
 
 onMounted(() => {
@@ -79,14 +79,14 @@ onMounted(() => {
     else if (msg.type === 'TURN_TO_INDEX' && msg.index !== undefined) turnSlideToIndex(msg.index)
     else if (msg.type === 'TURN_TO_ID' && msg.id !== undefined) turnSlideToId(msg.id)
     else if (msg.type === 'INIT_STATE' && msg.slideIndex !== undefined) {
-      // 先用演讲者的实际幻灯片数据覆盖 mock 数据，确保动画序列等编辑内容一致
+      // First overwrite the mock data with the presenter's actual slide data to ensure animation sequences and other edited content are consistent
       if (msg.viewportSize !== undefined) slidesStore.setViewportSize(msg.viewportSize)
       if (msg.viewportRatio !== undefined) slidesStore.setViewportRatio(msg.viewportRatio)
       if (msg.slides) slidesStore.setSlides(msg.slides)
       turnSlideToIndex(msg.slideIndex)
       if (msg.animationIndex !== undefined) {
         animationIndex.value = msg.animationIndex
-        // 等待 DOM 渲染完成后，补齐已执行过的退场动画 CSS 终态
+        // After waiting for DOM rendering to complete, fill in the CSS end-state of executed exit animations
         nextTick(() => restoreAnimationState(msg.animationIndex!))
       }
     }

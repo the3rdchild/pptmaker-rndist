@@ -17,7 +17,7 @@ export default () => {
 
   const { addHistorySnapshot } = useHistorySnapshot()
 
-  // 获取指定幻灯片内的主要主题样式，并以在当中的占比进行排序
+  // Get the main theme styles in the specified slides, and sort them by their proportion
   const getSlidesThemeStyles = (slide: Slide | Slide[]) => {
     const slides = Array.isArray(slide) ? slide : [slide]
 
@@ -210,7 +210,7 @@ export default () => {
     }
   }
 
-  // 获取指定幻灯片内的主要颜色（忽略透明度），并按颜色面积排序
+  // Get the main colors in the specified slide (ignoring alpha), and sort them by color area
   const getSlideAllColors = (slide: Slide) => {
     const colorMap: Record<string, number> = {}
 
@@ -257,7 +257,7 @@ export default () => {
     return colors
   }
   
-  // 创建原颜色与新颜色的对应关系表
+  // Create a mapping table between original colors and new colors
   const createSlideThemeColorMap = (slide: Slide, _newColors: string[]): Record<string, string> => {
     const newColors = [..._newColors]
     const oldColors = getSlideAllColors(slide)
@@ -275,7 +275,7 @@ export default () => {
     return themeColorMap
   }
   
-  // 设置幻灯片主题
+  // Set the slide theme
   const setSlideTheme = (slide: Slide, theme: PresetTheme) => {
     const colorMap = createSlideThemeColorMap(slide, theme.colors)
 
@@ -339,7 +339,7 @@ export default () => {
     }
   }
   
-  // 应用预置主题
+  // Apply a preset theme
   const applyPresetTheme = (theme: PresetTheme, resetSlides = false) => {
     slidesStore.setTheme({
       backgroundColor: theme.background,
@@ -363,7 +363,7 @@ export default () => {
     }
   }
   
-  // 将当前主题配置应用到全部页面
+  // Apply the current theme config to all slides
   const applyThemeToAllSlides = (applyAll = false) => {
     const newSlides: Slide[] = JSON.parse(JSON.stringify(slides.value))
 
@@ -384,7 +384,7 @@ export default () => {
     addHistorySnapshot()
   }
 
-  // 统一字体
+  // Unify the font
   const applyFontToAllSlides = (fontname: string) => {
     const newSlides: Slide[] = JSON.parse(JSON.stringify(slides.value))
 

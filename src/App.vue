@@ -4,7 +4,7 @@
     <Editor v-else-if="_isPC" />
     <Mobile v-else />
   </template>
-  <FullscreenSpin tip="数据初始化中，请稍等 ..." v-else  loading :mask="false" />
+  <FullscreenSpin tip="Initializing data, please wait ..." v-else  loading :mask="false" />
 </template>
 
 <script lang="ts" setup>
@@ -55,7 +55,7 @@ onMounted(async () => {
   }
 })
 
-// 应用注销时向 localStorage 中记录下本次 indexedDB 的数据库ID，用于之后清除数据库
+// When the app is unloaded, record this indexedDB database ID in localStorage for later database cleanup
 window.addEventListener('beforeunload', () => {
   const discardedDB = localStorage.getItem(LOCALSTORAGE_KEY_DISCARDED_DB)
   const discardedDBList: string[] = discardedDB ? JSON.parse(discardedDB) : []

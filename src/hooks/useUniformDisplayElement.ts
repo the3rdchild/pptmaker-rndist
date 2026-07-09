@@ -53,13 +53,13 @@ export default () => {
     }
     return count
   })
-  // 水平均匀排列
+  // Horizontal uniform distribution
   const uniformHorizontalDisplay = () => {
     const { minX, maxX } = getElementListRange(activeElementList.value)
     const copyOfActiveElementList: PPTElement[] = JSON.parse(JSON.stringify(activeElementList.value))
     const newElementList: PPTElement[] = JSON.parse(JSON.stringify(currentSlide.value.elements))
 
-    // 分别获取普通元素和组合元素集合，并记录下每一项的范围
+    // Get the single elements and combined element sets separately, and record the range of each item
     const singleElemetList: ElementItem[] = []
     let groupList: GroupItem[] = []
     for (const el of copyOfActiveElementList) {
@@ -81,12 +81,12 @@ export default () => {
       formatedGroupList.push({ min: minX, max: maxX, els: groupItem.els })
     }
 
-    // 将普通元素和组合元素集合组合在一起，然后将每一项按位置（从左到右）排序
+    // Combine the single elements and combined element sets together, then sort each item by position (left to right)
     const list: Item[] = [...singleElemetList, ...formatedGroupList]
     list.sort((itemA, itemB) => itemA.min - itemB.min)
 
-    // 计算元素均匀分布所需要的间隔：
-    // (所选元素整体范围 - 所有所选元素宽度和) / (所选元素数 - 1)
+    // Calculate the interval required for evenly distributing the elements:
+    // (overall range of selected elements - sum of widths of all selected elements) / (number of selected elements - 1)
     let totalWidth = 0
     for (const item of list) {
       const width = item.max - item.min
@@ -94,10 +94,10 @@ export default () => {
     }
     const span = ((maxX - minX) - totalWidth) / (list.length - 1)
 
-    // 按位置顺序依次计算每一个元素的目标位置
-    // 第一项中的元素即为起点，无需计算
-    // 从第二项开始，每一项的位置应该为：上一项位置 + 上一项宽度 + 间隔
-    // 注意此处计算的位置（pos）并非元素最终的left值，而是目标位置范围最小值（元素旋转后的left值 ≠ 范围最小值）
+    // Calculate the target position of each element in order of position
+    // The elements in the first item are the starting point and do not need to be calculated
+    // Starting from the second item, the position of each item should be: previous item position + previous item width + interval
+    // Note that the position (pos) calculated here is not the final left value of the element, but the minimum value of the target position range (the left value of a rotated element != the minimum value of the range)
     const sortedElementData: ElementWithPos[] = []
 
     const firstItem = list[0]
@@ -132,8 +132,8 @@ export default () => {
       }
     }
 
-    // 根据目标位置计算元素最终目标left值
-    // 对于旋转后的元素，需要计算旋转前后left的偏移来做校正
+    // Calculate the final target left value of the element based on the target position
+    // For rotated elements, the offset of the left value before and after rotation needs to be calculated for correction
     for (const element of newElementList) {
       if (!activeElementIdList.value.includes(element.id)) continue
 
@@ -158,7 +158,7 @@ export default () => {
     addHistorySnapshot()
   }
 
-  // 垂直均匀排列（逻辑类似水平均匀排列方法）
+  // Vertical uniform distribution (logic is similar to the horizontal uniform distribution method)
   const uniformVerticalDisplay = () => {
     const { minY, maxY } = getElementListRange(activeElementList.value)
     const copyOfActiveElementList: PPTElement[] = JSON.parse(JSON.stringify(activeElementList.value))

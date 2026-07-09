@@ -29,8 +29,8 @@ const textareaRef = useTemplateRef<HTMLElement>('textareaRef')
 const text = ref('')
 const isFocus = ref(false)
 
-// 自定义v-modal，同步数据
-// 当文本框聚焦时，不执行数据同步
+// Custom v-model, sync data
+// When the text box is focused, do not sync data
 watch(() => props.value, () => {
   if (isFocus.value) return
   text.value = props.value
@@ -43,7 +43,7 @@ const handleInput = () => {
   emit('updateValue', text)
 }
 
-// 聚焦时更新焦点标记，并监听粘贴事件
+// On focus, update the focus flag and listen for the paste event
 const handleFocus = () => {
   isFocus.value = true
 
@@ -83,13 +83,13 @@ const handleFocus = () => {
   }
 }
 
-// 失焦时更新焦点标记，清除粘贴事件监听
+// On blur, update the focus flag and remove the paste event listener
 const handleBlur = () => {
   isFocus.value = false
   if (textareaRef.value) textareaRef.value.onpaste = null
 }
 
-// 清除粘贴事件监听
+// Remove the paste event listener
 onBeforeUnmount(() => {
   if (textareaRef.value) textareaRef.value.onpaste = null
 })

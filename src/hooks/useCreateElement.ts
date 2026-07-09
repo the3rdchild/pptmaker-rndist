@@ -35,7 +35,7 @@ export default () => {
 
   const { addHistorySnapshot } = useHistorySnapshot()
 
-  // 创建（插入）一个元素并将其设置为被选中元素
+  // Create (insert) an element and set it as the selected element
   const createElement = (element: PPTElement, callback?: () => void) => {
     slidesStore.addElement(element)
     mainStore.setActiveElementIdList([element.id])
@@ -52,8 +52,8 @@ export default () => {
   }
 
   /**
-   * 创建图片元素
-   * @param src 图片地址
+   * Create an image element
+   * @param src Image source URL
    */
   const createImageElement = (src: string) => {
     getImageSize(src).then(({ width, height }) => {
@@ -83,8 +83,8 @@ export default () => {
   }
   
   /**
-   * 创建图表元素
-   * @param chartType 图表类型
+   * Create a chart element
+   * @param chartType Chart type
    */
   const createChartElement = (type: ChartType) => {
     createElement({
@@ -103,9 +103,9 @@ export default () => {
   }
   
   /**
-   * 创建表格元素
-   * @param row 行数
-   * @param col 列数
+   * Create a table element
+   * @param row Number of rows
+   * @param col Number of columns
    */
   const createTableElement = (row: number, col: number) => {
     const style: TableCellStyle = {
@@ -156,9 +156,9 @@ export default () => {
   }
   
   /**
-   * 创建文本元素
-   * @param position 位置大小信息
-   * @param content 文本内容
+   * Create a text element
+   * @param position Position and size info
+   * @param content Text content
    */
   const createTextElement = (position: CommonElementPosition, data?: CreateTextData) => {
     const { left, top, width, height } = position
@@ -187,9 +187,9 @@ export default () => {
   }
   
   /**
-   * 创建形状元素
-   * @param position 位置大小信息
-   * @param data 形状路径信息
+   * Create a shape element
+   * @param position Position and size info
+   * @param data Shape path info
    */
   const createShapeElement = (position: CommonElementPosition, data: ShapePoolItem, supplement: Partial<PPTShapeElement> = {}) => {
     const { left, top, width, height } = position
@@ -224,9 +224,9 @@ export default () => {
   }
   
   /**
-   * 创建线条元素
-   * @param position 位置大小信息
-   * @param data 线条的路径和样式
+   * Create a line element
+   * @param position Position and size info
+   * @param data Path and style of the line
    */
   const createLineElement = (position: LineElementPosition, data: LinePoolItem) => {
     const { left, top, start, end } = position
@@ -251,8 +251,8 @@ export default () => {
   }
   
   /**
-   * 创建LaTeX元素
-   * @param svg SVG代码
+   * Create a LaTeX element
+   * @param svg SVG code
    */
   const createLatexElement = (data: { path: string; latex: string; w: number; h: number; }) => {
     createElement({
@@ -273,8 +273,8 @@ export default () => {
   }
   
   /**
-   * 创建视频元素
-   * @param src 视频地址
+   * Create a video element
+   * @param src Video source URL
    */
   const createVideoElement = (src: string, ext?: string) => {
     const newElement: PPTVideoElement = {
@@ -293,8 +293,8 @@ export default () => {
   }
   
   /**
-   * 创建音频元素
-   * @param src 音频地址
+   * Create an audio element
+   * @param src Audio source URL
    */
   const createAudioElement = (src: string, ext?: string) => {
     const newElement: PPTAudioElement = {

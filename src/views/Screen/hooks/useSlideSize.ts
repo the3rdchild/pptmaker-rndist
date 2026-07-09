@@ -9,7 +9,7 @@ export default (wrapRef?: ShallowRef<HTMLElement | null>) => {
   const slideWidth = ref(0)
   const slideHeight = ref(0)
 
-  // 计算和更新幻灯片内容的尺寸（按比例自适应屏幕）
+  // Compute and update the slide content size (adapt to screen by ratio)
   const setSlideContentSize = () => {
     const slideWrapRef = wrapRef?.value || document.body
     const winWidth = slideWrapRef.clientWidth

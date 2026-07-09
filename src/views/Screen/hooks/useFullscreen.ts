@@ -18,7 +18,7 @@ export default () => {
   onMounted(() => {
     fullscreenState.value = isFullscreen()
     document.addEventListener('fullscreenchange', handleFullscreenChange)
-    document.addEventListener('webkitfullscreenchange', handleFullscreenChange) // Safari 兼容
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange) // Safari compatibility
   })
   onUnmounted(() => {
     document.removeEventListener('fullscreenchange', handleFullscreenChange)

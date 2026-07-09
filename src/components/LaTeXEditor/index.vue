@@ -3,10 +3,10 @@
     <div class="container">
       <div class="left">
         <div class="input-area">
-          <TextArea v-model:value="latex" placeholder="输入 LaTeX 公式" ref="textAreaRef" />
+          <TextArea v-model:value="latex" placeholder="Enter a LaTeX formula" ref="textAreaRef" />
         </div>
         <div class="preview">
-          <div class="placeholder" v-if="!latex">公式预览</div>
+          <div class="placeholder" v-if="!latex">Formula preview</div>
           <div class="preview-content" v-else>
             <FormulaContent
               :width="518"
@@ -52,8 +52,8 @@
       </div>
     </div>
     <div class="footer">
-      <Button class="btn" @click="emit('close')">取消</Button>
-      <Button class="btn" type="primary" @click="update()">确定</Button>
+      <Button class="btn" @click="emit('close')">Cancel</Button>
+      <Button class="btn" type="primary" @click="update()">OK</Button>
     </div>
   </div>
 </template>
@@ -76,8 +76,8 @@ interface TabItem {
 }
 
 const tabs: TabItem[] = [
-  { label: '常用符号', key: 'symbol' },
-  { label: '预置公式', key: 'formula' },
+  { label: 'Common symbols', key: 'symbol' },
+  { label: 'Preset formulas', key: 'formula' },
 ]
 
 interface LatexResult {
@@ -123,7 +123,7 @@ onMounted(() => {
 })
 
 const update = () => {
-  if (!latex.value) return message.error('公式不能为空')
+  if (!latex.value) return message.error('The formula cannot be empty')
 
   const eq = new hfmath(latex.value)
   const pathd = eq.pathd({})

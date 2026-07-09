@@ -13,10 +13,10 @@ interface PasteTextClipboardDataOptions {
 }
 
 /**
- * 判断图片URL字符串
- * 
- * ！！！注意，你需要判断允许哪些来源的图片地址被匹配，然后自行编写正则表达式
- * ！！！必须确保图片来源都是合法、可靠、可控、无访问限制的
+ * Determine if the image URL string is valid
+ *
+ * !!! Note: you need to determine which sources of image URLs are allowed to be matched, then write your own regular expression
+ * !!! You must ensure that all image sources are legal, reliable, controllable, and have no access restrictions
  */
 const isValidImgURL = (url: string) => {
   const pexels = /^https?:\/\/(?:[a-zA-Z0-9-]+\.)*pexels\.com\/[^\s]+\.(?:jpg|jpeg|png|svg|webp)(?:\?.*)?$/i.test(url)
@@ -31,8 +31,8 @@ export default () => {
   const { addElementsFromData, addSlidesFromData } = useAddSlidesOrElements()
 
   /**
-   * 粘贴普通文本：创建为新的文本元素
-   * @param text 文本
+   * Paste plain text: create it as a new text element
+   * @param text Text
    */
   const createTextElementFromClipboard = (text: string) => {
     createTextElement({
@@ -44,9 +44,9 @@ export default () => {
   }
 
   /**
-   * 解析剪贴板内容，根据解析结果选择合适的粘贴方式
-   * @param text 剪贴板内容
-   * @param options 配置项：onlySlide -- 仅处理页面粘贴；onlyElements -- 仅处理元素粘贴；
+   * Parse the clipboard content and choose the appropriate paste method based on the parsing result
+   * @param text Clipboard content
+   * @param options Config options: onlySlide -- only handle slide paste; onlyElements -- only handle element paste;
    */
   const pasteTextClipboardData = (text: string, options?: PasteTextClipboardDataOptions) => {
     const onlySlide = options?.onlySlide || false
@@ -54,7 +54,7 @@ export default () => {
 
     const clipboardData = pasteCustomClipboardString(text)
 
-    // 元素或页面
+    // Element or slide
     if (typeof clipboardData === 'object') {
       const { type, data } = clipboardData
 
@@ -62,28 +62,28 @@ export default () => {
       else if (type === 'slides' && !onlyElements) addSlidesFromData(data)
     }
 
-    // 普通文本
+    // Plain text
     else if (!onlyElements && !onlySlide) {
-      // 普通文字
+      // Plain text
       if (shiftKeyState.value) {
         const string = parseText2Paragraphs(clipboardData)
         createTextElementFromClipboard(string)
       }
       else {
-        // 尝试检查是否为图片地址链接
+        // Try to check whether it is an image URL link
         if (isValidImgURL(clipboardData)) {
           createImageElement(clipboardData)
         }
-        // 尝试检查是否为超链接
+        // Try to check whether it is a hyperlink
         else if (isValidURL(clipboardData)) {
           createTextElementFromClipboard(`<a href="${clipboardData}" title="${clipboardData}" target="_blank">${clipboardData}</a>`)
         }
-        // 尝试检查是否为SVG代码
+        // Try to check whether it is SVG code
         else if (isSVGString(clipboardData)) {
           const file = svg2File(clipboardData)
           getImageDataURL(file).then(dataURL => createImageElement(dataURL))
         }
-        // 普通文字
+        // Plain text
         else {
           const string = parseText2Paragraphs(clipboardData)
           createTextElementFromClipboard(string)

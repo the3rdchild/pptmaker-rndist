@@ -18,7 +18,7 @@ export default (elementList: Ref<PPTElement[]>) => {
   const { ctrlOrShiftKeyActive } = storeToRefs(useKeyboardStore())
   const { addHistorySnapshot } = useHistorySnapshot()
 
-  // 拖拽线条端点
+  // Drag line endpoint
   const dragLineElement = (e: MouseEvent, element: PPTLineElement, command: OperateLineHandlers) => {
     let isMouseDown = true
 
@@ -42,7 +42,7 @@ export default (elementList: Ref<PPTElement[]>) => {
       { x: canvasWidth, y: canvasHeight },
     )
 
-    // 获取所有线条以外的未旋转的元素的8个缩放点作为吸附位置
+    // Get the 8 scale handles of all non-rotated elements other than lines as snapping positions
     for (let i = 0; i < elementList.value.length; i++) {
       const _element = elementList.value[i]
       if (_element.type === 'line' || _element.rotate) continue
@@ -88,7 +88,7 @@ export default (elementList: Ref<PPTElement[]>) => {
       const moveX = (currentPageX - startPageX) / canvasScale.value
       const moveY = (currentPageY - startPageY) / canvasScale.value
       
-      // 线条起点和终点在编辑区域中的位置
+      // Positions of the line's start and end points in the edit area
       let startX = element.left + element.start[0]
       let startY = element.top + element.start[1]
       let endX = element.left + element.end[0]
@@ -104,8 +104,8 @@ export default (elementList: Ref<PPTElement[]>) => {
       let c2X = element.left + c2[0]
       let c2Y = element.top + c2[1]
 
-      // 拖拽起点或终点的位置
-      // 水平和垂直方向上有吸附
+      // Position of the dragged start or end point
+      // Snapping applies in both horizontal and vertical directions
       if (command === OperateLineHandlers.START) {
         startX = startX + moveX
         startY = startY + moveY
@@ -170,7 +170,7 @@ export default (elementList: Ref<PPTElement[]>) => {
         if (Math.abs(c2Y - endY) < sorptionRange) c2Y = endY
       }
 
-      // 计算更新起点和终点基于自身元素位置的坐标
+      // Calculate and update the coordinates of the start and end points based on the element's own position
       const minX = Math.min(startX, endX)
       const minY = Math.min(startY, endY)
       const maxX = Math.max(startX, endX)

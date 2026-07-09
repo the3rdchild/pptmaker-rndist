@@ -10,7 +10,7 @@ export default (canvasRef: ShallowRef<HTMLElement | null>) => {
   const { canvasPercentage, canvasDragged } = storeToRefs(mainStore)
   const { viewportRatio, viewportSize } = storeToRefs(useSlidesStore())
 
-  // 初始化画布可视区域的位置
+  // Initialize the position of the canvas visible area
   const initViewportPosition = () => {
     if (!canvasRef.value) return
     const canvasWidth = canvasRef.value.clientWidth
@@ -30,7 +30,7 @@ export default (canvasRef: ShallowRef<HTMLElement | null>) => {
     }
   }
 
-  // 更新画布可视区域的位置
+  // Update the position of the canvas visible area
   const setViewportPosition = (newValue: number, oldValue: number) => {
     if (!canvasRef.value) return
     const canvasWidth = canvasRef.value.clientWidth
@@ -60,17 +60,17 @@ export default (canvasRef: ShallowRef<HTMLElement | null>) => {
     }
   }
 
-  // 可视区域缩放或比例变化时，重置/更新可视区域的位置
+  // When the visible area scaling or ratio changes, reset/update the position of the visible area
   watch(canvasPercentage, setViewportPosition)
   watch(viewportRatio, initViewportPosition)
   watch(viewportSize, initViewportPosition)
 
-  // 画布拖拽状态改变（复原）时，重置可视区域的位置
+  // When the canvas drag state changes (restored), reset the position of the visible area
   watch(canvasDragged, () => {
     if (!canvasDragged.value) initViewportPosition()
   })
 
-  // 画布可视区域位置和大小的样式
+  // Styles for the position and size of the canvas visible area
   const viewportStyles = computed(() => ({
     width: viewportSize.value,
     height: viewportSize.value * viewportRatio.value,
@@ -78,7 +78,7 @@ export default (canvasRef: ShallowRef<HTMLElement | null>) => {
     top: viewportTop.value,
   }))
 
-  // 监听画布尺寸发生变化时，重置可视区域的位置
+  // Listen for canvas size changes and reset the position of the visible area
   const resizeObserver = new ResizeObserver(initViewportPosition)
 
   onMounted(() => {
@@ -88,7 +88,7 @@ export default (canvasRef: ShallowRef<HTMLElement | null>) => {
     if (canvasRef.value) resizeObserver.unobserve(canvasRef.value)
   })
 
-  // 拖拽画布
+  // Drag canvas
   const dragViewport = (e: MouseEvent) => {
     let isMouseDown = true
 

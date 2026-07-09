@@ -1,4 +1,4 @@
-// 进入全屏
+// Enter fullscreen
 export const enterFullscreen = () => {
   const docElm = document.documentElement
   if (docElm.requestFullscreen) docElm.requestFullscreen() 
@@ -7,7 +7,7 @@ export const enterFullscreen = () => {
   else if (docElm.msRequestFullscreen) docElm.msRequestFullscreen()
 }
 
-// 退出全屏
+// Exit fullscreen
 export const exitFullscreen = () => {
   if (document.exitFullscreen) document.exitFullscreen()
   else if (document.mozCancelFullScreen) document.mozCancelFullScreen()
@@ -15,7 +15,7 @@ export const exitFullscreen = () => {
   else if (document.msExitFullscreen) document.msExitFullscreen()
 }
 
-// 判断是否全屏
+// Check whether in fullscreen
 export const isFullscreen = () => {
   const fullscreenElement = 
     document.fullscreenElement ||

@@ -1,7 +1,7 @@
 import { type Ref, computed } from 'vue'
 import type { SlideBackground } from '@/types/slides'
 
-// 将页面背景数据转换为css样式
+// Convert the slide background data to css style
 export default (background: Ref<SlideBackground | undefined>) => {
   const backgroundStyle = computed(() => {
     if (!background.value) return { backgroundColor: '#fff' }
@@ -13,11 +13,11 @@ export default (background: Ref<SlideBackground | undefined>) => {
       gradient,
     } = background.value
 
-    // 纯色背景
+    // Solid background
     if (type === 'solid') return { backgroundColor: color }
 
-    // 背景图模式
-    // 包括：背景图、背景大小，是否重复
+    // Background image mode
+    // Includes: background image, background size, whether to repeat
     else if (type === 'image' && image) {
       const { src, size } = image
       if (!src) return { backgroundColor: '#fff' }
@@ -35,7 +35,7 @@ export default (background: Ref<SlideBackground | undefined>) => {
       }
     }
 
-    // 渐变色背景
+    // Gradient background
     else if (type === 'gradient' && gradient) {
       const { type, colors, rotate } = gradient
       const list = colors.map(item => `${item.color} ${item.pos}%`)

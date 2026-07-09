@@ -8,11 +8,11 @@
     <ElementFlip />
 
     <ButtonGroup class="row" passive>
-      <Button first style="width: calc(100% - 32px);" @click="clipImage()"><i-icon-park-outline:tailoring /> 裁剪图片</Button>
+      <Button first style="width: calc(100% - 32px);" @click="clipImage()"><i-icon-park-outline:tailoring /> Crop image</Button>
       <Popover trigger="click" v-model:value="clipPanelVisible" style="width: 32px;">
         <template #content>
           <div class="clip">
-            <div class="title">按形状：</div>
+            <div class="title">By shape:</div>
             <div class="shape-clip">
               <div 
                 class="shape-clip-item" 
@@ -25,7 +25,7 @@
             </div>
 
             <template v-for="typeItem in ratioClipOptions" :key="typeItem.label">
-              <div class="title" v-if="typeItem.label">按{{typeItem.label}}：</div>
+              <div class="title" v-if="typeItem.label">By {{typeItem.label}}:</div>
               <ButtonGroup class="row">
                 <Button 
                   style="flex: 1;"
@@ -42,7 +42,7 @@
     </ButtonGroup>
     
     <div class="row">
-      <div style="width: 40%;">圆角半径：</div>
+      <div style="width: 40%;">Corner radius:</div>
       <NumberInput 
         :value="handleImageElement.radius || 0" 
         @update:value="value => updateImage({ radius: value })" 
@@ -61,10 +61,10 @@
     <Divider />
     
     <FileInput @change="files => replaceImage(files)">
-      <Button class="full-width-btn"><i-icon-park-outline:transform /> 替换图片</Button>
+      <Button class="full-width-btn"><i-icon-park-outline:transform /> Replace image</Button>
     </FileInput>
-    <Button class="full-width-btn" @click="resetImage()"><i-icon-park-outline:undo /> 重置样式</Button>
-    <Button class="full-width-btn" @click="setBackgroundImage()"><i-icon-park-outline:theme /> 设为背景</Button>
+    <Button class="full-width-btn" @click="resetImage()"><i-icon-park-outline:undo /> Reset style</Button>
+    <Button class="full-width-btn" @click="setBackgroundImage()"><i-icon-park-outline:theme /> Set as background</Button>
   </div>
 </template>
 
@@ -92,13 +92,13 @@ import NumberInput from '@/components/NumberInput.vue'
 const shapeClipPathOptions = CLIPPATHS
 const ratioClipOptions = [
   {
-    label: '纵横比（正方形）',
+    label: 'Aspect ratio (square)',
     children: [
       { key: '1:1', ratio: 1 / 1 },
     ],
   },
   {
-    label: '纵横比（纵向）',
+    label: 'Aspect ratio (portrait)',
     children: [
       { key: '2:3', ratio: 3 / 2 },
       { key: '3:4', ratio: 4 / 3 },
@@ -107,7 +107,7 @@ const ratioClipOptions = [
     ],
   },
   {
-    label: '纵横比（横向）',
+    label: 'Aspect ratio (landscape)',
     children: [
       { key: '3:2', ratio: 2 / 3 },
       { key: '4:3', ratio: 3 / 4 },
@@ -135,17 +135,17 @@ const clipPanelVisible = ref(false)
 const { addHistorySnapshot } = useHistorySnapshot()
 const { replaceImage } = useImageHandler()
 
-// 打开自由裁剪
+// Open free crop
 const clipImage = () => {
   mainStore.setClipingImageElementId(handleElementId.value)
   clipPanelVisible.value = false
 }
 
-// 获取原始图片的位置大小
+// Get the position and size of the original image
 const getImageElementDataBeforeClip = () => {
   const _handleElement = handleElement.value as PPTImageElement
 
-  // 图片当前的位置大小和裁剪范围
+  // Current position, size, and clip range of the image
   const imgWidth = _handleElement.width
   const imgHeight = _handleElement.height
   const imgLeft = _handleElement.left
@@ -172,7 +172,7 @@ const updateImage = (props: Partial<PPTImageElement>) => {
   addHistorySnapshot()
 }
 
-// 预设裁剪
+// Preset clip
 const presetImageClip = (shape: string, ratio = 0) => {
   const _handleElement = handleElement.value as PPTImageElement
 
@@ -184,7 +184,7 @@ const presetImageClip = (shape: string, ratio = 0) => {
     originTop,
   } = getImageElementDataBeforeClip()
   
-  // 纵横比裁剪（形状固定为矩形）
+  // Aspect ratio clip (shape fixed as rectangle)
   if (ratio) {
     const imageRatio = originHeight / originWidth
 
@@ -208,7 +208,7 @@ const presetImageClip = (shape: string, ratio = 0) => {
       height: originHeight * (range[1][1] - range[0][1]) / 100,
     })
   }
-  // 形状裁剪（保持当前裁剪范围）
+  // Shape clip (keep current clip range)
   else {
     const clipData = { ..._handleElement.clip, shape, range: originClipRange }
     let props: Partial<PPTImageElement> = { clip: clipData }
@@ -218,7 +218,7 @@ const presetImageClip = (shape: string, ratio = 0) => {
   clipImage()
 }
 
-// 重置图片：清除全部样式
+// Reset image: clear all styles
 const resetImage = () => {
   const _handleElement = handleElement.value as PPTImageElement
 
@@ -245,7 +245,7 @@ const resetImage = () => {
   addHistorySnapshot()
 }
 
-// 将图片设置为背景
+// Set image as background
 const setBackgroundImage = () => {
   const _handleElement = handleElement.value as PPTImageElement
 

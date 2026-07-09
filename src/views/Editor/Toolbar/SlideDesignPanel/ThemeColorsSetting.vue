@@ -1,6 +1,6 @@
 <template>
   <div class="theme-colors-setting">
-    <div class="title">编辑主题色</div>
+    <div class="title">Edit theme colors</div>
 
     <Draggable 
       class="list"
@@ -14,7 +14,7 @@
     >
       <template #item="{ element, index }">
         <div class="row">
-          <div class="label" style="width: 40%;">幻灯片主题色{{ index + 1 }}：</div>
+          <div class="label" style="width: 40%;">Slide theme color {{ index + 1 }}:</div>
           <Popover trigger="click" style="width: 60%;">
             <template #content>
               <ColorPicker
@@ -28,7 +28,7 @@
       </template>
     </Draggable>
 
-    <Button class="btn" type="primary" @click="setThemeColors()">确认</Button>
+    <Button class="btn" type="primary" @click="setThemeColors()">Confirm</Button>
   </div>
 </template>
 

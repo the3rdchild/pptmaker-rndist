@@ -13,7 +13,7 @@ export default (elementRef: ShallowRef<HTMLElement | null>) => {
 
   const { pasteDataTransfer } = usePasteDataTransfer()
 
-  // 拖拽元素/页面到画布中
+  // Drag elements/pages into the canvas
   const handleDrop = (e: DragEvent) => {
     if (!e.dataTransfer || e.dataTransfer.items.length === 0) return
 

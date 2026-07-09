@@ -4,9 +4,9 @@ import type { PPTElement, PPTLineElement, PPTVideoElement, PPTAudioElement, PPTC
 import useHistorySnapshot from '@/hooks/useHistorySnapshot'
 
 /**
- * 计算给定坐标到原点连线的弧度
- * @param x 坐标x
- * @param y 坐标y
+ * Calculate the radian of the line connecting the given coordinates to the origin
+ * @param x Coordinate x
+ * @param y Coordinate y
  */
 const getAngleFromCoordinate = (x: number, y: number) => {
   const radian = Math.atan2(x, y)
@@ -23,7 +23,7 @@ export default (
 
   const { addHistorySnapshot } = useHistorySnapshot()
 
-  // 旋转元素
+  // Rotate element
   const rotateElement = (e: MouseEvent | TouchEvent, element: Exclude<PPTElement, PPTChartElement | PPTLineElement | PPTVideoElement | PPTAudioElement>) => {
     const isTouchEvent = !(e instanceof MouseEvent)
     if (isTouchEvent && (!e.changedTouches || !e.changedTouches[0])) return
@@ -37,7 +37,7 @@ export default (
     const elWidth = element.width
     const elHeight = element.height
 
-    // 元素中心点（旋转中心点）
+    // Element center point (rotation center point)
     const centerX = elLeft + elWidth / 2
     const centerY = elTop + elHeight / 2
 
@@ -50,7 +50,7 @@ export default (
       const currentPageX = e instanceof MouseEvent ? e.pageX : e.changedTouches[0].pageX
       const currentPageY = e instanceof MouseEvent ? e.pageY : e.changedTouches[0].pageY
       
-      // 计算当前鼠标位置相对元素中心点连线的角度（弧度）
+      // Calculate the angle (radian) of the line from the current mouse position to the element center point
       const mouseX = (currentPageX - viewportRect.left) / canvasScale.value
       const mouseY = (currentPageY - viewportRect.top) / canvasScale.value
       const x = mouseX - centerX
@@ -58,7 +58,7 @@ export default (
 
       angle = getAngleFromCoordinate(x, y)
 
-      // 靠近45倍数的角度时有吸附效果
+      // Snapping effect when angle is near a multiple of 45
       const sorptionRange = 5
       if ( Math.abs(angle) <= sorptionRange ) angle = 0
       else if ( angle > 0 && Math.abs(angle - 45) <= sorptionRange ) angle -= (angle - 45)

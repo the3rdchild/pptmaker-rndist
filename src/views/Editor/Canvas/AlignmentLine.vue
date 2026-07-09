@@ -15,11 +15,11 @@ const props = defineProps<{
   canvasScale: number
 }>()
 
-// 吸附对齐线的位置
+// Position of the snap alignment line
 const left = computed(() => props.axis.x * props.canvasScale + 'px')
 const top = computed(() => props.axis.y * props.canvasScale + 'px')
 
-// 吸附对齐线的长度
+// Length of the snap alignment line
 const sizeStyle = computed(() => {
   if (props.type === 'vertical') return { height: props.length * props.canvasScale + 'px' }
   return { width: props.length * props.canvasScale + 'px' }

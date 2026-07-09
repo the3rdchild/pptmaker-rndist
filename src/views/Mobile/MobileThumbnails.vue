@@ -42,7 +42,7 @@ const changeSlideIndex = (index: number) => {
   slidesStore.updateSlideIndex(index)
 }
 
-// 拖拽调整顺序后进行数据的同步
+// Sync data after drag reordering
 const handleDragEnd = (eventData: { newIndex: number; oldIndex: number }) => {
   const { newIndex, oldIndex } = eventData
   if (newIndex === undefined || oldIndex === undefined || newIndex === oldIndex) return

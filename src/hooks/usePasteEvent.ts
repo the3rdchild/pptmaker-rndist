@@ -11,7 +11,7 @@ export default () => {
   const { pasteDataTransfer } = usePasteDataTransfer()
 
   /**
-   * 粘贴事件监听
+   * Paste event listener
    * @param e ClipboardEvent
    */
   const pasteListener = (e: ClipboardEvent) => {
@@ -23,7 +23,7 @@ export default () => {
     const { isFile, dataTransferFirstItem } = pasteDataTransfer(e.clipboardData)
     if (isFile) return
     
-    // 如果剪贴板内不存在有效文件，但有文字内容，尝试解析文字内容
+    // If there is no valid file in the clipboard but there is text content, try to parse the text content
     if (dataTransferFirstItem && dataTransferFirstItem.kind === 'string' && dataTransferFirstItem.type === 'text/plain') {
       dataTransferFirstItem.getAsString(text => pasteTextClipboardData(text))
     }

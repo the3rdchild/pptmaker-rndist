@@ -13,8 +13,8 @@ export default () => {
   const { addHistorySnapshot } = useHistorySnapshot()
 
   /**
-   * 将所有选中的元素对齐到画布
-   * @param command 对齐方向
+   * Align all selected elements to the canvas
+   * @param command Align direction
    */
   const alignElementToCanvas = (command: ElementAlignCommands) => {
     const viewportWidth = viewportSize.value
@@ -25,48 +25,48 @@ export default () => {
     for (const element of newElementList) {
       if (!activeElementIdList.value.includes(element.id)) continue
       
-      // 水平垂直居中
+      // Horizontal and vertical center
       if (command === ElementAlignCommands.CENTER) {
         const offsetY = minY + (maxY - minY) / 2 - viewportHeight / 2
         const offsetX = minX + (maxX - minX) / 2 - viewportWidth / 2
-        element.top = element.top - offsetY 
-        element.left = element.left - offsetX           
+        element.top = element.top - offsetY
+        element.left = element.left - offsetX
       }
 
-      // 顶部对齐
+      // Top align
       if (command === ElementAlignCommands.TOP) {
         const offsetY = minY - 0
-        element.top = element.top - offsetY            
+        element.top = element.top - offsetY
       }
 
-      // 垂直居中
+      // Vertical center
       else if (command === ElementAlignCommands.VERTICAL) {
         const offsetY = minY + (maxY - minY) / 2 - viewportHeight / 2
-        element.top = element.top - offsetY            
+        element.top = element.top - offsetY
       }
 
-      // 底部对齐
+      // Bottom align
       else if (command === ElementAlignCommands.BOTTOM) {
         const offsetY = maxY - viewportHeight
-        element.top = element.top - offsetY       
+        element.top = element.top - offsetY
       }
-      
-      // 左侧对齐
+
+      // Left align
       else if (command === ElementAlignCommands.LEFT) {
         const offsetX = minX - 0
-        element.left = element.left - offsetX            
+        element.left = element.left - offsetX
       }
 
-      // 水平居中
+      // Horizontal center
       else if (command === ElementAlignCommands.HORIZONTAL) {
         const offsetX = minX + (maxX - minX) / 2 - viewportWidth / 2
-        element.left = element.left - offsetX            
+        element.left = element.left - offsetX
       }
 
-      // 右侧对齐
+      // Right align
       else if (command === ElementAlignCommands.RIGHT) {
         const offsetX = maxX - viewportWidth
-        element.left = element.left - offsetX            
+        element.left = element.left - offsetX
       }
     }
 

@@ -84,4 +84,21 @@ export default {
       }),
     })
   },
+
+  Agent({
+    message,
+    deckSummary,
+  }: { message: string; deckSummary?: unknown }): Promise<any> {
+    return fetchRequest(`${SERVER_URL}/tools/agent`, {
+      method: 'POST',
+      headers: {
+        ...authHeaders(),
+      },
+      body: JSON.stringify({
+        message,
+        deckSummary,
+        stream: true,
+      }),
+    })
+  },
 }

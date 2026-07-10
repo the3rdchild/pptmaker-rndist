@@ -195,6 +195,14 @@ export const useSlidesStore = defineStore('slides', {
     updateSlideIndex(index: number) {
       this.slideIndex = index
     },
+
+    reorderSlide(fromIndex: number, toIndex: number) {
+      const slides: Slide[] = JSON.parse(JSON.stringify(this.slides))
+      const [moved] = slides.splice(fromIndex, 1)
+      if (!moved) return
+      slides.splice(toIndex, 0, moved)
+      this.slides = slides
+    },
   
     addElement(element: PPTElement | PPTElement[]) {
       const elements = Array.isArray(element) ? element : [element]

@@ -6,13 +6,37 @@
     </div>
 
     <div class="chat-log" ref="chatLogRef">
-      <div class="message assistant" v-if="!submittedKeyword">
+      <div class="message assistant" v-if="!submittedKeyword && !hasDeck">
         <div class="bubble welcome">
           Enter a topic below to generate a new presentation, or pick one of these:
         </div>
         <div class="recommends">
           <div class="recommend" v-for="(item, index) in recommends" :key="index" @click="submitTopic(item)">{{ item }}</div>
         </div>
+      </div>
+
+      <div class="message assistant" v-if="hasDeck && !agentMessages.length">
+        <div class="bubble welcome">
+          This deck already has content — ask me to tweak it, e.g. "change all fonts to Poppins" or "delete slide 3".
+        </div>
+      </div>
+
+      <template v-for="(msg, index) in agentMessages" :key="index">
+        <div class="message user" v-if="msg.role === 'user'">
+          <div class="bubble">{{ msg.text }}</div>
+        </div>
+        <div class="message assistant" v-else>
+          <div class="bubble action-chip" v-if="msg.kind === 'action'">
+            <span class="chip">⚡ {{ msg.tool }}({{ msg.argsSummary }})</span>
+            <span class="chip-result">{{ msg.text }}</span>
+          </div>
+          <div class="bubble error-bubble" v-else-if="msg.kind === 'error'">{{ msg.text }}</div>
+          <div class="bubble" v-else>{{ msg.text }}</div>
+        </div>
+      </template>
+
+      <div class="message assistant" v-if="agentBusy">
+        <div class="bubble typing">Thinking...</div>
       </div>
 
       <div class="message user" v-if="submittedKeyword">
@@ -60,7 +84,7 @@
       </div>
     </div>
 
-    <div class="quick-settings" v-if="!submittedKeyword">
+    <div class="quick-settings" v-if="!submittedKeyword && !hasDeck">
       <div class="config-item">
         <div class="label">Language:</div>
         <Select
@@ -99,13 +123,14 @@
       <Input class="input"
         ref="inputRef"
         v-model:value="keyword"
-        :maxlength="50"
-        placeholder="Ask Anything..."
-        @enter="submitTopic()"
+        :maxlength="hasDeck ? undefined : 50"
+        :disabled="agentBusy"
+        :placeholder="hasDeck ? 'Ask Anything...' : 'Enter a PPT topic...'"
+        @enter="handleSubmit()"
       >
         <template #suffix>
-          <span class="count">{{ keyword.length }} / 50</span>
-          <div class="submit" @click="submitTopic()"><i-icon-park-outline:send class="icon" /></div>
+          <span class="count" v-if="!hasDeck">{{ keyword.length }} / 50</span>
+          <div class="submit" @click="handleSubmit()"><i-icon-park-outline:send class="icon" /></div>
         </template>
       </Input>
     </div>
@@ -115,14 +140,16 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted, useTemplateRef } from 'vue'
+import { computed, nextTick, ref, onMounted, useTemplateRef } from 'vue'
 import { storeToRefs } from 'pinia'
 import { jsonrepair } from 'jsonrepair'
 import api from '@/services'
 import useAIPPT from '@/hooks/useAIPPT'
 import useSlideHandler from '@/hooks/useSlideHandler'
+import useSlideTheme from '@/hooks/useSlideTheme'
 import type { AIPPTSlide } from '@/types/AIPPT'
 import type { Slide, SlideTheme } from '@/types/slides'
+import type { PresetTheme } from '@/configs/theme'
 import message from '@/utils/message'
 import { decrypt } from '@/utils/crypto'
 import { useMainStore, useSlidesStore } from '@/store'
@@ -133,12 +160,25 @@ import FullscreenSpin from '@/components/FullscreenSpin.vue'
 import OutlineEditor from '@/components/OutlineEditor.vue'
 import Checkbox from '@/components/Checkbox.vue'
 
+interface AgentMessage {
+  role: 'user' | 'assistant'
+  kind: 'text' | 'action' | 'error'
+  text: string
+  tool?: string
+  argsSummary?: string
+}
+
 const mainStore = useMainStore()
 const slidesStore = useSlidesStore()
-const { templates } = storeToRefs(slidesStore)
+const { templates, slides, theme } = storeToRefs(slidesStore)
 
-const { resetSlides, isEmptySlide } = useSlideHandler()
+const { resetSlides, isEmptySlide, deleteSlide } = useSlideHandler()
 const { AIPPT, presetImgPool, getMdContent } = useAIPPT()
+const { applyFontToAllSlides, applyPresetTheme } = useSlideTheme()
+
+const hasDeck = computed(() => !isEmptySlide.value)
+const agentMessages = ref<AgentMessage[]>([])
+const agentBusy = ref(false)
 
 const language = ref('English')
 const style = ref('General')
@@ -229,6 +269,168 @@ const regenerate = () => {
   keyword.value = ''
   step.value = 'setup'
   setTimeout(() => inputRef.value?.focus(), 100)
+}
+
+// Routes the persistent bottom input: generate a new deck from scratch
+// (no deck yet) vs. send a natural-language edit command (deck exists).
+const handleSubmit = () => {
+  if (hasDeck.value) sendAgentMessage()
+  else submitTopic()
+}
+
+const buildDeckSummary = () => ({
+  slideCount: slides.value.length,
+  slides: slides.value.map((slide, index) => {
+    const titleEl = slide.elements.find(el => el.type === 'text' && el.textType === 'title')
+    return {
+      index,
+      title: titleEl && titleEl.type === 'text' ? titleEl.content.replace(/<[^>]+>/g, '').slice(0, 60) : undefined,
+      elementCount: slide.elements.length,
+    }
+  }),
+})
+
+const summarizeArgs = (args: Record<string, unknown>) => {
+  return Object.entries(args).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(', ')
+}
+
+const scrollChatToBottom = () => {
+  nextTick(() => {
+    if (chatLogRef.value) chatLogRef.value.scrollTop = chatLogRef.value.scrollHeight
+  })
+}
+
+// Every action here calls an EXISTING, already-proven function (applyFontToAllSlides,
+// applyPresetTheme, AIPPT() template mapping, store mutations) — the agent only
+// decides + supplies content, it never authors layout/HTML itself.
+const dispatchAgentAction = (action: { tool: string, args: Record<string, unknown> }): string => {
+  switch (action.tool) {
+    case 'set_font': {
+      const fontName = String(action.args.font_name || '')
+      if (!fontName) return 'No font name provided.'
+      applyFontToAllSlides(fontName)
+      return `Font changed to ${fontName} across all slides.`
+    }
+    case 'set_theme': {
+      const presetTheme: PresetTheme = {
+        background: String(action.args.background || theme.value.backgroundColor),
+        fontColor: String(action.args.font_color || theme.value.fontColor),
+        fontname: theme.value.fontName,
+        colors: action.args.accent_color ? [String(action.args.accent_color)] : theme.value.themeColors,
+      }
+      applyPresetTheme(presetTheme, true)
+      return 'Theme updated across all slides.'
+    }
+    case 'add_slide': {
+      const title = String(action.args.title || '')
+      const items = Array.isArray(action.args.items) ? action.args.items as { title: string, text: string }[] : []
+      if (!title || !items.length) return 'Missing slide content.'
+      const oneSlide: AIPPTSlide = { type: 'content', data: { title, items } }
+      AIPPT(templates.value.find(t => t.id === selectedTemplate.value)?.slides || [], [oneSlide])
+      return `Added a new slide: "${title}".`
+    }
+    case 'update_text': {
+      const slideIndex = Number(action.args.slide_index)
+      const slide = slides.value[slideIndex]
+      if (!slide) return `Slide ${slideIndex} doesn't exist.`
+      const target = action.args.target === 'title' ? 'title' : 'content'
+      const el = slide.elements.find(e => e.type === 'text' && e.textType === target)
+      if (!el) return `Couldn't find a ${target} element on slide ${slideIndex}.`
+      slidesStore.updateElement({ id: el.id, props: { content: String(action.args.new_text || '') }, slideId: slide.id })
+      return `Updated ${target} on slide ${slideIndex}.`
+    }
+    case 'delete_slide': {
+      const slideIndex = Number(action.args.slide_index)
+      const slide = slides.value[slideIndex]
+      if (!slide) return `Slide ${slideIndex} doesn't exist.`
+      deleteSlide([slide.id])
+      return `Deleted slide ${slideIndex}.`
+    }
+    case 'reorder_slide': {
+      const from = Number(action.args.from_index)
+      const to = Number(action.args.to_index)
+      if (!slides.value[from]) return `Slide ${from} doesn't exist.`
+      slidesStore.reorderSlide(from, to)
+      return `Moved slide ${from} to position ${to}.`
+    }
+    case 'create_deck': {
+      const topic = String(action.args.topic || '')
+      if (!topic) return 'No topic provided.'
+      submitTopic(topic)
+      return `Starting a new deck about "${topic}"...`
+    }
+    default:
+      return `Unknown action: ${action.tool}`
+  }
+}
+
+const sendAgentMessage = async () => {
+  if (agentBusy.value) return
+  const text = keyword.value.trim()
+  if (!text) return
+  keyword.value = ''
+  agentMessages.value.push({ role: 'user', kind: 'text', text })
+  scrollChatToBottom()
+
+  agentBusy.value = true
+  let stream: any
+  try {
+    stream = await api.Agent({ message: text, deckSummary: buildDeckSummary() })
+  }
+  catch {
+    agentBusy.value = false
+    agentMessages.value.push({ role: 'assistant', kind: 'error', text: "Sorry, I couldn't reach the server. Please try again." })
+    return
+  }
+  if (typeof stream === 'object' && stream.state === -1) {
+    agentBusy.value = false
+    agentMessages.value.push({ role: 'assistant', kind: 'error', text: stream.message || "Sorry, something went wrong. Please try again." })
+    return
+  }
+
+  const reader: ReadableStreamDefaultReader = stream.body.getReader()
+  const decoder = new TextDecoder('utf-8')
+  let buf = ''
+
+  const readStream = () => {
+    reader.read().then(({ done, value }) => {
+      if (done) {
+        if (buf.trim()) processLine(buf)
+        agentBusy.value = false
+        return
+      }
+      buf += decoder.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      buf = lines.pop() || ''
+      for (const line of lines) {
+        if (line.trim()) processLine(line)
+      }
+      readStream()
+    })
+  }
+
+  // Only ever mutates the deck AFTER a line parses successfully — a
+  // malformed/failed response just shows an error bubble, never touches slides.
+  const processLine = (line: string) => {
+    try {
+      const action: { tool: string, args: Record<string, unknown> } = JSON.parse(jsonrepair(line.trim()))
+      if (action.tool === '_reply') {
+        agentMessages.value.push({ role: 'assistant', kind: 'text', text: String(action.args.text || '') })
+      }
+      else {
+        const resultText = dispatchAgentAction(action)
+        agentMessages.value.push({ role: 'assistant', kind: 'action', tool: action.tool, argsSummary: summarizeArgs(action.args), text: resultText })
+      }
+    }
+    catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(err)
+      agentMessages.value.push({ role: 'assistant', kind: 'error', text: "Sorry, I couldn't process that response." })
+    }
+    scrollChatToBottom()
+  }
+
+  readStream()
 }
 
 const createOutline = async () => {
@@ -447,6 +649,29 @@ defineExpose({ uploadLocalTemplate })
   &.error-bubble {
     color: #e85c5c;
     background-color: rgba(#e85c5c, .12);
+  }
+  &.typing {
+    color: #7a7b95;
+    font-style: italic;
+  }
+  &.action-chip {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+
+    .chip {
+      display: inline-block;
+      width: fit-content;
+      font-size: 11px;
+      font-family: monospace;
+      background-color: rgba($themeColor, .2);
+      color: $themeHoverColor;
+      border-radius: $borderRadius;
+      padding: 2px 6px;
+    }
+    .chip-result {
+      color: $textColor;
+    }
   }
 }
 .recommends {

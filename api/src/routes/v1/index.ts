@@ -4,6 +4,7 @@ import deckRoute from './deck.route'
 import generateRoute from './generate.route'
 import statusRoute from './status.route'
 import streamRoute from './stream.route'
+import toolsRoute from './tools.route'
 
 export const v1Routes = [
 	health,
@@ -12,4 +13,5 @@ export const v1Routes = [
 	generateRoute,
 	statusRoute,
 	streamRoute,
+	toolsRoute,
 ]

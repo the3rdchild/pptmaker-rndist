@@ -1,112 +1,151 @@
-"""Full deck generation service.
+"""Deck generation service.
 
-Flow:
-  ctx.params.outline (approved by user)
-  → DeepInfra: enrich each slide's content based on text_density
-  → layouts.build_slide for each → full PPTist deck
-  → save_result(type=deck) + upsert deck row + publish done via SSE
+Two modes:
+  - stream_mode='raw' (PPTist integration): emit AIPPTSlide JSONL chunks,
+    PPTist maps them to template slides client-side.
+  - default: build full PPTist deck via layouts.py (our Next.js mode).
+
+AIPPTSlide contract (matching editor/src/types/AIPPT.ts):
+  {"type":"cover","data":{"title":"...","text":"..."}}
+  {"type":"contents","data":{"items":["...","..."]}}
+  {"type":"transition","data":{"title":"...","text":"..."}}
+  {"type":"content","data":{"title":"...","items":[{"title":"...","text":"..."}]}}
+  {"type":"end"}
 """
+import json
 import logging
+import uuid
 
 from services import llm_client
 from services.layouts import build_slide, DEFAULT_THEME, CANVAS_W, CANVAS_H
 from services.pubsub import publish
 from core.db.repository import save_result, upsert_deck
-import uuid
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are a presentation content writer. Given an outline (title + bullet points per slide),
-expand each slide's content to be richer and more engaging. Preserve the structure and slide count.
+SYSTEM_PROMPT = """You are a presentation slide generator. Given a markdown outline, produce slides as JSONL (one JSON object per line).
 
-Respond as JSON:
-{
-  "title": "<deck title>",
-  "slides": [
-    {
-      "title": "<slide title>",
-      "bullets": ["<expanded point 1>", ...],
-      "layout": "<same as input>",
-      "subtitle": "<optional, for cover slide>"
-    }
-  ]
-}
+Each line must be one of these types:
+- Cover slide: {"type":"cover","data":{"title":"<title>","text":"<subtitle>"}}
+- Table of contents: {"type":"contents","data":{"items":["<section1>","<section2>",...]}}
+- Section transition: {"type":"transition","data":{"title":"<section>","text":"<brief intro>"}}
+- Content slide: {"type":"content","data":{"title":"<slide title>","items":[{"title":"<bullet heading>","text":"<explanation>"}]}}
+- End slide: {"type":"end"}
 
-Guidelines:
-- Expand bullets to be full sentences with specifics, data, or examples.
-- Keep each bullet under 20 words.
-- For 'cover' layout, add a compelling subtitle.
-- Write in the user's language.
-- Keep the same number of slides and same layouts."""
+Rules:
+- ALWAYS start with a cover slide, then a contents slide listing all sections.
+- Before each section's content slides, emit a transition slide.
+- Content slides should have 2-4 items each.
+- End with {"type":"end"}.
+- Write in the specified language.
+- Each JSON object must be on its OWN LINE (JSONL format).
+- Do NOT wrap in markdown code fences. Output raw JSONL."""
+
+SYSTEM_PROMPT_FALLBACK = """Generate a presentation as JSONL. Output one JSON object per line matching these types:
+{"type":"cover","data":{"title":"...","text":"..."}}
+{"type":"contents","data":{"items":["...","..."]}}
+{"type":"transition","data":{"title":"...","text":"..."}}
+{"type":"content","data":{"title":"...","items":[{"title":"...","text":"..."}]}}
+{"type":"end"}
+Start with cover, then contents, then content slides grouped by sections with transitions, end with {"type":"end"}. Write in {lang}. Raw JSONL, no code fences."""
 
 
 def process(ctx: dict):
-	params = ctx["params"]
-	outline = params.get("outline") or params.get("deck") or {}
-	text_density = params.get("textDensity", params.get("text_density", "concise"))
-	language = params.get("language", "Bahasa Indonesia")
-	title_hint = params.get("title") or outline.get("title", "Untitled Presentation")
-	session_id = ctx["session_id"]
-	deck_id = ctx.get("deck_id") or uuid.uuid4().hex
+    params = ctx["params"]
+    stream_mode = params.get("stream_mode")
+    language = params.get("language", "Bahasa Indonesia")
 
-	logger.info("[deck_service] outline slides=%d density=%s", len(outline.get("slides", [])), text_density)
+    if stream_mode == "raw":
+        _process_raw(ctx, params, language)
+    else:
+        _process_json(ctx, params, language)
 
-	# Ask LLM to enrich the outline
-	messages = [
-		{"role": "system", "content": SYSTEM_PROMPT},
-		{"role": "user", "content": (
-			f"Language: {language}\n"
-			f"Content density: {text_density}\n\n"
-			f"Outline to expand:\n{outline}"
-		)},
-	]
 
-	try:
-		enriched = llm_client.chat_json(messages, temperature=0.6)
-	except Exception as e:
-		logger.warning("[deck_service] LLM enrichment failed, using raw outline: %s", e)
-		enriched = outline
+def _process_raw(ctx: dict, params: dict, language: str):
+    """PPTist mode: stream AIPPTSlide JSONL chunks."""
+    outline = params.get("outline") or params.get("content") or ""
 
-	# Normalize
-	enriched_slides = enriched.get("slides", outline.get("slides", []))
-	deck_title = enriched.get("title", title_hint)
+    user_msg = f"Language: {language}\n\nOutline:\n{outline}\n\nGenerate the JSONL slides now."
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": user_msg},
+    ]
 
-	# Build PPTist slides via layouts
-	pptist_slides = []
-	for sd in enriched_slides:
-		slide = build_slide(sd, DEFAULT_THEME)
-		pptist_slides.append(slide)
+    logger.info("[deck_service] raw stream | job_id=%s", ctx["job_id"])
 
-	# Full deck payload (matches Presentation type on FE)
-	deck_payload = {
-		"title": deck_title,
-		"width": CANVAS_W,
-		"height": CANVAS_H,
-		"viewportSize": CANVAS_W,
-		"viewportRatio": CANVAS_H / CANVAS_W,
-		"theme": DEFAULT_THEME,
-		"slides": pptist_slides,
-	}
+    # Buffer to accumulate partial lines (stream may split a JSON across chunks)
+    line_buffer = ""
 
-	# Save generation result
-	save_result(ctx["request_id"], ctx["job_id"], "deck", {
-		"deckId": deck_id,
-		"deck": deck_payload,
-	})
+    for chunk in llm_client.chat_stream(messages, temperature=0.5):
+        line_buffer += chunk
 
-	# Upsert deck row so FE can load via GET /decks/:id
-	upsert_deck(
-		deck_id=deck_id,
-		session_id=session_id,
-		title=deck_title,
-		payload=deck_payload,
-	)
+        # Process complete lines (delimited by \n)
+        while "\n" in line_buffer:
+            line, line_buffer = line_buffer.split("\n", 1)
+            line = line.strip()
+            if not line:
+                continue
+            # Strip markdown code fences if present
+            clean = line.replace("```jsonl", "").replace("```json", "").replace("```", "").strip()
+            if clean and clean.startswith("{"):
+                # Publish each complete JSONL line as a chunk
+                publish(ctx["job_id"], {"type": "chunk", "text": clean})
 
-	# Publish done via SSE
-	publish(ctx["job_id"], {
-		"type": "done",
-		"result": {"deckId": deck_id, "deck": deck_payload},
-		"resultType": "deck",
-	})
-	logger.info("[deck_service] selesai | job_id=%s deck_id=%s slides=%d",
-		ctx["job_id"], deck_id, len(pptist_slides))
+    # Process any remaining buffered text
+    if line_buffer.strip():
+        clean = line_buffer.strip().replace("```jsonl", "").replace("```json", "").replace("```", "").strip()
+        if clean.startswith("{"):
+            publish(ctx["job_id"], {"type": "chunk", "text": clean})
+
+    publish(ctx["job_id"], {"type": "done"})
+    logger.info("[deck_service] raw stream done | job_id=%s", ctx["job_id"])
+
+
+def _process_json(ctx: dict, params: dict, language: str):
+    """Our Next.js mode: build full PPTist deck via layouts.py."""
+    outline = params.get("outline") or {}
+    text_density = params.get("textDensity", params.get("text_density", "concise"))
+    title_hint = params.get("title") or outline.get("title", "Untitled Presentation")
+    session_id = ctx["session_id"]
+    deck_id = ctx.get("deck_id") or str(uuid.uuid4())
+
+    logger.info("[deck_service] json mode | outline slides=%d", len(outline.get("slides", [])))
+
+    messages = [
+        {"role": "system", "content": "You are a presentation content writer. Expand the outline into richer content. Respond as JSON."},
+        {"role": "user", "content": f"Language: {language}\nDensity: {text_density}\n\nOutline:\n{outline}"},
+    ]
+
+    try:
+        enriched = llm_client.chat_json(messages, temperature=0.6)
+    except Exception as e:
+        logger.warning("[deck_service] LLM failed: %s", e)
+        enriched = outline
+
+    enriched_slides = enriched.get("slides", outline.get("slides", []))
+    deck_title = enriched.get("title", title_hint)
+
+    pptist_slides = []
+    for sd in enriched_slides:
+        slide = build_slide(sd, DEFAULT_THEME)
+        pptist_slides.append(slide)
+
+    deck_payload = {
+        "title": deck_title,
+        "width": CANVAS_W,
+        "height": CANVAS_H,
+        "viewportSize": CANVAS_W,
+        "viewportRatio": CANVAS_H / CANVAS_W,
+        "theme": DEFAULT_THEME,
+        "slides": pptist_slides,
+    }
+
+    save_result(ctx["request_id"], ctx["job_id"], "deck", {"deckId": deck_id, "deck": deck_payload})
+    upsert_deck(deck_id, session_id, deck_title, deck_payload)
+
+    publish(ctx["job_id"], {
+        "type": "done",
+        "result": {"deckId": deck_id, "deck": deck_payload},
+        "resultType": "deck",
+    })
+    logger.info("[deck_service] json done | job_id=%s deck_id=%s", ctx["job_id"], deck_id)

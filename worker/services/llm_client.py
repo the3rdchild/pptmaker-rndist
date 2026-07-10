@@ -22,6 +22,25 @@ logger = logging.getLogger(__name__)
 _client = OpenAI(api_key=DEEPINFRA_API_KEY, base_url=DEEPINFRA_BASE_URL)
 
 
+def chat_stream(
+    messages: list[dict],
+    *,
+    model: str | None = None,
+    temperature: float = 0.7,
+):
+    """Streaming chat completion → yields text chunks as they arrive."""
+    stream = _client.chat.completions.create(
+        model=model or DEEPINFRA_MODEL,
+        messages=messages,
+        temperature=temperature,
+        stream=True,
+    )
+    for chunk in stream:
+        delta = chunk.choices[0].delta.content
+        if delta:
+            yield delta
+
+
 def chat(
     messages: list[dict],
     *,

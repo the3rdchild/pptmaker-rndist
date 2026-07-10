@@ -1,10 +1,9 @@
 """Outline generation service.
 
-Flow:
-  ctx.params.prompt + slide_count + language
-  → DeepInfra chat_json
-  → { title, slides: [{ title, bullets[], layout }] }
-  → save_result(type=outline) + publish done via SSE
+Two modes:
+  - stream_mode='raw' (PPTist integration): publish markdown text chunks,
+    PPTist reads them as raw text stream.
+  - default: save result as JSON, publish 'done' for our Next.js outline screen.
 """
 import logging
 
@@ -14,45 +13,40 @@ from core.db.repository import save_result
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are a presentation outline generator. Given a topic/prompt, create a structured slide outline.
-Always respond as a JSON object with this exact shape:
-{
-  "title": "<presentation title>",
-  "slides": [
-    {
-      "title": "<slide title>",
-      "bullets": ["<key point 1>", "<key point 2>", "<key point 3>"],
-      "layout": "cover" | "section" | "bullets" | "two-column" | "image-text"
-    }
-  ]
-}
-Rules:
-- First slide MUST be layout "cover" (title slide).
-- Last slide should be a closing/thank-you slide.
-- Use layout "bullets" for most content slides.
-- Each content slide should have 3-5 bullet points, each concise (max 12 words).
-- Write ALL content in the user's specified language.
-- Make titles engaging and specific, not generic."""
+SYSTEM_PROMPT = """You are a presentation outline generator. Given a topic, create a clear, structured outline in Markdown format.
 
-VALID_LAYOUTS = {"cover", "section", "bullets", "two-column", "image-text"}
+Format:
+# <Presentation Title>
+## <Section 1 title>
+### <Topic>
+- <key point>
+- <key point>
+## <Section 2 title>
+### <Topic>
+- <key point>
+
+Rules:
+- Start with a # main title.
+- Use ## for major sections (aim for 4-6 sections).
+- Use ### for subsections within sections.
+- Use - bullet points for key talking points under each topic.
+- Each section should have 3-5 bullet points.
+- Write ALL content in the specified language.
+- Be specific and engaging, not generic."""
 
 
 def process(ctx: dict):
     params = ctx["params"]
-    prompt = params.get("prompt", "")
-    slide_count = int(params.get("slideCount", params.get("slide_count", 8)))
+    prompt = params.get("prompt") or params.get("content", "")
+    slide_count = int(params.get("slideCount", params.get("slide_count", 0)))
     language = params.get("language", "Bahasa Indonesia")
-    title_hint = params.get("title", "")
+    stream_mode = params.get("stream_mode")
 
-    logger.info("[outline_service] prompt=%r slides=%d lang=%s", prompt[:80], slide_count, language)
+    logger.info("[outline_service] prompt=%r lang=%s stream=%s", prompt[:80], language, stream_mode)
 
-    user_msg = (
-        f"Topic: {prompt}\n"
-        f"Number of slides: {slide_count}\n"
-        f"Language: {language}\n"
-    )
-    if title_hint:
-        user_msg += f"Suggested title (optional, you may improve it): {title_hint}\n"
+    user_msg = f"Topic: {prompt}\nLanguage: {language}\n"
+    if slide_count:
+        user_msg += f"Generate approximately {slide_count} slides worth of content.\n"
     user_msg += "\nGenerate the outline now."
 
     messages = [
@@ -60,39 +54,19 @@ def process(ctx: dict):
         {"role": "user", "content": user_msg},
     ]
 
-    raw = llm_client.chat_json(messages, temperature=0.7)
+    if stream_mode == "raw":
+        # PPTist mode: stream markdown as raw text chunks
+        full_text = ""
+        for chunk in llm_client.chat_stream(messages, temperature=0.7):
+            full_text += chunk
+            publish(ctx["job_id"], {"type": "chunk", "text": chunk})
 
-    # Normalize/sanitize the output
-    outline = _normalize(raw, slide_count, prompt)
-
-    save_result(ctx["request_id"], ctx["job_id"], "outline", outline)
-    publish(ctx["job_id"], {"type": "done", "result": outline, "resultType": "outline"})
-    logger.info("[outline_service] selesai | job_id=%s slides=%d", ctx["job_id"], len(outline.get("slides", [])))
-
-
-def _normalize(raw: dict, slide_count: int, prompt: str) -> dict:
-    title = raw.get("title") or prompt[:60] or "Untitled Presentation"
-    slides_raw = raw.get("slides") or raw.get("deck") or []
-
-    slides = []
-    for i, s in enumerate(slides_raw):
-        layout = s.get("layout", "bullets")
-        if layout not in VALID_LAYOUTS:
-            layout = "bullets"
-        bullets = s.get("bullets") or s.get("points") or []
-        if isinstance(bullets, str):
-            bullets = [bullets]
-        slides.append({
-            "title": s.get("title") or f"Slide {i + 1}",
-            "bullets": [str(b) for b in bullets][:6],
-            "layout": layout,
-        })
-
-    # Ensure first slide is cover
-    if slides and slides[0]["layout"] != "cover":
-        slides[0]["layout"] = "cover"
-
-    if not slides:
-        slides = [{"title": title, "bullets": [], "layout": "cover"}]
-
-    return {"title": title, "slides": slides}
+        publish(ctx["job_id"], {"type": "done"})
+        logger.info("[outline_service] raw stream done | job_id=%s len=%d", ctx["job_id"], len(full_text))
+    else:
+        # Our Next.js mode: single JSON result
+        text = llm_client.chat(messages, temperature=0.7)
+        outline = {"title": text.split("\n")[0].replace("#", "").strip() or prompt[:60], "markdown": text}
+        save_result(ctx["request_id"], ctx["job_id"], "outline", outline)
+        publish(ctx["job_id"], {"type": "done", "result": outline, "resultType": "outline"})
+        logger.info("[outline_service] json done | job_id=%s", ctx["job_id"])

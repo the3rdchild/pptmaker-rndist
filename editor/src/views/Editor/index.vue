@@ -95,6 +95,7 @@ usePasteEvent()
 <style lang="scss" scoped>
 .pptist-editor {
   height: 100%;
+  background-color: $pageBackground;
 }
 .layout-header {
   height: 40px;
@@ -102,21 +103,35 @@ usePasteEvent()
 .layout-content {
   height: calc(100% - 40px);
   display: flex;
+  gap: 8px;
+  padding: 8px;
+  box-sizing: border-box;
 }
 .layout-content-left {
   width: 160px;
   height: 100%;
   flex-shrink: 0;
+  border-radius: 12px;
+  box-shadow: $boxShadow;
+  background-color: $lightGray;
+  overflow: hidden;
 }
 .layout-content-center {
-  width: calc(100% - 160px - 260px);
+  width: calc(100% - 160px - 260px - 16px);
 
   .center-top {
     height: 40px;
+    border-radius: 12px 12px 0 0;
+    background-color: $lightGray;
+    overflow: hidden;
   }
 }
 .layout-content-right {
   width: 260px;
   height: 100%;
+  border-radius: 12px;
+  box-shadow: $boxShadow;
+  background-color: $lightGray;
+  overflow: hidden;
 }
 </style>

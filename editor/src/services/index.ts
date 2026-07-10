@@ -33,13 +33,13 @@ export default {
     language,
     model,
   }: { content: string; language: string; model: string }): Promise<any> {
-    return fetchRequest(`${SERVER_URL}/generate/outline`, {
+    return fetchRequest(`${SERVER_URL}/tools/aippt_outline`, {
       method: 'POST',
       headers: {
         ...authHeaders(),
       },
       body: JSON.stringify({
-        prompt: content,
+        content,
         language,
         model,
         stream: true,
@@ -53,16 +53,16 @@ export default {
     style,
     model,
   }: { content: string; language: string; style: string; model: string }): Promise<any> {
-    return fetchRequest(`${SERVER_URL}/generate/deck`, {
+    return fetchRequest(`${SERVER_URL}/tools/aippt`, {
       method: 'POST',
       headers: {
         ...authHeaders(),
       },
       body: JSON.stringify({
-        outline: content,
+        content,
         language,
-        style,
         model,
+        style,
         stream: true,
       }),
     })
@@ -72,7 +72,7 @@ export default {
     content,
     command,
   }: { content: string; command: string }): Promise<any> {
-    return fetchRequest(`${SERVER_URL}/generate/writing`, {
+    return fetchRequest(`${SERVER_URL}/tools/ai_writing`, {
       method: 'POST',
       headers: {
         ...authHeaders(),

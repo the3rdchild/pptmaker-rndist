@@ -31,8 +31,9 @@
             style="width: 80px;"
             v-model:value="language"
             :options="[
-              { label: 'Chinese', value: 'Chinese' },
               { label: 'English', value: 'English' },
+              { label: 'Indonesian', value: 'Indonesian' },
+              { label: 'Chinese', value: 'Chinese' },
               { label: 'Japanese', value: 'Japanese' },
             ]"
           />
@@ -153,9 +154,29 @@ const loading = ref(false)
 const outlineCreating = ref(false)
 const overwrite = ref(true)
 const step = ref<'setup' | 'outline' | 'template'>('setup')
-const model = ref('glm-4.7-flash')
+const model = ref('deepseek-v4-flash')
 const outlineRef = useTemplateRef<HTMLElement>('outlineRef')
 const inputRef = useTemplateRef<InstanceType<typeof Input>>('inputRef')
+
+// Auto-trigger from dashboard: if a prompt was passed via sessionStorage,
+// pre-fill keyword + language and auto-generate outline.
+const autoPrompt = sessionStorage.getItem('ppt_ai_prompt')
+const autoLang = sessionStorage.getItem('ppt_ai_language')
+if (autoPrompt) {
+  keyword.value = autoPrompt
+  sessionStorage.removeItem('ppt_ai_prompt')
+}
+if (autoLang) {
+  // Map our language names to PPTist's
+  const langMap: Record<string, string> = {
+    'Bahasa Indonesia': 'Indonesian',
+    'English': 'English',
+    '中文': 'Chinese',
+  }
+  language.value = langMap[autoLang] || 'English'
+  sessionStorage.removeItem('ppt_ai_language')
+}
+const shouldAutoGenerate = !!autoPrompt
 
 const recommends = ref([
   '2025 Technology Frontier Trends',
@@ -174,6 +195,13 @@ onMounted(() => {
   setTimeout(() => {
     inputRef.value!.focus()
   }, 500)
+
+  // Auto-generate outline if triggered from dashboard
+  if (shouldAutoGenerate) {
+    setTimeout(() => {
+      createOutline()
+    }, 800)
+  }
 })
 
 const setKeyword = (value: string) => {

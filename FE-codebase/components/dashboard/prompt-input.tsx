@@ -5,7 +5,7 @@ import { Wand2, Plus, ChevronDown, Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import { useAIStore } from '@/store/ai.store'
 import { useSessionStore } from '@/store/session.store'
-import { submitOutline } from '@/lib/api'
+import { submitOutline, createDeck } from '@/lib/api'
 import { Button } from '@/components/shared/button'
 
 const SLIDE_OPTIONS = [4, 6, 8, 10, 12, 15]
@@ -19,7 +19,7 @@ export function PromptInput() {
 	const prompt = useAIStore((s) => s.prompt)
 	const slideCount = useAIStore((s) => s.slideCount)
 	const language = useAIStore((s) => s.language)
-	const { setStatus, setError, setJobId, setOutline, setPrompt } = useAIStore()
+	const { setPrompt } = useAIStore()
 	const [submitting, setSubmitting] = useState(false)
 	const [localError, setLocalError] = useState<string | null>(null)
 
@@ -34,18 +34,15 @@ export function PromptInput() {
 
 		setSubmitting(true)
 		setLocalError(null)
-		setStatus('submitting')
-		setError(null)
-		setOutline(null)
 		try {
-			const result = await submitOutline(token, { prompt, slideCount, language })
-			setJobId(result.jobId)
-			router.push(`/generate/${result.jobId}`)
+			// Create an empty deck, store the prompt for PPTist to pick up,
+			// then open the PPTist editor which will auto-trigger AI generation.
+			const deck = await createDeck(token, { title: prompt.slice(0, 60) })
+			sessionStorage.setItem('ppt_ai_prompt', prompt)
+			sessionStorage.setItem('ppt_ai_language', language)
+			router.push(`/editor/${deck.id}`)
 		} catch (e) {
-			const msg = e instanceof Error ? e.message : 'Failed to submit'
-			setStatus('error')
-			setError(msg)
-			setLocalError(msg)
+			setLocalError(e instanceof Error ? e.message : 'Failed to start')
 			setSubmitting(false)
 		}
 	}

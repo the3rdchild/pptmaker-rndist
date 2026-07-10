@@ -91,6 +91,14 @@ onMounted(async () => {
 
     // Setup auto-save: watch slides changes, postMessage to parent iframe
     setupAutoSave()
+
+    // Auto-open AI dialog if a prompt was passed from dashboard
+    const aiPrompt = sessionStorage.getItem('ppt_ai_prompt')
+    if (aiPrompt) {
+      setTimeout(() => {
+        mainStore.setAIPPTDialogState(true)
+      }, 1000)
+    }
   }
 })
 

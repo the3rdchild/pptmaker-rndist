@@ -185,4 +185,82 @@ tools.post('/aippt', async (c) => {
 	})
 })
 
+/**
+ * POST /tools/ai_writing
+ * PPTist AI writing assist (rewrite/expand/summarize selected text).
+ * Returns a raw text stream.
+ */
+tools.post('/ai_writing', async (c) => {
+	const body = await c.req.json().catch(() => ({}))
+	const content = body.content || ''
+	const command = body.command || 'rewrite'
+
+	const sessionId = c.var.sessionId
+	const jobId = crypto.randomUUID()
+
+	const request = await createPoolRequest({
+		job_id: jobId,
+		session_id: sessionId!,
+		status: 'pending',
+		params: { type: 'writing', content, command, stream_mode: 'raw' },
+	})
+
+	await QueueClient.enqueueJob(jobId, {
+		request_id: request.id,
+		session_id: sessionId,
+		type: 'writing',
+		content,
+		command,
+		stream_mode: 'raw',
+	})
+
+	c.header('Content-Type', 'text/event-stream')
+	c.header('Cache-Control', 'no-cache')
+	c.header('Connection', 'keep-alive')
+
+	return stream(c, async (s) => {
+		const subscriber = new Redis({
+			host: env.REDIS_HOST,
+			port: Number(env.REDIS_PORT),
+			password: env.REDIS_PASSWORD || undefined,
+			maxRetriesPerRequest: null,
+			lazyConnect: true,
+		})
+		await subscriber.connect()
+		const channel = `ppt:stream:${jobId}`
+		await subscriber.subscribe(channel)
+
+		await new Promise<void>((resolve) => {
+			const cleanup = () => {
+				try { subscriber.disconnect() } catch {}
+				resolve()
+			}
+			const timeout = setTimeout(cleanup, 60000)
+
+			subscriber.on('message', (_ch, message) => {
+				try {
+					const data = JSON.parse(message)
+					if (data.type === 'chunk') {
+						s.write(data.text).catch(() => {})
+					} else if (data.type === 'done' || data.type === 'error') {
+						clearTimeout(timeout)
+						cleanup()
+					}
+				} catch {
+					clearTimeout(timeout)
+					cleanup()
+				}
+			})
+		})
+	})
+})
+
+/**
+ * POST /tools/img_search
+ * Image search stub — returns empty results for now (deferred to V2).
+ */
+tools.post('/img_search', (c) => {
+	return c.json({ photos: [] })
+})
+
 export default tools

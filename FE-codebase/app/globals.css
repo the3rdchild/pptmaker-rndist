@@ -1,0 +1,57 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+:root {
+	--bg-base: #0f0f1e;
+	--bg-panel: #1a1b2e;
+	--bg-elevated: #2d2e42;
+	--accent: #6c5ce7;
+	--accent-light: #a29bfe;
+	--text-primary: #e4e4e7;
+	--text-secondary: #a1a1aa;
+	--text-muted: #71717a;
+	--border: #2d2e42;
+}
+
+html,
+body {
+	height: 100%;
+}
+
+body {
+	background: var(--bg-base);
+	color: var(--text-primary);
+	font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+	-webkit-font-smoothing: antialiased;
+}
+
+/* Custom scrollbar — dark theme */
+::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+::-webkit-scrollbar-thumb {
+	background: #3f3f5a;
+	border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+	background: #525266;
+}
+
+/* Utility: gradient background like the dashboard hero */
+.bg-hero-gradient {
+	background: radial-gradient(
+		ellipse 80% 50% at 50% -20%,
+		rgba(108, 92, 231, 0.25),
+		transparent
+	);
+}
+
+/* PPT canvas: disable native text selection during drag */
+.canvas-no-select {
+	user-select: none;
+	-webkit-user-select: none;
+}

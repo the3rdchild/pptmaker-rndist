@@ -1,0 +1,226 @@
+import type { Presentation } from './types/presentation'
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8081'
+
+// ── Envelope helpers ──
+
+type Envelope<T> = { message: string; data?: T; errors?: string[] }
+
+async function unwrap<T>(res: Response): Promise<T> {
+	const body = (await res.json().catch(() => ({}))) as Envelope<T>
+	if (!res.ok) {
+		const msg = body?.errors?.join(', ') || body?.message || `Request failed (${res.status})`
+		throw new Error(msg)
+	}
+	if (body.data === undefined) throw new Error('Response without data')
+	return body.data
+}
+
+// ── Session ──
+
+export type SessionInfo = { id: string; token: string }
+
+export async function ensureSession(token: string): Promise<SessionInfo> {
+	const res = await fetch(`${API_BASE}/api/v1/session`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ token }),
+	})
+	return unwrap<SessionInfo>(res)
+}
+
+// ── Deck CRUD ──
+
+export type DeckRow = {
+	id: string
+	title: string
+	payload: Presentation | null
+	thumbnail: string | null
+	is_favorite: boolean
+	created_at: string
+	updated_at: string
+}
+
+function authHeaders(token: string): Record<string, string> {
+	return { 'x-session-token': token }
+}
+
+export async function listDecks(token: string): Promise<DeckRow[]> {
+	const res = await fetch(`${API_BASE}/api/v1/decks`, {
+		headers: authHeaders(token),
+	})
+	return unwrap<DeckRow[]>(res)
+}
+
+export async function getDeck(token: string, id: string): Promise<DeckRow> {
+	const res = await fetch(`${API_BASE}/api/v1/decks/${id}`, {
+		headers: authHeaders(token),
+	})
+	return unwrap<DeckRow>(res)
+}
+
+export async function createDeck(
+	token: string,
+	body: { title?: string; payload?: Presentation },
+): Promise<DeckRow> {
+	const res = await fetch(`${API_BASE}/api/v1/decks`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
+		body: JSON.stringify(body),
+	})
+	return unwrap<DeckRow>(res)
+}
+
+export async function saveDeck(
+	token: string,
+	id: string,
+	body: { title?: string; payload?: Presentation; thumbnail?: string | null },
+): Promise<DeckRow> {
+	const res = await fetch(`${API_BASE}/api/v1/decks/${id}`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
+		body: JSON.stringify(body),
+	})
+	return unwrap<DeckRow>(res)
+}
+
+export async function deleteDeck(token: string, id: string): Promise<void> {
+	await fetch(`${API_BASE}/api/v1/decks/${id}`, {
+		method: 'DELETE',
+		headers: authHeaders(token),
+	})
+}
+
+export async function patchDeck(
+	token: string,
+	id: string,
+	body: { title?: string; is_favorite?: boolean; thumbnail?: string | null },
+): Promise<DeckRow> {
+	const res = await fetch(`${API_BASE}/api/v1/decks/${id}`, {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
+		body: JSON.stringify(body),
+	})
+	return unwrap<DeckRow>(res)
+}
+
+// ── Generate (AI jobs) ──
+
+export type JobResult = { jobId: string; statusURL: string; streamURL: string }
+
+export async function submitOutline(
+	token: string,
+	body: { prompt: string; slideCount?: number; language?: string; title?: string },
+): Promise<JobResult> {
+	const res = await fetch(`${API_BASE}/api/v1/generate/outline`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
+		body: JSON.stringify(body),
+	})
+	return unwrap<JobResult>(res)
+}
+
+export async function submitDeckGen(
+	token: string,
+	body: { outline: Record<string, unknown>; theme?: Record<string, unknown>; textDensity?: string; language?: string; title?: string },
+): Promise<JobResult> {
+	const res = await fetch(`${API_BASE}/api/v1/generate/deck`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
+		body: JSON.stringify(body),
+	})
+	return unwrap<JobResult>(res)
+}
+
+export async function submitSlideGen(
+	token: string,
+	body: { prompt: string; layoutHint?: string; theme?: Record<string, unknown> },
+): Promise<JobResult> {
+	const res = await fetch(`${API_BASE}/api/v1/generate/slide`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
+		body: JSON.stringify(body),
+	})
+	return unwrap<JobResult>(res)
+}
+
+export async function submitAgent(
+	token: string,
+	body: { message: string; deckId?: string; deck?: Record<string, unknown> },
+): Promise<JobResult> {
+	const res = await fetch(`${API_BASE}/api/v1/generate/agent`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
+		body: JSON.stringify(body),
+	})
+	return unwrap<JobResult>(res)
+}
+
+// ── Status polling ──
+
+export type JobStatus = 'pending' | 'processing' | 'completed' | 'failed'
+
+export type StatusResult = {
+	jobId: string
+	status: JobStatus
+	type: string | null
+	error?: string
+	result?: unknown
+}
+
+export async function pollStatus(token: string, jobId: string): Promise<StatusResult> {
+	const res = await fetch(`${API_BASE}/api/v1/status/${jobId}`, {
+		headers: authHeaders(token),
+	})
+	return unwrap<StatusResult>(res)
+}
+
+// ── SSE stream ──
+
+export type StreamEvent =
+	| { type: 'done'; result: unknown; resultType: string }
+	| { type: 'error'; message: string }
+	| { type: 'timeout' }
+	| { type: 'ping' }
+
+export function openStream(
+	jobId: string,
+	onEvent: (event: StreamEvent) => void,
+	timeoutMs = 120000,
+): () => void {
+	const es = new EventSource(`${API_BASE}/api/v1/stream/${jobId}`)
+	let settled = false
+
+	const timer = setTimeout(() => {
+		if (settled) return
+		settled = true
+		es.close()
+		onEvent({ type: 'timeout' })
+	}, timeoutMs)
+
+	es.onmessage = (e) => {
+		try {
+			const data = JSON.parse(e.data) as StreamEvent
+			onEvent(data)
+			if (data.type === 'done' || data.type === 'error' || data.type === 'timeout') {
+				settled = true
+				clearTimeout(timer)
+				es.close()
+			}
+		} catch {}
+	}
+
+	es.onerror = () => {
+		if (settled) return
+		settled = true
+		clearTimeout(timer)
+		es.close()
+		onEvent({ type: 'error', message: 'Connection lost' })
+	}
+
+	return () => {
+		settled = true
+		clearTimeout(timer)
+		es.close()
+	}
+}

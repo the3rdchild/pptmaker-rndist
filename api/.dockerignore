@@ -1,0 +1,7 @@
+node_modules
+.env
+.env.*
+src/db/migrations
+.git
+.DS_Store
+*.md

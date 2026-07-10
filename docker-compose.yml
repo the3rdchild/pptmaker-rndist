@@ -1,0 +1,74 @@
+name: ppt-maker
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ppt
+      POSTGRES_PASSWORD: ppt123
+      POSTGRES_DB: ppt_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ppt -d ppt_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./api
+      dockerfile: ../docker/Dockerfile.api
+    env_file: ./api/.env.docker
+    ports:
+      - "8081:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # push schema (enum + tabel) dulu, baru jalanin server
+    command: sh -c "bun run db:push && bun run dev"
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./worker
+      dockerfile: ../docker/Dockerfile.worker
+    env_file: ./worker/.env.docker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # fe dijalanin manual via `bun dev` di FE-codebase, bukan lewat docker
+  # fe:
+  #   build:
+  #     context: ./FE-codebase
+  #     dockerfile: ../docker/Dockerfile.fe
+  #     args:
+  #       NEXT_PUBLIC_API_URL: http://localhost:8080
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     - api
+  #   restart: unless-stopped
+
+volumes:
+  pgdata:

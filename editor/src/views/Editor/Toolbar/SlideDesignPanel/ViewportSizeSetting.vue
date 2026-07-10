@@ -87,7 +87,7 @@ const applyCustomViewportSize = () => {
 .tip {
   margin-bottom: 18px;
   font-size: 12px;
-  color: #888;
+  color: #9a9bb5;
 }
 .btns {
   display: flex;

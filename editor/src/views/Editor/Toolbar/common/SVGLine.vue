@@ -49,7 +49,7 @@ const props = withDefaults(defineProps<{
   padding?: number
 }>(), {
   width: 2,
-  color: '#333',
+  color: '#9a9bb5',
   padding: 0
 })
 

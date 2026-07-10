@@ -190,7 +190,7 @@ const getHexColor = (color: string) => {
 }
 .config-item {
   padding: 12px 0 10px;
-  border-bottom: 1px dashed #f5f5f5;
+  border-bottom: 1px dashed $borderColor;
   font-size: 13px;
 }
 .label {
@@ -200,7 +200,7 @@ const getHexColor = (color: string) => {
 
   .tip {
     font-size: 12px;
-    color: #999;
+    color: #7a7b95;
   }
 }
 .values {

@@ -221,7 +221,7 @@ const openDataEditor = () => emitter.emit(EmitterEvents.OPEN_CHART_DATA_EDITOR)
 .preset-theme {
   display: flex;
   cursor: pointer;
-  border: 1px solid #ccc;
+  border: 1px solid $borderColor;
   padding: 2px;
   border-radius: $borderRadius;
   @include flex-grid-layout-children(2, 48%);

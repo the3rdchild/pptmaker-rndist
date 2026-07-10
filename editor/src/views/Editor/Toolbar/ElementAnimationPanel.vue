@@ -423,8 +423,8 @@ $attentionColor: #e8b76a;
   width: 100%;
   font-size: 13px;
   margin-bottom: 10px;
-  border-left: 4px solid #aaa;
-  background-color: #eee;
+  border-left: 4px solid #5c5d75;
+  background-color: #24263a;
   padding: 4px 0 4px 10px;
 }
 .pool-item-wrapper {

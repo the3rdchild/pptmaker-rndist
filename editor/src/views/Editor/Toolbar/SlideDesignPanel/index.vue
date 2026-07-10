@@ -538,7 +538,7 @@ const updateViewportRatio = (value: string | number) => {
 }
 .canvas-size {
   width: 100%;
-  color: #888;
+  color: #9a9bb5;
   font-size: 12px;
   text-align: center;
 }

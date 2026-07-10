@@ -257,7 +257,7 @@ const updateBroken2Direction = (value: string | number) => {
   margin-bottom: 0;
   flex-shrink: 0;
   position: relative;
-  color: #999;
+  color: #7a7b95;
   cursor: pointer;
 
   &:hover {

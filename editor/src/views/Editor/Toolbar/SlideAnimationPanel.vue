@@ -65,7 +65,7 @@ const applyAllSlide = () => {
 .animation-item {
   width: 50%;
   height: 100px;
-  border: solid 1px #d6d6d6;
+  border: solid 1px $borderColor;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -91,7 +91,7 @@ const applyAllSlide = () => {
 .animation-block {
   width: 64px;
   height: 36px;
-  background: #666;
+  background: #2a2c42;
   position: relative;
   overflow: hidden;
   color: #fff;
@@ -168,7 +168,7 @@ const applyAllSlide = () => {
 }
 .animation-text {
   font-size: 12px;
-  color: #333;
+  color: #9a9bb5;
   text-align: center;
 }
 

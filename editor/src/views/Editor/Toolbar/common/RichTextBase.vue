@@ -423,7 +423,7 @@ const execAI = async (command: string) => {
 }
 .list-wrap {
   width: 176px;
-  color: #666;
+  color: #9a9bb5;
   padding: 8px;
   margin: -12px;
   display: flex;
@@ -466,7 +466,7 @@ const execAI = async (command: string) => {
     display: inline-block;
     position: absolute;
     top: 8px;
-    background-color: #666;
+    background-color: #9a9bb5;
   }
 }
 .popover-btn {

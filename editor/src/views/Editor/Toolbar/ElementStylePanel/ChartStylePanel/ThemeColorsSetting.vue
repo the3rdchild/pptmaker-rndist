@@ -102,7 +102,7 @@ const deleteThemeColor = (index: number) => {
   display: flex;
   justify-content: center;
   align-items: center;
-  background-color: #fff;
+  background-color: $lightGray;
   cursor: pointer;
 }
 </style>

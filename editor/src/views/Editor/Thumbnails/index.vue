@@ -366,7 +366,7 @@ const contextmenusThumbnailItem = (): ContextmenuItem[] => {
 <style lang="scss" scoped>
 .thumbnails {
   border-right: solid 1px $borderColor;
-  background-color: #fff;
+  background-color: $lightGray;
   display: flex;
   flex-direction: column;
   user-select: none;
@@ -473,7 +473,7 @@ const contextmenusThumbnailItem = (): ContextmenuItem[] => {
 }
 .label {
   font-size: 12px;
-  color: #999;
+  color: #7a7b95;
   width: 20px;
   cursor: grab;
 
@@ -492,13 +492,13 @@ const contextmenusThumbnailItem = (): ContextmenuItem[] => {
   border-top: 1px solid $borderColor;
   line-height: 40px;
   text-align: center;
-  color: #666;
+  color: #9a9bb5;
 }
 .section-title {
   height: 26px;
   font-size: 12px;
   padding: 6px 8px 2px 18px;
-  color: #555;
+  color: #9a9bb5;
 
   &.contextmenu-active {
     color: $themeColor;
@@ -520,8 +520,8 @@ const contextmenusThumbnailItem = (): ContextmenuItem[] => {
       height: 0;
       border-top: 3px solid transparent;
       border-left: 3px solid transparent;
-      border-bottom: 3px solid #555;
-      border-right: 3px solid #555;
+      border-bottom: 3px solid #9a9bb5;
+      border-right: 3px solid #9a9bb5;
       margin-right: 5px;
     }
 

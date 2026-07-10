@@ -173,7 +173,7 @@ const openAIPPTDialog = () => {
 
 <style lang="scss" scoped>
 .editor-header {
-  background-color: #fff;
+  background-color: $lightGray;
   user-select: none;
   border-bottom: 1px solid $borderColor;
   display: flex;
@@ -197,7 +197,7 @@ const openAIPPTDialog = () => {
 
   .icon {
     font-size: 18px;
-    color: #666;
+    color: #9a9bb5;
   }
   .text {
     width: 18px;
@@ -212,7 +212,7 @@ const openAIPPTDialog = () => {
   }
 
   &:hover {
-    background-color: #f1f1f1;
+    background-color: #24263a;
   }
 }
 .popover-menu-item {
@@ -226,7 +226,7 @@ const openAIPPTDialog = () => {
 }
 .statement {
   font-size: 12px;
-  color: #999;
+  color: #7a7b95;
   padding: 8px 10px;
   font-style: italic;
 }
@@ -234,8 +234,8 @@ const openAIPPTDialog = () => {
   width: 300px;
 }
 .ai-menu {
-  background: linear-gradient(270deg, #f8edff, #d4f1ff);
-  color: $themeColor;
+  background: linear-gradient(270deg, #2a1f42, #1a2d42);
+  color: $themeHoverColor;
   border-radius: $borderRadius;
   padding: 12px 16px;
   display: flex;
@@ -262,7 +262,7 @@ const openAIPPTDialog = () => {
   }
   .aippt-subtitle {
     font-size: 12px;
-    color: #777;
+    color: #9a9bb5;
     margin-top: 5px;
   }
 }
@@ -272,7 +272,7 @@ const openAIPPTDialog = () => {
 
   .import-label {
     font-size: 12px;
-    color: #999;
+    color: #7a7b95;
     margin-bottom: 6px;
   }
   .import-grid {
@@ -293,7 +293,7 @@ const openAIPPTDialog = () => {
     cursor: pointer;
   
     &:hover {
-      background-color: #f1f1f1;
+      background-color: #24263a;
     }
     .icon {
       font-size: 24px;
@@ -305,7 +305,7 @@ const openAIPPTDialog = () => {
     }
     .sub-label {
       font-size: 10px;
-      color: #999;
+      color: #7a7b95;
     }
   }
 }
@@ -318,7 +318,7 @@ const openAIPPTDialog = () => {
   border-radius: $borderRadius;
 
   &:hover {
-    background-color: #f1f1f1;
+    background-color: #24263a;
   }
 
   .menu-item {
@@ -358,7 +358,7 @@ const openAIPPTDialog = () => {
     @include ellipsis-oneline();
 
     &:hover {
-      background-color: #f1f1f1;
+      background-color: #24263a;
     }
   }
 }

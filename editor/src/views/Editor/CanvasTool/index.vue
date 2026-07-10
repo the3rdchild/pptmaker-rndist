@@ -333,7 +333,7 @@ const openImageLibPanel = () => {
 .canvas-tool {
   position: relative;
   border-bottom: 1px solid $borderColor;
-  background-color: #fff;
+  background-color: $lightGray;
   display: flex;
   justify-content: space-between;
   padding: 0 10px;
@@ -384,11 +384,11 @@ const openImageLibPanel = () => {
     cursor: pointer;
 
     &:not(.group-btn):hover {
-      background-color: #f1f1f1;
+      background-color: #24263a;
     }
 
     &.active {
-      background-color: #f1f1f1;
+      background-color: #24263a;
     }
 
     .icon {
@@ -400,7 +400,7 @@ const openImageLibPanel = () => {
       padding: 0;
 
       &:hover {
-        background-color: #f3f3f3;
+        background-color: #2a2c42;
       }
 
       .group-btn-main {
@@ -411,7 +411,7 @@ const openImageLibPanel = () => {
         padding: 0 5px;
 
         &:hover {
-          background-color: #e9e9e9;
+          background-color: #333450;
         }
       }
 
@@ -424,7 +424,7 @@ const openImageLibPanel = () => {
         padding: 0 1px;
   
         &:hover {
-          background-color: #e9e9e9;
+          background-color: #333450;
         }
       }
     }
@@ -451,7 +451,7 @@ const openImageLibPanel = () => {
 
     &.active,
     &:not(.disable):hover {
-      background-color: #f1f1f1;
+      background-color: #24263a;
     }
   }
 }

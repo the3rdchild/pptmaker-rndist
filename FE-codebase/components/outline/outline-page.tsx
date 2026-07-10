@@ -38,29 +38,41 @@ export function OutlinePage({ params }: { params: Promise<{ jobId: string }> }) 
 					setSelectedSlides(new Set(o.slides.map((_, i) => i)))
 					setLoading(false)
 					resolved = true
-				} else if (ev.type === 'error') {
-					setStatus('error')
-					setError(ev.message)
-					setLoading(false)
-					resolved = true
 				}
 			})
-			// Fallback poll after 2s if SSE didn't resolve
-			setTimeout(async () => {
-				if (resolved) return
-				try {
-					const result = await pollStatus(token, jid)
-					if (result.status === 'completed' && result.result) {
-						const o = result.result as Outline
-						setOutline(o)
-						setLocalOutline(o)
-						setSelectedSlides(new Set(o.slides.map((_, i) => i)))
-					} else if (result.status === 'failed') {
-						setError(result.error ?? 'Generation failed')
-					}
-				} catch { /* ignore, SSE might still resolve */ }
-				setLoading(false)
-			}, 2000)
+
+			// Poll fallback — every 2s until done (up to 60s)
+			const poll = async () => {
+				for (let i = 0; i < 30; i++) {
+					if (resolved) return
+					await new Promise((r) => setTimeout(r, 2000))
+					if (resolved) return
+					try {
+						const result = await pollStatus(token, jid)
+						if (result.status === 'completed' && result.result) {
+							resolved = true
+							const o = result.result as Outline
+							setOutline(o)
+							setLocalOutline(o)
+							setSelectedSlides(new Set(o.slides.map((_, i) => i)))
+							setLoading(false)
+							return
+						}
+						if (result.status === 'failed') {
+							resolved = true
+							setError(result.error ?? 'Generation failed')
+							setLoading(false)
+							return
+						}
+					} catch { /* keep polling */ }
+				}
+				if (!resolved) {
+					setError('Timeout waiting for AI')
+					setLoading(false)
+				}
+			}
+			void poll()
+
 			return cleanup
 		})()
 	}, [params, token, setOutline, setStatus, setError])

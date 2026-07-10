@@ -35,11 +35,20 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 			localStorage.setItem(TOKEN_KEY, token)
 		}
 
-		try {
-			const info = await ensureSession(token)
-			set({ token: info.token, sessionId: info.id, ready: true, error: null })
-		} catch (e) {
-			set({ ready: true, error: e instanceof Error ? e.message : 'Session init failed' })
+		// Retry up to 3 times (API might not be ready on first page load)
+		for (let attempt = 1; attempt <= 3; attempt++) {
+			try {
+				const info = await ensureSession(token)
+				set({ token: info.token, sessionId: info.id, ready: true, error: null })
+				return
+			} catch (e) {
+				console.warn(`[session] init attempt ${attempt} failed:`, e instanceof Error ? e.message : e)
+				if (attempt < 3) {
+					await new Promise((r) => setTimeout(r, 1000 * attempt))
+				} else {
+					set({ ready: true, error: e instanceof Error ? e.message : 'Cannot connect to API' })
+				}
+			}
 		}
 	},
 }))

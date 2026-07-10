@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { Wand2, Plus, ChevronDown } from 'lucide-react'
+import { Wand2, Plus, ChevronDown, Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import { useAIStore } from '@/store/ai.store'
 import { useSessionStore } from '@/store/session.store'
@@ -14,12 +14,26 @@ const LANGUAGES = ['Bahasa Indonesia', 'English', 'Español', '中文', '日本�
 export function PromptInput() {
 	const router = useRouter()
 	const token = useSessionStore((s) => s.token)
-	const { prompt, slideCount, language, setStatus, setError, setJobId, setOutline } = useAIStore()
+	const sessionReady = useSessionStore((s) => s.ready)
+	const sessionError = useSessionStore((s) => s.error)
+	const prompt = useAIStore((s) => s.prompt)
+	const slideCount = useAIStore((s) => s.slideCount)
+	const language = useAIStore((s) => s.language)
+	const { setStatus, setError, setJobId, setOutline, setPrompt } = useAIStore()
 	const [submitting, setSubmitting] = useState(false)
+	const [localError, setLocalError] = useState<string | null>(null)
+
+	const canGenerate = prompt.trim().length > 0 && token !== null && sessionReady && !submitting
 
 	const handleGenerate = async () => {
-		if (!prompt.trim() || !token) return
+		if (!token) {
+			setLocalError('Session belum siap. Tunggu sebentar...')
+			return
+		}
+		if (!prompt.trim()) return
+
 		setSubmitting(true)
+		setLocalError(null)
 		setStatus('submitting')
 		setError(null)
 		setOutline(null)
@@ -28,8 +42,10 @@ export function PromptInput() {
 			setJobId(result.jobId)
 			router.push(`/generate/${result.jobId}`)
 		} catch (e) {
+			const msg = e instanceof Error ? e.message : 'Failed to submit'
 			setStatus('error')
-			setError(e instanceof Error ? e.message : 'Failed to submit')
+			setError(msg)
+			setLocalError(msg)
 			setSubmitting(false)
 		}
 	}
@@ -46,10 +62,13 @@ export function PromptInput() {
 
 			<textarea
 				value={prompt}
-				onChange={(e) => useAIStore.getState().setPrompt(e.target.value)}
+				onChange={(e) => setPrompt(e.target.value)}
 				placeholder="Ceritakan ide presentasimu..."
 				rows={3}
 				className="w-full resize-none rounded-xl border border-[#2d2e42] bg-[#1a1b2e] px-4 py-3 text-sm text-zinc-200 placeholder-zinc-500 outline-none focus:border-[#6c5ce7]"
+				onKeyDown={(e) => {
+					if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleGenerate()
+				}}
 			/>
 
 			<div className="mt-3 flex flex-wrap items-center gap-2">
@@ -60,13 +79,27 @@ export function PromptInput() {
 				<Dropdown label={`${slideCount} Slides`} options={SLIDE_OPTIONS.map((n) => `${n}`)} onSelect={(v) => useAIStore.getState().setSlideCount(Number(v))} />
 				<Dropdown label={language} options={LANGUAGES} onSelect={(v) => useAIStore.getState().setLanguage(v)} />
 
-				<div className="ml-auto">
-					<Button onClick={handleGenerate} disabled={!prompt.trim() || submitting} size="md">
-						<Wand2 className="h-4 w-4" />
+				<div className="ml-auto flex items-center gap-2">
+					{/* Session status indicator */}
+					{!sessionReady && !sessionError && (
+						<span className="flex items-center gap-1 text-[10px] text-zinc-500">
+							<Loader2 className="h-3 w-3 animate-spin" /> Connecting...
+						</span>
+					)}
+					{sessionError && (
+						<span className="text-[10px] text-red-400">Connection error</span>
+					)}
+
+					<Button onClick={handleGenerate} disabled={!canGenerate} size="md">
+						{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
 						{submitting ? 'Memproses...' : 'Generate'}
 					</Button>
 				</div>
 			</div>
+
+			{localError && (
+				<p className="mt-2 text-xs text-red-400">⚠ {localError}</p>
+			)}
 		</div>
 	)
 }

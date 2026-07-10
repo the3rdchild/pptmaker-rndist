@@ -31,35 +31,68 @@ export function SlidePanel() {
 							i === slideIndex ? 'border-[#6c5ce7]' : 'border-transparent hover:border-[#3a3b52]',
 						)}
 					>
-						{/* Thumbnail */}
+						{/* Thumbnail — render actual slide content scaled down */}
 						<div
-							className="relative flex aspect-video items-center justify-center overflow-hidden rounded-md"
+							className="relative aspect-video overflow-hidden rounded-md"
 							style={{
 								background: slide.background?.type === 'solid' ? slide.background.color : '#fff',
 							}}
 						>
-							<span className="absolute left-1 top-1 flex h-4 w-4 items-center justify-center rounded bg-black/50 text-[9px] text-white">
+							<span className="absolute left-1 top-1 z-10 flex h-4 w-4 items-center justify-center rounded bg-black/50 text-[9px] text-white">
 								{i + 1}
 							</span>
-							{/* Mini element preview */}
-							<div className="relative" style={{ transform: 'scale(0.16)', transformOrigin: 'center', width: 1000, height: 562.5 }}>
-								{slide.elements.filter((el) => el.type !== 'line').slice(0, 8).map((el) => {
-									const e = el as { id: string; left: number; top: number; width: number; height: number; rotate: number; type: string; fill?: string }
-									return (
-										<div
-											key={e.id}
-											style={{
-												position: 'absolute',
-												left: e.left,
-												top: e.top,
-												width: e.width,
-												height: e.height,
-												transform: `rotate(${e.rotate}deg)`,
-												background: e.type === 'shape' ? e.fill : e.type === 'text' ? 'transparent' : '#444',
-												opacity: 0.6,
-											}}
-										/>
-									)
+							{/* Render slide elements at tiny scale */}
+							<div
+								className="pointer-events-none absolute left-0 top-0"
+								style={{
+									width: 1000,
+									height: 562.5,
+									transform: 'scale(0.14)',
+									transformOrigin: 'top left',
+								}}
+							>
+								{slide.elements.filter((el) => el.type !== 'line').map((el) => {
+									const e = el as typeof el & { left: number; top: number; width: number; height: number; rotate: number }
+									if (el.type === 'text') {
+										const te = el as typeof el & { content: string; defaultColor: string }
+										return (
+											<div
+												key={e.id}
+												style={{
+													position: 'absolute',
+													left: e.left,
+													top: e.top,
+													width: e.width,
+													height: e.height,
+													transform: `rotate(${e.rotate}deg)`,
+													overflow: 'hidden',
+												}}
+											>
+												<div
+													style={{ fontSize: 'inherit', color: te.defaultColor }}
+													dangerouslySetInnerHTML={{ __html: te.content }}
+												/>
+											</div>
+										)
+									}
+									if (el.type === 'shape') {
+										const se = el as typeof el & { fill: string }
+										return (
+											<div
+												key={e.id}
+												style={{
+													position: 'absolute',
+													left: e.left,
+													top: e.top,
+													width: e.width,
+													height: e.height,
+													transform: `rotate(${e.rotate}deg)`,
+													background: se.fill,
+												}}
+											/>
+										)
+									}
+									return null
 								})}
 							</div>
 						</div>

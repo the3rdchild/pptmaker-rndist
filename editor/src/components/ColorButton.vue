@@ -37,6 +37,6 @@ defineProps<{
 .color-btn-icon {
   width: 32px;
   font-size: 13px;
-  color: #bfbfbf;
+  color: #7a7b95;
 }
 </style>

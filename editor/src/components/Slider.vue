@@ -187,11 +187,11 @@ const handleMousedown = (e: MouseEvent | TouchEvent) => {
 
   &.disabled {
     .track {
-      background-color: #b4b4b4;
+      background-color: #5c5d75;
     }
 
     .thumb {
-      outline: 2px solid #b4b4b4;
+      outline: 2px solid #5c5d75;
     }
   }
 }
@@ -200,7 +200,7 @@ const handleMousedown = (e: MouseEvent | TouchEvent) => {
 
   .bar {
     &:hover {
-      background-color: #f0f0f0;
+      background-color: #333450;
     }
   }
 
@@ -223,7 +223,7 @@ const handleMousedown = (e: MouseEvent | TouchEvent) => {
   height: 4px;
   border-radius: 2px;
   position: relative;
-  background-color: #f5f5f5;
+  background-color: #24263a;
   user-select: none;
   transition: background-color .2s;
 }

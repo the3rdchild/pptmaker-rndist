@@ -317,7 +317,7 @@ const isPureWhiteColor = (color?: string) => {
 .color-picker {
   position: relative;
   width: 240px;
-  background: #fff;
+  background: $lightGray;
   user-select: none;
   margin-bottom: -10px;
 }
@@ -350,7 +350,7 @@ const isPureWhiteColor = (color?: string) => {
   position: relative;
   margin-top: 4px;
   margin-right: 4px;
-  outline: 1px dashed rgba($color: #666, $alpha: .12);
+  outline: 1px dashed rgba($color: #fff, $alpha: .15);
 
   .checkerboard {
     background-size: auto;
@@ -398,8 +398,8 @@ const isPureWhiteColor = (color?: string) => {
     justify-content: center;
     align-items: center;
     font-size: 20px;
-    background-color: #f5f5f5;
-    outline: 1px solid #f1f1f1;
+    background-color: #24263a;
+    outline: 1px solid $borderColor;
     cursor: pointer;
   }
   .input {
@@ -426,7 +426,7 @@ const isPureWhiteColor = (color?: string) => {
   &.white::after {
     content: '';
     @include absolute-0();
-    border: 1px solid #f5f5f5;
+    border: 1px solid $borderColor;
   }
 }
 .picker-presets-color-content {

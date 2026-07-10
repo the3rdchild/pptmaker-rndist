@@ -94,7 +94,7 @@ onMounted(() => {
   align-items: center;
 }
 .popover-content {
-  background-color: #fff;
+  background-color: $lightGray;
   padding: 10px;
   border: 1px solid $borderColor;
   box-shadow: $boxShadow;

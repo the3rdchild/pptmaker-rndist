@@ -146,8 +146,8 @@ const handleSelect = (option: SelectOption) => {
   transition: border-color .25s;
   font-size: 13px;
   user-select: none;
-  background-color: #fff;
-  border: 1px solid #d9d9d9;
+  background-color: $lightGray;
+  border: 1px solid $borderColor;
   position: relative;
   cursor: pointer;
 
@@ -156,9 +156,9 @@ const handleSelect = (option: SelectOption) => {
   }
 
   &.disabled {
-    background-color: #f5f5f5;
-    border-color: #dcdcdc;
-    color: #b7b7b7;
+    background-color: #24263a;
+    border-color: $borderColor;
+    color: #5c5d75;
     cursor: default;
   }
 
@@ -186,7 +186,7 @@ const handleSelect = (option: SelectOption) => {
   @include ellipsis-oneline();
 
   &.disabled {
-    color: #b7b7b7;
+    color: #5c5d75;
   }
   &:not(.disabled, .selected):hover {
     background-color: rgba($color: $themeColor, $alpha: .05);
@@ -201,7 +201,7 @@ const handleSelect = (option: SelectOption) => {
 .icon {
   width: 32px;
   height: 30px;
-  color: #bfbfbf;
+  color: #7a7b95;
   position: absolute;
   top: 0;
   right: 0;

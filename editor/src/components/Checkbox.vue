@@ -55,11 +55,11 @@ const handleChange = (e: Event) => {
   }
 
   &.disabled {
-    color: #b7b7b7;
+    color: #5c5d75;
     cursor: default;
 
     .checkbox-input {
-      background-color: #f5f5f5;
+      background-color: #24263a;
     }
   }
 }
@@ -67,11 +67,11 @@ const handleChange = (e: Event) => {
 .checkbox-input {
   display: inline-block;
   position: relative;
-  border: 1px solid #d9d9d9;
+  border: 1px solid $borderColor;
   border-radius: $borderRadius;
   width: 16px;
   height: 16px;
-  background-color: #fff;
+  background-color: $lightGray;
   vertical-align: middle;
   transition: border-color .15s cubic-bezier(.71, -.46, .29, 1.46), background-color .15s cubic-bezier(.71, -.46, .29, 1.46);
   z-index: 1;

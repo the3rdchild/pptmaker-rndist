@@ -68,8 +68,8 @@ const handleClick = () => {
   }
 
   &.default {
-    background-color: #fff;
-    border: 1px solid #d9d9d9;
+    background-color: $lightGray;
+    border: 1px solid $borderColor;
     color: $textColor;
 
     &:hover {
@@ -88,8 +88,8 @@ const handleClick = () => {
     }
   }
   &.checkbox, &.radio {
-    background-color: #fff;
-    border: 1px solid #d9d9d9;
+    background-color: $lightGray;
+    border: 1px solid $borderColor;
     color: $textColor;
 
     &:not(.checked):hover {
@@ -107,9 +107,9 @@ const handleClick = () => {
     }
   }
   &.disabled {
-    background-color: #f5f5f5;
-    border: 1px solid #d9d9d9;
-    color: #b7b7b7;
+    background-color: #24263a;
+    border: 1px solid $borderColor;
+    color: #5c5d75;
     cursor: default;
   }
 }

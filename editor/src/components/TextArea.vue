@@ -62,8 +62,8 @@ defineExpose({
 .textarea {
   outline: 0;
   width: 100%;
-  background-color: #fff;
-  border: 1px solid #d9d9d9;
+  background-color: $lightGray;
+  border: 1px solid $borderColor;
   border-radius: $borderRadius;
   padding: 10px;
   transition: border-color .25s;
@@ -74,7 +74,7 @@ defineExpose({
 
   &:focus {
     border-color: $themeColor;
-    background-color: #fff;
+    background-color: $lightGray;
   }
 
   &.resizable {
@@ -82,13 +82,13 @@ defineExpose({
   }
 
   &.disabled {
-    background-color: #f5f5f5;
-    border-color: #dcdcdc;
-    color: #b7b7b7;
+    background-color: #24263a;
+    border-color: $borderColor;
+    color: #5c5d75;
   }
 
   &::placeholder {
-    color: #bfbfbf;
+    color: #7a7b95;
   }
 }
 </style>

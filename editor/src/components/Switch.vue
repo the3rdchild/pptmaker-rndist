@@ -51,7 +51,7 @@ const handleChange = () => {
     cursor: default;
 
     .switch-core::after {
-      background-color: #f5f5f5;
+      background-color: #5c5d75;
     }
   }
 }
@@ -61,11 +61,11 @@ const handleChange = () => {
   position: relative;
   width: 40px;
   height: 20px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid $borderColor;
   outline: none;
   border-radius: 10px;
   box-sizing: border-box;
-  background: #d9d9d9;
+  background: #3a3b52;
   transition: border-color .3s, background-color .3s;
   vertical-align: middle;
 

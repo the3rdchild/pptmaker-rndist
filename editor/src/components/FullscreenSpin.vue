@@ -32,7 +32,7 @@ withDefaults(defineProps<{
   align-items: center;
 
   &.mask {
-    background-color: rgba($color: #f1f1f1, $alpha: .7);
+    background-color: rgba($color: #0a0a12, $alpha: .7);
   }
 }
 .spin {

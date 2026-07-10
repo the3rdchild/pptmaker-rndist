@@ -112,8 +112,8 @@ const handleFocus = (e: Event) => {
 
 <style lang="scss" scoped>
 .number-input {
-  background-color: #fff;
-  border: 1px solid #d9d9d9;
+  background-color: $lightGray;
+  border: 1px solid $borderColor;
   padding: 0 0 0 5px;
   border-radius: $borderRadius;
   transition: border-color .25s;
@@ -138,11 +138,11 @@ const handleFocus = (e: Event) => {
     display: flex;
     flex-direction: column;
     font-size: 6px;
-    color: #999;
+    color: #7a7b95;
     opacity: 0;
     user-select: none;
     transition: opacity .25s;
-    background-color: #fff;
+    background-color: $lightGray;
 
     .handler {
       width: 100%;
@@ -150,11 +150,11 @@ const handleFocus = (e: Event) => {
       display: flex;
       justify-content: center;
       align-items: center;
-      border-left: 1px solid #d9d9d9;
+      border-left: 1px solid $borderColor;
       cursor: pointer;
 
       & + .handler {
-        border-top: 1px solid #d9d9d9;
+        border-top: 1px solid $borderColor;
       }
 
       &:hover {
@@ -173,7 +173,7 @@ const handleFocus = (e: Event) => {
     font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,'Noto Sans',sans-serif,'Apple Color Emoji','Segoe UI Emoji','Segoe UI Symbol','Noto Color Emoji';
 
     &::placeholder {
-      color: #bfbfbf;
+      color: #7a7b95;
     }
   }
 
@@ -182,12 +182,12 @@ const handleFocus = (e: Event) => {
   }
 
   &.disabled {
-    background-color: #f5f5f5;
-    border-color: #dcdcdc;
-    color: #b7b7b7;
+    background-color: #24263a;
+    border-color: $borderColor;
+    color: #5c5d75;
 
     input {
-      color: #b7b7b7;
+      color: #5c5d75;
     }
   }
 

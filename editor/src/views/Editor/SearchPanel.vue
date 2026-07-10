@@ -144,7 +144,7 @@ watch(type, () => {
   display: flex;
   justify-content: center;
   align-items: center;
-  color: #666;
+  color: #9a9bb5;
   font-size: 13px;
   cursor: pointer;
 

@@ -132,7 +132,7 @@ const expImage = () => {
 
   &::after {
     content: '';
-    background-color: #fff;
+    background-color: $lightGray;
     @include absolute-0();
   }
 }

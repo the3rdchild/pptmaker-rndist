@@ -107,7 +107,7 @@ const selectedSlides = computed(() => {
 
   .tip {
     font-size: 12px;
-    color: #aaa;
+    color: #7a7b95;
     line-height: 1.8;
     margin-top: 25px;
   }

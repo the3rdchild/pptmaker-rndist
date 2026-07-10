@@ -205,7 +205,7 @@ const close = () => {
 .empty {
   width: 100%;
   height: 100%;
-  color: #999;
+  color: #7a7b95;
   font-style: italic;
   display: flex;
   justify-content: center;

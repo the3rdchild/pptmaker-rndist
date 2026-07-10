@@ -188,7 +188,7 @@ const loadMore = () => {
   }
 }
 .search-orientation {
-  color: #999;
+  color: #7a7b95;
   padding-left: 5px;
   display: flex;
   align-items: center;

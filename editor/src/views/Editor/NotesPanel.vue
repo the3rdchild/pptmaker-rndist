@@ -224,14 +224,14 @@ const close = () => {
 .empty {
   width: 100%;
   height: 100%;
-  color: #999;
+  color: #7a7b95;
   font-style: italic;
   display: flex;
   justify-content: center;
   align-items: center;
 }
 .note {
-  border: 1px solid #eee;
+  border: 1px solid $borderColor;
   border-radius: 4px;
   padding: 10px;
 
@@ -239,7 +239,7 @@ const close = () => {
     margin-top: 10px;
   }
   &.active {
-    background-color: #f7f7f7;
+    background-color: #24263a;
   }
 
   .header {
@@ -276,7 +276,7 @@ const close = () => {
     }
     .time {
       font-size: 12px;
-      color: #aaa;
+      color: #7a7b95;
     }
   }
   .btns {
@@ -335,7 +335,7 @@ const close = () => {
     .btn {
       &.icon {
         font-size: 18px;
-        color: #666;
+        color: #9a9bb5;
         cursor: pointer;
       }
     }

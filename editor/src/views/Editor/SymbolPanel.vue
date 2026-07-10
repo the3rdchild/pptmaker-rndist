@@ -155,7 +155,7 @@ const close = () => {
     @include flex-grid-layout();
 
     & + .symbol-group {
-      border-top: 1px solid #f0f0f0;
+      border-top: 1px solid $borderColor;
       padding-top: 10px;
       margin-top: 8px;
     }
@@ -180,7 +180,7 @@ const close = () => {
       display: flex;
       justify-content: center;
       align-items: center;
-      background-color: #fff;
+      background-color: $lightGray;
     }
   }
 }
@@ -193,7 +193,7 @@ const close = () => {
   display: flex;
   justify-content: center;
   align-items: center;
-  color: #666;
+  color: #9a9bb5;
   font-size: 13px;
   cursor: pointer;
 

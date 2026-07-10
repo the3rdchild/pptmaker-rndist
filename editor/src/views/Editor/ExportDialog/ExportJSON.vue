@@ -50,8 +50,8 @@ const json = computed(() => {
   width: 100%;
   height: calc(100% - 90px);
   margin-bottom: 10px;
-  background-color: #f9f9f9;
-  color: #0451a5;
+  background-color: $lightGray;
+  color: #8ab4f8;
   overflow: auto;
 }
 pre {
@@ -78,7 +78,7 @@ pre {
   background-color: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background-color: #e1e1e1;
+  background-color: #3a3b52;
   border-radius: 5px;
 }
 </style>

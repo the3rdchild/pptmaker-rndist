@@ -39,6 +39,8 @@ export interface MainState {
   showSymbolPanel: boolean
   showMarkupPanel: boolean
   showImageLibPanel: boolean
+  // Desktop: AI Assistant panel open state ('running' = generating, dims input).
+  // Mobile view still calls this the "dialog" since it renders AIPPTDialog.vue there.
   showAIPPTDialog: boolean | 'running'
 }
 

@@ -38,7 +38,7 @@ Rules:
 def process(ctx: dict):
     params = ctx["params"]
     prompt = params.get("prompt") or params.get("content", "")
-    slide_count = int(params.get("slideCount", params.get("slide_count", 0)))
+    slide_count = int(params.get("slideCount") or params.get("slide_count") or 0)
     language = params.get("language", "Bahasa Indonesia")
     stream_mode = params.get("stream_mode")
 

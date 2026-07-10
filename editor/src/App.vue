@@ -62,7 +62,7 @@ onMounted(async () => {
         })
         const body = await res.json()
         const deck = body.data
-        if (deck && deck.payload && deck.payload.slides) {
+        if (deck?.payload?.slides?.length) {
           slidesStore.setSlides(deck.payload.slides, deck.payload.theme)
           if (deck.title) slidesStore.setTitle(deck.title)
           if (deck.payload.width) slidesStore.setViewportSize(deck.payload.width)
@@ -71,7 +71,7 @@ onMounted(async () => {
           }
         }
         else {
-          // Empty deck
+          // Empty deck (no slides yet) — seed one blank slide
           slidesStore.setSlides([{ id: nanoid(10), elements: [] }])
         }
       }
@@ -92,8 +92,9 @@ onMounted(async () => {
     // Setup auto-save: watch slides changes, postMessage to parent iframe
     setupAutoSave()
 
-    // Auto-open AI dialog if a prompt was passed from dashboard
-    const aiPrompt = sessionStorage.getItem('ppt_ai_prompt')
+    // Auto-open AI dialog if a prompt was passed via URL params from dashboard
+    const urlParams = new URLSearchParams(window.location.search)
+    const aiPrompt = urlParams.get('prompt')
     if (aiPrompt) {
       setTimeout(() => {
         mainStore.setAIPPTDialogState(true)
@@ -118,10 +119,14 @@ function setupAutoSave() {
       theme: theme.value,
       slides: slides.value,
     }
+    // Post only to the expected parent origin (localhost:3000 in dev)
+    const parentOrigin = import.meta.env.MODE === 'development'
+      ? 'http://localhost:3000'
+      : window.location.origin
     window.parent.postMessage({
       type: 'deck-changed',
       deck: deckPayload,
-    }, '*')
+    }, parentOrigin)
   }
 
   // Debounced save on slides/theme/title change

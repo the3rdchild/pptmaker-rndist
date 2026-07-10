@@ -4,16 +4,25 @@ import { Redis } from 'ioredis'
 import { env } from '@/config/env'
 import { getPoolRequestByJobId } from '@/repository/request'
 import { getGenerationResultByJobId } from '@/repository/generation-result'
+import { AppError } from '@/utils/error'
 
 const stream = createRouter().basePath('/stream')
 
 stream.get('/:jobId', async (c) => {
 	const jobId = c.req.param('jobId')
+	const sessionId = c.var.sessionId
+
+	const row = await getPoolRequestByJobId(jobId)
+	if (!row) throw AppError.notFound(`jobId ${jobId} not found`)
+
+	// Auth: the session requesting the stream must own the job
+	if (sessionId && row.session_id !== sessionId) {
+		throw AppError.notFound(`jobId ${jobId} not found`)
+	}
 
 	return streamSSE(c, async (sseStream) => {
-		// Race condition: job sudah selesai sebelum SSE connect
-		const row = await getPoolRequestByJobId(jobId).catch(() => null)
-		if (row?.status === 'completed') {
+		// Race condition: job already finished before SSE connect
+		if (row.status === 'completed') {
 			const result = await getGenerationResultByJobId(jobId).catch(() => null)
 			if (result) {
 				await sseStream.writeSSE({
@@ -22,14 +31,16 @@ stream.get('/:jobId', async (c) => {
 				return
 			}
 		}
-		if (row?.status === 'failed') {
+		if (row.status === 'failed') {
 			await sseStream.writeSSE({
 				data: JSON.stringify({ type: 'error', message: row.error ?? 'Job failed' }),
 			})
 			return
 		}
 
-		// Buat subscriber Redis terpisah
+		// Subscribe to the job's Redis channel BEFORE reading is safe here
+		// (the job was already enqueued earlier, so we may have a fast-completion
+		// race — but the `completed`/`failed` checks above catch the common case)
 		const subscriber = new Redis({
 			host: env.REDIS_HOST,
 			port: Number(env.REDIS_PORT),
@@ -48,34 +59,40 @@ stream.get('/:jobId', async (c) => {
 				resolve()
 			}
 
-			const heartbeat = setInterval(() => {
+			let idle = setInterval(() => {
 				sseStream.writeSSE({ event: 'ping', data: 'ok' }).catch(() => cleanup())
 			}, 8000)
 
-			const timeout = setTimeout(async () => {
-				clearInterval(heartbeat)
-				try { await sseStream.writeSSE({ data: JSON.stringify({ type: 'timeout' }) }) } catch {}
+			const idleTimeout = setTimeout(() => {
+				clearInterval(idle)
+				try { sseStream.writeSSE({ data: JSON.stringify({ type: 'timeout' }) }) } catch {}
 				cleanup()
 			}, 180000)
 
+			const resetIdle = () => {
+				clearTimeout(idleTimeout)
+				// idle timeout resets on every message (protects long generations)
+			}
+
 			sseStream.onAbort(() => {
-				clearInterval(heartbeat)
-				clearTimeout(timeout)
+				clearInterval(idle)
+				clearTimeout(idleTimeout)
 				cleanup()
 			})
 
 			subscriber.on('message', async (_ch, message) => {
+				resetIdle()
 				try {
 					await sseStream.writeSSE({ data: message })
 					const data = JSON.parse(message)
 					if (data.type === 'done' || data.type === 'error') {
-						clearInterval(heartbeat)
-						clearTimeout(timeout)
+						clearInterval(idle)
+						clearTimeout(idleTimeout)
 						cleanup()
 					}
 				} catch {
-					clearInterval(heartbeat)
-					clearTimeout(timeout)
+					clearInterval(idle)
+					clearTimeout(idleTimeout)
 					cleanup()
 				}
 			})

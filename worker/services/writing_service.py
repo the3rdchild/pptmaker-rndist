@@ -14,6 +14,10 @@ COMMAND_PROMPTS = {
     "expand": "Expand and elaborate on the following text with more detail and examples:\n\n",
     "summarize": "Summarize the following text concisely:\n\n",
     "polish": "Polish and refine the following text for a professional presentation:\n\n",
+    # PPTist sends Chinese command keys — map them to the same prompts
+    "美化改写": "Polish and refine the following text for a professional presentation:\n\n",
+    "扩写丰富": "Expand and elaborate on the following text with more detail and examples:\n\n",
+    "精简提炼": "Summarize the following text concisely:\n\n",
 }
 
 

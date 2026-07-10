@@ -3,12 +3,10 @@
 import { useRouter } from 'next/navigation'
 import { Wand2, Plus, ChevronDown, Loader2 } from 'lucide-react'
 import { useState } from 'react'
-import { useAIStore } from '@/store/ai.store'
 import { useSessionStore } from '@/store/session.store'
-import { submitOutline, createDeck } from '@/lib/api'
+import { createDeck } from '@/lib/api'
 import { Button } from '@/components/shared/button'
 
-const SLIDE_OPTIONS = [4, 6, 8, 10, 12, 15]
 const LANGUAGES = ['Bahasa Indonesia', 'English', 'Español', '中文', '日本語']
 
 export function PromptInput() {
@@ -16,10 +14,8 @@ export function PromptInput() {
 	const token = useSessionStore((s) => s.token)
 	const sessionReady = useSessionStore((s) => s.ready)
 	const sessionError = useSessionStore((s) => s.error)
-	const prompt = useAIStore((s) => s.prompt)
-	const slideCount = useAIStore((s) => s.slideCount)
-	const language = useAIStore((s) => s.language)
-	const { setPrompt } = useAIStore()
+	const [prompt, setPrompt] = useState('')
+	const [language, setLanguage] = useState('Bahasa Indonesia')
 	const [submitting, setSubmitting] = useState(false)
 	const [localError, setLocalError] = useState<string | null>(null)
 
@@ -35,12 +31,14 @@ export function PromptInput() {
 		setSubmitting(true)
 		setLocalError(null)
 		try {
-			// Create an empty deck, store the prompt for PPTist to pick up,
-			// then open the PPTist editor which will auto-trigger AI generation.
+			// Create an empty deck, then open PPTist editor passing the prompt
+			// via URL query params (cross-origin safe, survives iframe reload).
 			const deck = await createDeck(token, { title: prompt.slice(0, 60) })
-			sessionStorage.setItem('ppt_ai_prompt', prompt)
-			sessionStorage.setItem('ppt_ai_language', language)
-			router.push(`/editor/${deck.id}`)
+			const qs = new URLSearchParams({
+				prompt,
+				lang: language,
+			})
+			router.push(`/editor/${deck.id}?${qs.toString()}`)
 		} catch (e) {
 			setLocalError(e instanceof Error ? e.message : 'Failed to start')
 			setSubmitting(false)
@@ -73,8 +71,7 @@ export function PromptInput() {
 					<Plus className="h-4 w-4" /> Lampirkan
 				</Button>
 
-				<Dropdown label={`${slideCount} Slides`} options={SLIDE_OPTIONS.map((n) => `${n}`)} onSelect={(v) => useAIStore.getState().setSlideCount(Number(v))} />
-				<Dropdown label={language} options={LANGUAGES} onSelect={(v) => useAIStore.getState().setLanguage(v)} />
+				<Dropdown label={language} options={LANGUAGES} onSelect={(v) => setLanguage(v)} />
 
 				<div className="ml-auto flex items-center gap-2">
 					{/* Session status indicator */}

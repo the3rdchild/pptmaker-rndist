@@ -13,8 +13,17 @@ export async function getDeckById(id: string): Promise<Deck | null> {
 }
 
 export async function listDecksBySession(sessionId: string): Promise<Deck[]> {
+	// Select only list-view columns (skip heavy payload JSONB)
 	return db
-		.select()
+		.select({
+			id: deck.id,
+			session_id: deck.session_id,
+			title: deck.title,
+			thumbnail: deck.thumbnail,
+			is_favorite: deck.is_favorite,
+			created_at: deck.createdAt,
+			updated_at: deck.updatedAt,
+		})
 		.from(deck)
 		.where(eq(deck.session_id, sessionId))
 		.orderBy(desc(deck.updatedAt))

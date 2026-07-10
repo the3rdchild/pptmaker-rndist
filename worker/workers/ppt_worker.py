@@ -47,6 +47,12 @@ def handle(data: dict):
         except Exception:
             logger.exception("[ppt_worker] gagal nyimpen error | job_id=%s", job_id)
         update_status(job_id, "failed")
+        # Notify any SSE/streaming listeners so the client doesn't hang
+        try:
+            from services.pubsub import publish
+            publish(job_id, {"type": "error", "message": str(e)})
+        except Exception:
+            pass
 
 
 def _dispatch(job_type: str, job_id: str, request: dict, params: dict):

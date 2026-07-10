@@ -158,13 +158,13 @@ const model = ref('deepseek-v4-flash')
 const outlineRef = useTemplateRef<HTMLElement>('outlineRef')
 const inputRef = useTemplateRef<InstanceType<typeof Input>>('inputRef')
 
-// Auto-trigger from dashboard: if a prompt was passed via sessionStorage,
+// Auto-trigger from dashboard: if a prompt was passed via URL params,
 // pre-fill keyword + language and auto-generate outline.
-const autoPrompt = sessionStorage.getItem('ppt_ai_prompt')
-const autoLang = sessionStorage.getItem('ppt_ai_language')
+const urlParams = new URLSearchParams(window.location.search)
+const autoPrompt = urlParams.get('prompt')
+const autoLang = urlParams.get('lang')
 if (autoPrompt) {
   keyword.value = autoPrompt
-  sessionStorage.removeItem('ppt_ai_prompt')
 }
 if (autoLang) {
   // Map our language names to PPTist's
@@ -172,9 +172,10 @@ if (autoLang) {
     'Bahasa Indonesia': 'Indonesian',
     'English': 'English',
     '中文': 'Chinese',
+    'Español': 'English', // fallback
+    '日本語': 'Japanese',
   }
   language.value = langMap[autoLang] || 'English'
-  sessionStorage.removeItem('ppt_ai_language')
 }
 const shouldAutoGenerate = !!autoPrompt
 
@@ -285,22 +286,30 @@ const createPPT = async (template?: { slides: Slide[], theme: SlideTheme }) => {
 
   const reader: ReadableStreamDefaultReader = stream.body.getReader()
   const decoder = new TextDecoder('utf-8')
-  
+
+  // Buffer partial lines across network chunk boundaries (H4 fix)
+  let buf = ''
+
   const readStream = () => {
     reader.read().then(({ done, value }) => {
       if (done) {
+        // Flush any remaining buffered line
+        if (buf.trim()) processChunk(buf)
+        buf = ''
         loading.value = false
         message.closeAll()
         mainStore.setAIPPTDialogState(false)
         slidesStore.setTheme(templateTheme)
         return
       }
-  
-      const chunk = decoder.decode(value, { stream: true })
-      const lines = chunk.split(/\n+/)
+
+      buf += decoder.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      // Keep the last (possibly partial) line in buf
+      buf = lines.pop() || ''
 
       for (const line of lines) {
-        if (line) processChunk(line)
+        if (line.trim()) processChunk(line)
       }
 
       readStream()

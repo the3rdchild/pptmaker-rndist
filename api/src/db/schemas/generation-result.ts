@@ -10,6 +10,7 @@ import { timestamps } from '@/db/utils/common-table'
 export type GenerationResultType = 'outline' | 'deck' | 'slide' | 'agent'
 
 export const generationResult = pgTable('generation_result', {
+	id: uuid('id').primaryKey().defaultRandom(),
 	job_id: varchar('job_id', { length: 255 }).notNull().unique(),
 	request_id: uuid('request_id').notNull().references(() => poolRequest.id, { onDelete: 'cascade' }),
 	type: varchar('type', { length: 50 }).notNull(),

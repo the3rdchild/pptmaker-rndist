@@ -7,9 +7,15 @@ const status = createRouter().basePath('/status')
 
 status.get('/:jobId', async (c) => {
 	const jobId = c.req.param('jobId')
+	const sessionId = c.var.sessionId
 
 	const row = await getPoolRequestByJobId(jobId)
 	if (!row) throw AppError.notFound(`jobId ${jobId} not found`)
+
+	// Auth: the session requesting status must own the job
+	if (sessionId && row.session_id !== sessionId) {
+		throw AppError.notFound(`jobId ${jobId} not found`)
+	}
 
 	const params = row.params as { type?: string } | null
 

@@ -167,7 +167,6 @@ if (autoPrompt) {
   keyword.value = autoPrompt
 }
 if (autoLang) {
-  // Map our language names to PPTist's
   const langMap: Record<string, string> = {
     'Bahasa Indonesia': 'Indonesian',
     'English': 'English',
@@ -177,6 +176,19 @@ if (autoLang) {
   }
   language.value = langMap[autoLang] || 'English'
 }
+
+// Strip prompt/lang from URL so a page refresh doesn't re-trigger (avoids
+// a paid LLM call on every reload)
+if (autoPrompt || autoLang) {
+  urlParams.delete('prompt')
+  urlParams.delete('lang')
+  const remaining = urlParams.toString()
+  const newUrl = remaining
+    ? `${window.location.pathname}?${remaining}`
+    : window.location.pathname
+  window.history.replaceState(null, '', newUrl)
+}
+
 const shouldAutoGenerate = !!autoPrompt
 
 const recommends = ref([

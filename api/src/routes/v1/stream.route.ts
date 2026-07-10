@@ -16,7 +16,7 @@ stream.get('/:jobId', async (c) => {
 	if (!row) throw AppError.notFound(`jobId ${jobId} not found`)
 
 	// Auth: the session requesting the stream must own the job
-	if (sessionId && row.session_id !== sessionId) {
+	if (!sessionId || row.session_id !== sessionId) {
 		throw AppError.notFound(`jobId ${jobId} not found`)
 	}
 
@@ -55,30 +55,30 @@ stream.get('/:jobId', async (c) => {
 
 		await new Promise<void>((resolve) => {
 			const cleanup = () => {
+				clearInterval(heartbeat)
+				clearTimeout(idleTimeout)
 				try { subscriber.disconnect() } catch {}
 				resolve()
 			}
 
-			let idle = setInterval(() => {
+			const heartbeat = setInterval(() => {
 				sseStream.writeSSE({ event: 'ping', data: 'ok' }).catch(() => cleanup())
 			}, 8000)
 
-			const idleTimeout = setTimeout(() => {
-				clearInterval(idle)
+			let idleTimeout = setTimeout(() => {
 				try { sseStream.writeSSE({ data: JSON.stringify({ type: 'timeout' }) }) } catch {}
 				cleanup()
 			}, 180000)
 
 			const resetIdle = () => {
 				clearTimeout(idleTimeout)
-				// idle timeout resets on every message (protects long generations)
+				idleTimeout = setTimeout(() => {
+					try { sseStream.writeSSE({ data: JSON.stringify({ type: 'timeout' }) }) } catch {}
+					cleanup()
+				}, 180000)
 			}
 
-			sseStream.onAbort(() => {
-				clearInterval(idle)
-				clearTimeout(idleTimeout)
-				cleanup()
-			})
+			sseStream.onAbort(() => cleanup())
 
 			subscriber.on('message', async (_ch, message) => {
 				resetIdle()
@@ -86,13 +86,9 @@ stream.get('/:jobId', async (c) => {
 					await sseStream.writeSSE({ data: message })
 					const data = JSON.parse(message)
 					if (data.type === 'done' || data.type === 'error') {
-						clearInterval(idle)
-						clearTimeout(idleTimeout)
 						cleanup()
 					}
 				} catch {
-					clearInterval(idle)
-					clearTimeout(idleTimeout)
 					cleanup()
 				}
 			})

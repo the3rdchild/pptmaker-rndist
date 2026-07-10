@@ -1,50 +1,48 @@
-"""Agentic assistant service (function calling).
+"""Agent service — natural-language deck editing via LLM tool-calling.
 
-Flow:
-  ctx.params.message + deck payload
-  → DeepInfra chat_tools with defined tools
-  → execute tool calls against the deck
-  → loop until model stops calling tools (or max 5 iterations)
-  → save_result(type=agent) + upsert deck + publish done via SSE
+The LLM never authors slide layout/content directly. It only decides WHICH
+action to take and supplies the semantic content (e.g. a font name, or the
+text for a new slide) — every action is a thin, deterministic operation that
+the client applies via its EXISTING functions (applyFontToAllSlides,
+applyPresetTheme, useAIPPT()'s template mapping, store mutations). This
+worker is stateless/advisory: it never touches a server-side copy of the
+deck, so a bad LLM response can never corrupt the user's presentation — it
+just fails to produce a usable action.
 
-Tools the AI can call:
-  - set_font(font_name, target)
-  - set_theme(background, accent_color, font_color)
-  - update_text(slide_index, element_index, new_text)
-  - add_slide(title, bullets, layout)
-  - delete_slide(slide_index)
-  - reorder_slide(from_index, to_index)
+Single-turn: one user message -> either a tool call (or several) or a plain
+reply. No multi-step agentic loop in v1 (kept simple on purpose).
 """
-import logging
-import copy
 import json
-import re
+import logging
 
 from services import llm_client
-from services.layouts import build_slide, DEFAULT_THEME
 from services.pubsub import publish
-from core.db.repository import save_result, upsert_deck
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are an AI presentation editing assistant. You help users modify their presentation by calling tools.
-You can see the current deck structure. When the user asks for a change, call the appropriate tool(s).
-After executing tools, briefly confirm what you changed (1-2 sentences).
+SYSTEM_PROMPT = """You are an assistant embedded in a presentation editor. The user is looking \
+at an existing slide deck and gives you natural-language edit requests.
 
-The deck is a JSON object with: title, slides[]. Each slide has: elements[] (text/shape/image).
-For text elements, the content is HTML. To change text, provide plain text — it will be converted."""
+You do NOT write slide layouts, HTML, or raw content placement yourself. You only decide which \
+tool to call and supply the semantic content (text, a font name, a color). All visual/layout \
+decisions are handled deterministically by the application after your tool call.
+
+If the request doesn't match any tool, or you need clarification, just reply with plain text \
+instead of calling a tool.
+
+You will be given a lightweight summary of the current deck (slide count, titles, element counts) \
+— not the full slide content. Use slide_index as a 0-based index into that summary."""
 
 TOOLS = [
     {
         "type": "function",
         "function": {
             "name": "set_font",
-            "description": "Change the font family across the presentation or a specific slide.",
+            "description": "Change the font family used across all slides in the deck.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "font_name": {"type": "string", "description": "CSS font-family, e.g. 'Poppins', 'Arial', 'Times New Roman'"},
-                    "slide_index": {"type": "integer", "description": "0-based slide index. Omit for all slides."},
+                    "font_name": {"type": "string", "description": "e.g. 'Poppins', 'Roboto'"},
                 },
                 "required": ["font_name"],
             },
@@ -54,30 +52,14 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "set_theme",
-            "description": "Change the deck's background color and/or accent color.",
+            "description": "Apply a color theme (background, accent, font color) to all slides.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "background": {"type": "string", "description": "Hex color for slide backgrounds, e.g. '#0f172a'"},
-                    "accent_color": {"type": "string", "description": "Hex color for accent elements, e.g. '#3b82f6'"},
-                    "font_color": {"type": "string", "description": "Hex color for text, e.g. '#f1f5f9'"},
+                    "background": {"type": "string", "description": "Hex color, e.g. '#1a1b2e'"},
+                    "accent_color": {"type": "string", "description": "Hex color for theme/accent"},
+                    "font_color": {"type": "string", "description": "Hex color for text"},
                 },
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "update_text",
-            "description": "Replace the text content of a specific element on a slide.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "slide_index": {"type": "integer", "description": "0-based slide index"},
-                    "element_index": {"type": "integer", "description": "0-based element index within the slide"},
-                    "new_text": {"type": "string", "description": "The new text content (plain text)"},
-                },
-                "required": ["slide_index", "element_index", "new_text"],
             },
         },
     },
@@ -85,15 +67,44 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "add_slide",
-            "description": "Add a new slide at the end of the presentation.",
+            "description": (
+                "Add one new content slide at the end of the deck. Supply only the text content "
+                "(title + bullet items) — layout, font-fit, and template styling are applied "
+                "automatically to match the rest of the deck."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "title": {"type": "string"},
-                    "bullets": {"type": "array", "items": {"type": "string"}},
-                    "layout": {"type": "string", "enum": ["cover", "section", "bullets", "two-column", "image-text"]},
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "title": {"type": "string"},
+                                "text": {"type": "string"},
+                            },
+                            "required": ["title", "text"],
+                        },
+                    },
                 },
-                "required": ["title"],
+                "required": ["title", "items"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_text",
+            "description": "Replace the title or body text of a specific existing slide.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "slide_index": {"type": "integer", "description": "0-based index"},
+                    "target": {"type": "string", "enum": ["title", "content"]},
+                    "new_text": {"type": "string"},
+                },
+                "required": ["slide_index", "target", "new_text"],
             },
         },
     },
@@ -101,11 +112,11 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "delete_slide",
-            "description": "Delete a slide by index.",
+            "description": "Delete a slide by its 0-based index.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "slide_index": {"type": "integer", "description": "0-based index of slide to delete"},
+                    "slide_index": {"type": "integer"},
                 },
                 "required": ["slide_index"],
             },
@@ -115,7 +126,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "reorder_slide",
-            "description": "Move a slide from one position to another.",
+            "description": "Move a slide from one position to another (both 0-based).",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -126,188 +137,56 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_deck",
+            "description": (
+                "Generate an entirely new deck from a topic. This triggers the existing "
+                "outline+template generation pipeline — you do not author slides yourself."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic": {"type": "string"},
+                },
+                "required": ["topic"],
+            },
+        },
+    },
 ]
 
 
 def process(ctx: dict):
     params = ctx["params"]
-    message = params.get("message", "")
-    deck_id = ctx.get("deck_id") or params.get("deckId")
-    deck_payload = params.get("deck") or {}
-
-    # Deep-copy so we mutate freely
-    deck = copy.deepcopy(deck_payload)
-    if not deck.get("slides"):
-        deck["slides"] = []
-
-    # Build a compact summary of the deck for the AI
-    summary = _summarize_deck(deck)
-    actions = []
+    user_message = params.get("message", "")
+    deck_summary = params.get("deckSummary")
 
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"Here is my current deck:\n{summary}\n\nMy request: {message}"},
+        {
+            "role": "user",
+            "content": f"Current deck: {json.dumps(deck_summary)}\n\nUser request: {user_message}",
+        },
     ]
 
-    # Agent loop (max 5 tool-call rounds)
-    for iteration in range(5):
-        assistant_msg = llm_client.chat_tools(messages, TOOLS, temperature=0.4)
+    logger.info("[agent_service] job_id=%s message=%r", ctx["job_id"], user_message[:120])
 
-        # No tool calls → final response
-        if not assistant_msg.tool_calls:
-            final_text = assistant_msg.content or "Done."
-            break
+    resp_message = llm_client.chat_tools(messages, TOOLS, temperature=0.3)
 
-        # Append assistant message (with tool_calls) to history
-        messages.append({
-            "role": "assistant",
-            "content": assistant_msg.content,
-            "tool_calls": [{"id": tc.id, "type": "function", "function": {"name": tc.function.name, "arguments": tc.function.arguments}} for tc in assistant_msg.tool_calls],
-        })
+    tool_calls = getattr(resp_message, "tool_calls", None) or []
+    for call in tool_calls:
+        try:
+            args = json.loads(call.function.arguments)
+        except (json.JSONDecodeError, AttributeError):
+            args = {}
+        action = {"tool": call.function.name, "args": args}
+        publish(ctx["job_id"], {"type": "chunk", "text": json.dumps(action)})
+        logger.info("[agent_service] action | job_id=%s tool=%s", ctx["job_id"], call.function.name)
 
-        # Execute each tool call
-        for tc in assistant_msg.tool_calls:
-            fname = tc.function.name
-            try:
-                args = json.loads(tc.function.arguments)
-            except json.JSONDecodeError:
-                args = {}
+    if not tool_calls and getattr(resp_message, "content", None):
+        reply = {"tool": "_reply", "args": {"text": resp_message.content}}
+        publish(ctx["job_id"], {"type": "chunk", "text": json.dumps(reply)})
 
-            result = _execute_tool(deck, fname, args)
-            actions.append({"tool": fname, "args": args, "result": result})
-            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(result)})
-            logger.info("[agent_service] tool=%s args=%s", fname, args)
-    else:
-        final_text = "I've made the requested changes."
-
-    # Publish result
-    save_result(ctx["request_id"], ctx["job_id"], "agent", {
-        "deck": deck,
-        "actions": actions,
-        "summary": final_text,
-        "deckId": deck_id,
-    })
-
-    # Update deck row
-    if deck_id and ctx.get("session_id"):
-        upsert_deck(deck_id, ctx["session_id"], deck.get("title", "Untitled"), deck)
-
-    publish(ctx["job_id"], {
-        "type": "done",
-        "result": {"deck": deck, "actions": actions, "summary": final_text, "deckId": deck_id},
-        "resultType": "agent",
-    })
-    logger.info("[agent_service] selesai | job_id=%s actions=%d", ctx["job_id"], len(actions))
-
-
-def _summarize_deck(deck: dict) -> str:
-    slides = deck.get("slides", [])
-    lines = [f'Title: {deck.get("title", "Untitled")} ({len(slides)} slides)']
-    for i, s in enumerate(slides):
-        els = s.get("elements", [])
-        text_els = [e for e in els if e.get("type") == "text"]
-        titles = []
-        for te in text_els[:2]:
-            plain = re.sub(r'<[^>]+>', '', te.get("content", ""))[:60]
-            titles.append(plain)
-        lines.append(f'  Slide {i}: {len(els)} elements — {"; ".join(titles)}')
-    return "\n".join(lines)
-
-
-def _execute_tool(deck: dict, name: str, args: dict) -> dict:
-    if name == "set_font":
-        return _set_font(deck, args)
-    elif name == "set_theme":
-        return _set_theme(deck, args)
-    elif name == "update_text":
-        return _update_text(deck, args)
-    elif name == "add_slide":
-        return _add_slide(deck, args)
-    elif name == "delete_slide":
-        return _delete_slide(deck, args)
-    elif name == "reorder_slide":
-        return _reorder_slide(deck, args)
-    return {"error": f"unknown tool {name}"}
-
-
-def _set_font(deck, args):
-    font = args.get("font_name", "")
-    slide_idx = args.get("slide_index")
-    count = 0
-    slides = deck.get("slides", [])
-    indices = [slide_idx] if slide_idx is not None else range(len(slides))
-    for i in indices:
-        if i < 0 or i >= len(slides):
-            continue
-        for el in slides[i].get("elements", []):
-            if el.get("type") == "text":
-                el["defaultFontName"] = font
-                count += 1
-            elif el.get("type") == "shape" and el.get("text"):
-                el["text"]["defaultFontName"] = font
-                count += 1
-    return {"changed_elements": count}
-
-
-def _set_theme(deck, args):
-    bg = args.get("background")
-    accent = args.get("accent_color")
-    font_color = args.get("font_color")
-    count = 0
-    for s in deck.get("slides", []):
-        if bg:
-            s["background"] = {"type": "solid", "color": bg}
-            count += 1
-        for el in s.get("elements", []):
-            if el.get("type") == "shape" and accent:
-                el["fill"] = accent
-            elif el.get("type") == "text" and font_color:
-                el["defaultColor"] = font_color
-    return {"changed_slides": count, "background": bg, "accent": accent, "font_color": font_color}
-
-
-def _update_text(deck, args):
-    si = args.get("slide_index", -1)
-    ei = args.get("element_index", -1)
-    new_text = args.get("new_text", "")
-    slides = deck.get("slides", [])
-    if 0 <= si < len(slides):
-        els = slides[si].get("elements", [])
-        if 0 <= ei < len(els):
-            el = els[ei]
-            if el.get("type") == "text":
-                fontsize = "18px"
-                # try to extract existing font size
-                m = re.search(r'font-size:(\d+)px', el.get("content", ""))
-                if m:
-                    fontsize = m.group(0)
-                color = el.get("defaultColor", "#ffffff")
-                el["content"] = f'<p style="{fontsize};color:{color};">{new_text}</p>'
-                return {"updated": True}
-    return {"updated": False, "error": "element not found"}
-
-
-def _add_slide(deck, args):
-    slide = build_slide(args, deck.get("theme", DEFAULT_THEME))
-    deck.setdefault("slides", []).append(slide)
-    return {"added": True, "slide_id": slide["id"]}
-
-
-def _delete_slide(deck, args):
-    si = args.get("slide_index", -1)
-    slides = deck.get("slides", [])
-    if 0 <= si < len(slides):
-        slides.pop(si)
-        return {"deleted": True}
-    return {"deleted": False}
-
-
-def _reorder_slide(deck, args):
-    fi = args.get("from_index", -1)
-    ti = args.get("to_index", -1)
-    slides = deck.get("slides", [])
-    if 0 <= fi < len(slides) and 0 <= ti < len(slides):
-        s = slides.pop(fi)
-        slides.insert(ti, s)
-        return {"moved": True}
-    return {"moved": False}
+    publish(ctx["job_id"], {"type": "done"})
+    logger.info("[agent_service] done | job_id=%s", ctx["job_id"])

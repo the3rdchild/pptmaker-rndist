@@ -23,24 +23,26 @@ const writingSchema = z.object({
 	content: z.string(),
 	command: z.string().optional().default('polish'),
 })
+const agentSchema = z.object({
+	message: z.string(),
+	// Lightweight deck context — index/title/elementCount per slide, NOT full
+	// slide JSON. The LLM only needs to know what exists, never pixel-level data.
+	deckSummary: z.object({
+		slideCount: z.number(),
+		slides: z.array(z.object({
+			index: z.number(),
+			title: z.string().optional(),
+			elementCount: z.number(),
+		})),
+	}).optional(),
+})
 
 /**
- * Subscribe to the job's Redis pub/sub channel FIRST, then enqueue the job.
- * Returns the subscriber + a cleanup function. This avoids the race where
- * the worker publishes (or fails) before we subscribe.
- *
- * `onChunk` receives every `{"type":"chunk","text":...}` payload's text.
- * On `done`/`error`/timeout the stream resolves.
- *
- * `idleMs` resets on every chunk — protects long generations from a hard cap.
+ * Create + connect + subscribe to the job's Redis pub/sub channel.
+ * MUST be awaited before enqueueing the job, so no publishes are missed.
+ * Returns the subscriber (caller must disconnect it).
  */
-async function streamJobToBody(
-	s: { write: (data: string) => Promise<void> },
-	jobId: string,
-	onChunk: (text: string) => void,
-	idleMs = 60000,
-	absoluteMs = 600000,
-): Promise<void> {
+async function subscribeToJob(jobId: string): Promise<Redis> {
 	const subscriber = new Redis({
 		host: env.REDIS_HOST,
 		port: Number(env.REDIS_PORT),
@@ -49,23 +51,32 @@ async function streamJobToBody(
 		lazyConnect: true,
 	})
 	await subscriber.connect()
-	const channel = `ppt:stream:${jobId}`
-	await subscriber.subscribe(channel)
+	await subscriber.subscribe(`ppt:stream:${jobId}`)
+	return subscriber
+}
 
-	const startedAt = Date.now()
-
+/**
+ * Read loop: listen on the subscriber for chunk/done/error events.
+ * - onChunk is called for every {type:'chunk', text} message.
+ * - Idle timeout resets on every message (60s default) — protects long generations.
+ * - Absolute cap (10 min) prevents infinite hangs.
+ */
+async function readJobStream(
+	subscriber: Redis,
+	onChunk: (text: string) => void,
+	idleMs = 60000,
+	absoluteMs = 600000,
+): Promise<void> {
 	await new Promise<void>((resolve) => {
-		const cleanup = () => {
-			try { subscriber.disconnect() } catch {}
-			resolve()
-		}
+		const cleanup = () => resolve()
 
 		let idle = setTimeout(cleanup, idleMs)
+		const absolute = setTimeout(cleanup, absoluteMs)
+
 		const resetIdle = () => {
 			clearTimeout(idle)
 			idle = setTimeout(cleanup, idleMs)
 		}
-		const absolute = setTimeout(cleanup, absoluteMs)
 
 		subscriber.on('message', (_ch, message) => {
 			resetIdle()
@@ -84,6 +95,9 @@ async function streamJobToBody(
 				cleanup()
 			}
 		})
+	}).finally(() => {
+		// Always disconnect — no connection leak even if createPoolRequest throws
+		try { subscriber.disconnect() } catch {}
 	})
 }
 
@@ -108,12 +122,10 @@ tools.post('/aippt_outline', async (c) => {
 	c.header('Connection', 'keep-alive')
 
 	return stream(c, async (s) => {
-		// Subscribe BEFORE enqueue (avoids losing early publishes)
-		const job = streamJobToBody(s, jobId, (text) => {
-			s.write(text).catch(() => {})
-		})
+		// 1. Subscribe FIRST (await it — truly listening before enqueue)
+		const subscriber = await subscribeToJob(jobId)
 
-		// Now safe to enqueue — subscriber is already listening
+		// 2. Enqueue the job
 		const request = await createPoolRequest({
 			job_id: jobId,
 			session_id: sessionId,
@@ -129,7 +141,10 @@ tools.post('/aippt_outline', async (c) => {
 			stream_mode: 'raw',
 		})
 
-		await job
+		// 3. Read loop (disconnects in finally)
+		await readJobStream(subscriber, (text) => {
+			s.write(text).catch(() => {})
+		})
 	})
 })
 
@@ -150,10 +165,7 @@ tools.post('/aippt', async (c) => {
 	c.header('Connection', 'keep-alive')
 
 	return stream(c, async (s) => {
-		const job = streamJobToBody(s, jobId, (text) => {
-			// JSONL: write each slide object on its own line
-			s.write(text + '\n').catch(() => {})
-		})
+		const subscriber = await subscribeToJob(jobId)
 
 		const request = await createPoolRequest({
 			job_id: jobId,
@@ -170,7 +182,10 @@ tools.post('/aippt', async (c) => {
 			stream_mode: 'raw',
 		})
 
-		await job
+		await readJobStream(subscriber, (text) => {
+			// JSONL: write each slide object on its own line
+			s.write(text + '\n').catch(() => {})
+		})
 	})
 })
 
@@ -191,9 +206,7 @@ tools.post('/ai_writing', async (c) => {
 	c.header('Connection', 'keep-alive')
 
 	return stream(c, async (s) => {
-		const job = streamJobToBody(s, jobId, (text) => {
-			s.write(text).catch(() => {})
-		}, 30000) // writing is shorter
+		const subscriber = await subscribeToJob(jobId)
 
 		const request = await createPoolRequest({
 			job_id: jobId,
@@ -210,7 +223,62 @@ tools.post('/ai_writing', async (c) => {
 			stream_mode: 'raw',
 		})
 
-		await job
+		await readJobStream(subscriber, (text) => {
+			s.write(text).catch(() => {})
+		}, 30000) // shorter idle for writing
+	})
+})
+
+// ── POST /tools/agent — structured action stream (JSONL) ──
+//
+// The LLM only decides + describes actions (e.g. {"tool":"set_font","args":{...}}).
+// It never authors slide layout/content directly — the client applies each
+// action via existing store functions (applyFontToAllSlides, AIPPT(), etc.),
+// exactly mirroring how /aippt's streamed slides are applied today. This keeps
+// generation quality/consistency owned by the proven client-side pipeline,
+// not by raw LLM output.
+
+tools.post('/agent', async (c) => {
+	const body = await c.req.json().catch(() => ({}))
+	const parsed = agentSchema.safeParse(body)
+	if (!parsed.success) return c.json({ state: -1, message: 'Invalid body' }, 400)
+
+	const sessionId = requireSession(c)
+	if (!sessionId) return c.json({ state: -1, message: 'Missing session' }, 401)
+
+	const jobId = crypto.randomUUID()
+
+	c.header('Content-Type', 'text/event-stream')
+	c.header('Cache-Control', 'no-cache')
+	c.header('Connection', 'keep-alive')
+
+	return stream(c, async (s) => {
+		const subscriber = await subscribeToJob(jobId)
+
+		const request = await createPoolRequest({
+			job_id: jobId,
+			session_id: sessionId,
+			status: 'pending',
+			params: {
+				type: 'agent',
+				message: parsed.data.message,
+				deckSummary: parsed.data.deckSummary,
+				stream_mode: 'raw',
+			},
+		})
+		await QueueClient.enqueueJob(jobId, {
+			request_id: request.id,
+			session_id: sessionId,
+			type: 'agent',
+			message: parsed.data.message,
+			deckSummary: parsed.data.deckSummary,
+			stream_mode: 'raw',
+		})
+
+		await readJobStream(subscriber, (text) => {
+			// JSONL: one action (or {tool:'_reply', args:{text}}) per line
+			s.write(text + '\n').catch(() => {})
+		}, 30000) // single-turn tool-call-or-reply, no need for the long idle window
 	})
 })
 
@@ -218,7 +286,6 @@ tools.post('/ai_writing', async (c) => {
 
 tools.post('/img_search', (c) => {
 	// PPTist expects { data: [...], total: number }
-	// Stub until a real image search provider is wired (V2)
 	return c.json({ data: [], total: 0 })
 })
 

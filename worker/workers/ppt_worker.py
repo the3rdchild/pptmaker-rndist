@@ -71,14 +71,11 @@ def _dispatch(job_type: str, job_id: str, request: dict, params: dict):
     elif job_type == "deck":
         from services.deck_service import process
         process(ctx)
-    elif job_type == "slide":
-        from services.slide_service import process
+    elif job_type == "writing":
+        from services.writing_service import process
         process(ctx)
     elif job_type == "agent":
         from services.agent_service import process
-        process(ctx)
-    elif job_type == "writing":
-        from services.writing_service import process
         process(ctx)
     else:
         raise ValueError(f"Unknown job type: {job_type}")

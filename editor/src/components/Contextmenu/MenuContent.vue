@@ -47,7 +47,7 @@ $subMenuWidth: 120px;
 .menu-content {
   width: $menuWidth;
   padding: 5px 0;
-  background: #fff;
+  background: $lightGray;
   border: 1px solid $borderColor;
   box-shadow: $boxShadow;
   border-radius: $borderRadius;
@@ -56,13 +56,13 @@ $subMenuWidth: 120px;
 }
 .menu-item {
   padding: 0 20px;
-  color: #333;
+  color: $textColor;
   font-size: 12px;
   transition: all $transitionDelayFast;
   white-space: nowrap;
   height: $menuHeight;
   line-height: $menuHeight;
-  background-color: #fff;
+  background-color: $lightGray;
   cursor: pointer;
 
   &:not(.disable):hover > .menu-item-content > .sub-menu {
@@ -81,13 +81,13 @@ $subMenuWidth: 120px;
     height: 1px;
     overflow: hidden;
     margin: 5px;
-    background-color: #e5e5e5;
+    background-color: $borderColor;
     line-height: 0;
     padding: 0;
   }
 
   &.disable {
-    color: #b1b1b1;
+    color: #5c5d75;
     cursor: no-drop;
   }
 }
@@ -104,7 +104,7 @@ $subMenuWidth: 120px;
     height: 8px;
     border-width: 1px;
     border-style: solid;
-    border-color: #666 #666 transparent transparent;
+    border-color: #9a9bb5 #9a9bb5 transparent transparent;
     position: absolute;
     right: 0;
     top: 50%;
@@ -124,7 +124,7 @@ $subMenuWidth: 120px;
   }
 
   .sub-text {
-    color: #666;
+    color: #9a9bb5;
     opacity: 0.6;
   }
   .sub-menu {

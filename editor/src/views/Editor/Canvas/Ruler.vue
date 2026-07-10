@@ -95,7 +95,7 @@ const markerSize = computed(() => {
 }
 .h {
   position: absolute;
-  background-color: #fff;
+  background-color: $lightGray;
   border: 1px solid $borderColor;
   height: 20px;
   top: 5px;
@@ -133,7 +133,7 @@ const markerSize = computed(() => {
       position: absolute;
       right: 0;
       bottom: 0;
-      background-color: #999;
+      background-color: #7a7b95;
     }
     &::before {
       content: '';
@@ -142,13 +142,13 @@ const markerSize = computed(() => {
       position: absolute;
       right: 50%;
       bottom: 0;
-      background-color: #999;
+      background-color: #7a7b95;
     }
   }
 }
 .v {
   position: absolute;
-  background-color: #fff;
+  background-color: $lightGray;
   border: 1px solid $borderColor;
   width: 20px;
   left: 5px;
@@ -183,7 +183,7 @@ const markerSize = computed(() => {
       position: absolute;
       bottom: 0;
       right: 0;
-      background-color: #999;
+      background-color: #7a7b95;
     }
     &::before {
       content: '';
@@ -192,7 +192,7 @@ const markerSize = computed(() => {
       position: absolute;
       bottom: 50%;
       right: 0;
-      background-color: #999;
+      background-color: #7a7b95;
     }
   }
 }

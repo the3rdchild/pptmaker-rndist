@@ -104,56 +104,29 @@ export async function patchDeck(
 	return unwrap<DeckRow>(res)
 }
 
-// ── Generate (AI jobs) ──
+// ── Agent chat (structured action stream) ──
+//
+// Mirrors editor/src/services/index.ts's api.Agent() — same backend endpoint
+// (/api/v1/tools/agent), same JSONL-over-fetch-stream contract. NOT the old
+// job-queue+SSE pattern below (that targeted /api/v1/generate/*, which no
+// longer exists — the whole Flow C job-queue module was removed).
 
-export type JobResult = { jobId: string; statusURL: string; streamURL: string }
+export type AgentAction = { tool: string; args: Record<string, unknown> }
 
-export async function submitOutline(
+export async function streamAgent(
 	token: string,
-	body: { prompt: string; slideCount?: number; language?: string; title?: string },
-): Promise<JobResult> {
-	const res = await fetch(`${API_BASE}/api/v1/generate/outline`, {
+	body: { message: string; deckSummary?: unknown },
+): Promise<{ state: -1; message: string } | Response> {
+	const res = await fetch(`${API_BASE}/api/v1/tools/agent`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
 		body: JSON.stringify(body),
 	})
-	return unwrap<JobResult>(res)
-}
-
-export async function submitDeckGen(
-	token: string,
-	body: { outline: Record<string, unknown>; theme?: Record<string, unknown>; textDensity?: string; language?: string; title?: string },
-): Promise<JobResult> {
-	const res = await fetch(`${API_BASE}/api/v1/generate/deck`, {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
-		body: JSON.stringify(body),
-	})
-	return unwrap<JobResult>(res)
-}
-
-export async function submitSlideGen(
-	token: string,
-	body: { prompt: string; layoutHint?: string; theme?: Record<string, unknown> },
-): Promise<JobResult> {
-	const res = await fetch(`${API_BASE}/api/v1/generate/slide`, {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
-		body: JSON.stringify(body),
-	})
-	return unwrap<JobResult>(res)
-}
-
-export async function submitAgent(
-	token: string,
-	body: { message: string; deckId?: string; deck?: Record<string, unknown> },
-): Promise<JobResult> {
-	const res = await fetch(`${API_BASE}/api/v1/generate/agent`, {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
-		body: JSON.stringify(body),
-	})
-	return unwrap<JobResult>(res)
+	const contentType = res.headers.get('content-type') || ''
+	if (!contentType.includes('text/event-stream')) {
+		return res.json().catch(() => ({ state: -1, message: 'Request failed' }))
+	}
+	return res
 }
 
 // ── Status polling ──

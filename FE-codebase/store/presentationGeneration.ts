@@ -90,6 +90,18 @@ interface PresentationGenerationState {
         state.presentationData.slides.splice(idx + 1, 0, clone);
         state.presentationData.slides = reindex(state.presentationData.slides);
       },
+      reorderSlide: (
+        state,
+        action: PayloadAction<{ fromIndex: number; toIndex: number }>
+      ) => {
+        if (!state.presentationData) return;
+        const { fromIndex, toIndex } = action.payload;
+        const slides = state.presentationData.slides;
+        if (!slides[fromIndex]) return;
+        const [moved] = slides.splice(fromIndex, 1);
+        slides.splice(toIndex, 0, moved);
+        state.presentationData.slides = reindex(slides);
+      },
     },
   });
 
@@ -99,5 +111,6 @@ interface PresentationGenerationState {
     addSlide,
     deleteSlide,
     duplicateSlide,
+    reorderSlide,
   } = presentationSlice.actions;
 export default presentationSlice.reducer;

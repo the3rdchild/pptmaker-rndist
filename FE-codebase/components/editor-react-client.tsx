@@ -6,6 +6,7 @@ import { useDispatch, useSelector } from "react-redux";
 import type { RootState, AppDispatch } from "@/store/editorStore";
 import {
   setPresentationData,
+  updateSlideUi,
   addSlide,
   deleteSlide,
   duplicateSlide,
@@ -16,6 +17,7 @@ import { getDeck, saveDeck } from "@/lib/api";
 import { normalizeBackendAssetUrls } from "@/utils/api";
 import { Toaster } from "@/components/ui/sonner";
 import SlideSidebar from "@/components/editor-react/slide-sidebar";
+import InsertToolbar from "@/components/editor-react/insert-toolbar";
 
 // Konva is client-only — must not SSR.
 const TemplateV2KonvaSlide = dynamic(
@@ -147,6 +149,9 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
     dispatch(deleteSlide(i));
     if (i <= activeIndex) setActiveIndex(Math.max(0, activeIndex - 1));
   };
+  const handleInsert = (ui: Record<string, unknown>) => {
+    dispatch(updateSlideUi({ index: safeActive, ui }));
+  };
 
   if (loading) {
     return (
@@ -198,6 +203,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
             <p className="text-zinc-400">No slide selected.</p>
           )}
         </div>
+        <InsertToolbar activeUi={activeUi} onInsert={handleInsert} />
       </div>
       <Toaster />
     </div>

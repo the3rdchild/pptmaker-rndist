@@ -44,3 +44,7 @@ _reference-pptist/
 # misc
 .zcode/
 .claude/
+.playwright-mcp/
+
+# local verification screenshots
+editor-react-v*.png

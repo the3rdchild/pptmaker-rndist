@@ -47,4 +47,4 @@ _reference-pptist/
 .playwright-mcp/
 
 # local verification screenshots
-editor-react-v*.png
+editor-react-*.png

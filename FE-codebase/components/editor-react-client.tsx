@@ -4,12 +4,18 @@ import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useDispatch, useSelector } from "react-redux";
 import type { RootState, AppDispatch } from "@/store/editorStore";
-import { setPresentationData } from "@/store/presentationGeneration";
+import {
+  setPresentationData,
+  addSlide,
+  deleteSlide,
+  duplicateSlide,
+} from "@/store/presentationGeneration";
 import type { PresentationData } from "@/store/presentationGeneration";
 import { useSessionStore } from "@/store/session.store";
 import { getDeck, saveDeck } from "@/lib/api";
 import { normalizeBackendAssetUrls } from "@/utils/api";
 import { Toaster } from "@/components/ui/sonner";
+import SlideSidebar from "@/components/editor-react/slide-sidebar";
 
 // Konva is client-only — must not SSR.
 const TemplateV2KonvaSlide = dynamic(
@@ -20,14 +26,11 @@ const TemplateV2KonvaSlide = dynamic(
   { ssr: false }
 );
 
-type Layout = Record<string, unknown>;
-
-// Load a layout from the local Presenton template pack as the starting slide.
-async function loadDefaultLayout(): Promise<Layout> {
+async function loadDefaultLayout(): Promise<Record<string, unknown>> {
   const res = await fetch("/templates/general/template.json");
   const template = await res.json();
-  const layouts = (template.layouts ?? []) as Layout[];
-  return layouts[0] ?? {};
+  const layouts = (template.layouts ?? []) as Record<string, unknown>[];
+  return normalizeBackendAssetUrls(layouts[0] ?? {});
 }
 
 function adaptDeckToPresentation(
@@ -35,10 +38,6 @@ function adaptDeckToPresentation(
   payload: Record<string, unknown> | null
 ): PresentationData | null {
   if (!payload) return null;
-  // The existing PPTist payload schema is {slides:[...]} but with a different
-  // element model. For the vertical slice we only drive slides that already
-  // carry a Presenton `ui` layout. If none do, return null so we fall back to
-  // a default template layout.
   const rawSlides = Array.isArray(payload.slides) ? payload.slides : [];
   const slides = rawSlides
     .map((s) => {
@@ -64,8 +63,9 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [initialLayout, setInitialLayout] = useState<Layout | null>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isFirstSave = useRef(true);
 
   // Load deck → init Redux presentationData (or fall back to default template).
   useEffect(() => {
@@ -81,19 +81,14 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
         if (cancelled) return;
         if (adapted && adapted.slides.length > 0) {
           dispatch(setPresentationData(adapted));
-          setInitialLayout(adapted.slides[0].ui as Layout);
         } else {
-          // Empty deck: seed with the first template layout so the canvas
-          // isn't blank.
           const layout = await loadDefaultLayout();
           if (cancelled) return;
-          const normalized = normalizeBackendAssetUrls(layout);
-          setInitialLayout(normalized);
           dispatch(
             setPresentationData({
               id: deckId,
               title: deck.title,
-              slides: [{ ui: normalized }],
+              slides: [{ ui: layout }],
             })
           );
         }
@@ -109,10 +104,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
     };
   }, [deckId, token, dispatch]);
 
-  // Persist edits back to the API (debounced) whenever the slide UI changes.
-  // Skip the first run (initial load) so we don't immediately write back what
-  // we just fetched.
-  const isFirstSave = useRef(true);
+  // Persist edits back to the API (debounced) whenever the deck changes.
   useEffect(() => {
     if (!presentationData || !token) return;
     if (isFirstSave.current) {
@@ -121,8 +113,6 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
     }
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
-      const slide0 = presentationData.slides[0];
-      if (!slide0?.ui) return;
       try {
         await saveDeck(token, deckId, {
           title: presentationData.title ?? "Untitled",
@@ -140,6 +130,24 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
     };
   }, [presentationData, token, deckId]);
 
+  // Keep activeIndex in bounds after delete.
+  const slides = presentationData?.slides ?? [];
+  const safeActive = Math.min(activeIndex, Math.max(0, slides.length - 1));
+  const activeUi = slides[safeActive]?.ui ?? null;
+
+  const handleAdd = (layout: Record<string, unknown>) => {
+    dispatch(addSlide({ ui: layout, atIndex: safeActive + 1 }));
+    setActiveIndex(safeActive + 1);
+  };
+  const handleDuplicate = (i: number) => {
+    dispatch(duplicateSlide(i));
+    setActiveIndex(i + 1);
+  };
+  const handleDelete = (i: number) => {
+    dispatch(deleteSlide(i));
+    if (i <= activeIndex) setActiveIndex(Math.max(0, activeIndex - 1));
+  };
+
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center text-zinc-400">
@@ -154,13 +162,6 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
       </div>
     );
   }
-  if (!initialLayout) {
-    return (
-      <div className="flex h-screen items-center justify-center text-zinc-400">
-        No slide to display.
-      </div>
-    );
-  }
 
   return (
     <div className="flex h-screen flex-col bg-zinc-900">
@@ -172,15 +173,30 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
           RnD React editor · Presenton/Konva
         </span>
       </header>
-      <div className="flex flex-1 items-center justify-center overflow-auto p-6">
-        <div className="shadow-2xl">
-          <TemplateV2KonvaSlide
-            layout={initialLayout as never}
-            isEditMode
-            slideId={null}
-            presentationId={deckId}
-            slideIndex={0}
-          />
+      <div className="flex flex-1 overflow-hidden">
+        <SlideSidebar
+          slides={slides}
+          activeIndex={safeActive}
+          onSelect={setActiveIndex}
+          onAdd={handleAdd}
+          onDuplicate={handleDuplicate}
+          onDelete={handleDelete}
+        />
+        <div className="flex flex-1 items-center justify-center overflow-auto p-6">
+          {activeUi ? (
+            <div className="shadow-2xl">
+              <TemplateV2KonvaSlide
+                key={safeActive}
+                layout={activeUi as never}
+                isEditMode
+                slideId={null}
+                presentationId={deckId}
+                slideIndex={safeActive}
+              />
+            </div>
+          ) : (
+            <p className="text-zinc-400">No slide selected.</p>
+          )}
         </div>
       </div>
       <Toaster />

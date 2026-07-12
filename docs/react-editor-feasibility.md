@@ -1,6 +1,6 @@
-# RnD: Can the PPTist (Vue) editor be replaced by a React editor?
+# Feasibility: Can the PPTist (Vue) editor be replaced by a React editor?
 
-**Status:** RnD feasibility report — for handoff to the dev team
+**Status:** Feasibility report
 **Date:** 2026-07-11
 **Scope:** Whether the Vue/PPTist slide editor can be replaced by a React editor of comparable capability, while keeping the Next.js shell + Hono API + Python/DeepInfra worker.
 **TL;DR answer:** **Yes, it is possible — but NOT as a drop-in fork of any single existing repo.** The realistic path is a **hybrid build** (estimated 3–6 dev-months for a team). There is exactly one strong foundation to start from (Presenton), with well-defined gaps to fill. Detailed below.

@@ -16,5 +16,5 @@ export enum MixpanelEvent {
 }
 
 export function trackEvent(_event: MixpanelEvent | string, _properties?: Record<string, unknown>): void {
-  // No-op stub — analytics disabled in the RnD prototype.
+  // No-op — analytics not wired.
 }

@@ -4,9 +4,9 @@
 // model/element-model.ts) — the agent only supplies WHAT to change, this
 // module (and the manual toolbar code it's copied from) decides HOW.
 //
-// Known limitation: this schema (Presenton's Template V2 "ui" layout) has
-// no first-class deck-wide "theme" concept — set_theme below is a best-effort
-// approximation (background + font color only), not a full theme system.
+// Known limitation: the Template V2 "ui" layout has no first-class deck-wide
+// "theme" concept — set_theme below is a best-effort approximation (background
+// + font color only), not a full theme system.
 
 import { mergeFont } from "@/components/slide-editor/model/element-model";
 import type { SlideData } from "@/store/presentationGeneration";

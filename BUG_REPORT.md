@@ -1,6 +1,6 @@
 # ai-ppt-maker — Bug Audit Report
 
-Date: 2026-07-10 · Audited by: Claude Code (full source scan + live testing against the running Docker stack)
+Date: 2026-07-10 · Full source scan + live testing against the running Docker stack
 
 Every finding below was verified by reading the actual code, and where possible by exercising the running API (`http://localhost:8081`). Findings are grouped by severity. Each one has: what's wrong, where, proof, and how to fix.
 

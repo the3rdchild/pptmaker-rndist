@@ -135,7 +135,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
           },
         } as unknown as Parameters<typeof saveDeck>[2]);
       } catch {
-        // Swallow — toast noise not needed for RnD slice.
+        // Swallow — save errors are non-critical here.
       }
     }, 1500);
     return () => {
@@ -187,7 +187,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
         const parts = [background && "background", fontColor && "font color"].filter(Boolean);
         let msg = `Updated ${parts.join(" and ")} across all slides.`;
         if (action.args.accent_color) {
-          msg += " (Accent color isn't automated yet in this prototype — only background and font color are applied.)";
+          msg += " (Accent color isn't automated yet — only background and font color are applied.)";
         }
         return msg;
       }
@@ -226,7 +226,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
         return `Moved slide ${from} to position ${to}.`;
       }
       case "create_deck":
-        return "Generating a whole new deck from a topic isn't wired up in this prototype yet — try editing the current one instead.";
+        return "Generating a whole new deck from a topic isn't wired up yet — try editing the current one instead.";
       default:
         return `Unknown action: ${action.tool}`;
     }
@@ -267,7 +267,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
             AI Assistant
           </button>
           <span className="text-xs text-zinc-500">
-            RnD React editor · Presenton/Konva
+            React editor · Konva
           </span>
         </div>
       </header>

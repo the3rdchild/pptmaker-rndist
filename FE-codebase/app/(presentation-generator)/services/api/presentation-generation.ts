@@ -4,7 +4,7 @@ export const PresentationGenerationApi = {
     limit?: number;
     icon_weight?: string;
   }): Promise<string[]> {
-    // Stub: icon search backend not wired in the RnD prototype.
+    // Stub: icon search backend not wired yet.
     return [];
   },
 };

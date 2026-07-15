@@ -198,9 +198,20 @@ export function updateSlideText(
   }
   if (candidates.length === 0) return null;
 
+  function runFontSize(el: AnyRecord): number {
+    // Font size lives on runs[0].font.size (Presenton layout) or el.font.size
+    if (isRecord(el.font) && typeof el.font.size === "number") return el.font.size;
+    const runs = Array.isArray(el.runs) ? el.runs : [];
+    const first = runs.find(isRecord);
+    if (first && isRecord(first.font) && typeof first.font.size === "number") {
+      return first.font.size;
+    }
+    return 0;
+  }
+
   const target_el =
     target === "title"
-      ? candidates.reduce((a, b) => (((isRecord(a.font) ? a.font.size : 0) as number) >= ((isRecord(b.font) ? b.font.size : 0) as number) ? a : b))
+      ? candidates.reduce((a, b) => (runFontSize(a) >= runFontSize(b) ? a : b))
       : candidates.reduce((a, b) => (elementArea(a) >= elementArea(b) ? a : b));
 
   return walkUi(ui, (el) => (el === target_el ? setRunsText(el, newText) : el));

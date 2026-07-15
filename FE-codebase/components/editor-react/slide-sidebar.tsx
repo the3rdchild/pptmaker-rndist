@@ -39,6 +39,7 @@ export interface SlideSidebarProps {
   activeIndex: number;
   onSelect: (index: number) => void;
   onAdd: (layout: Record<string, unknown>) => void;
+  onAddAt: (index: number, layout?: Record<string, unknown>) => void;
   onDuplicate: (index: number) => void;
   onDelete: (index: number) => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
@@ -49,6 +50,7 @@ export default function SlideSidebar({
   activeIndex,
   onSelect,
   onAdd,
+  onAddAt,
   onDuplicate,
   onDelete,
   onReorder,
@@ -79,16 +81,19 @@ export default function SlideSidebar({
         >
           <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
             {slides.map((slide, i) => (
-              <SortableSlide
-                key={i}
-                id={i}
-                slide={slide}
-                isActive={i === activeIndex}
-                canDelete={slides.length > 1}
-                onSelect={() => onSelect(i)}
-                onDuplicate={() => onDuplicate(i)}
-                onDelete={() => onDelete(i)}
-              />
+              <div key={i}>
+                {i === 0 && <InsertSlot onAdd={() => onAddAt(0)} />}
+                <SortableSlide
+                  id={i}
+                  slide={slide}
+                  isActive={i === activeIndex}
+                  canDelete={slides.length > 1}
+                  onSelect={() => onSelect(i)}
+                  onDuplicate={() => onDuplicate(i)}
+                  onDelete={() => onDelete(i)}
+                />
+                <InsertSlot onAdd={() => onAddAt(i + 1)} />
+              </div>
             ))}
           </SortableContext>
         </DndContext>
@@ -214,6 +219,24 @@ function SortableSlide({
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+function InsertSlot({ onAdd }: { onAdd: () => void }) {
+  return (
+    <div className="group/insert relative flex h-3 items-center justify-center">
+      <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-indigo-500 opacity-0 transition-opacity group-hover/insert:opacity-100" />
+      <button
+        className="relative z-10 flex h-4 w-4 scale-75 items-center justify-center rounded-full bg-indigo-500 text-white opacity-0 transition-all group-hover/insert:scale-100 group-hover/insert:opacity-100 hover:bg-indigo-400"
+        title="Insert slide here"
+        onClick={(e) => {
+          e.stopPropagation();
+          onAdd();
+        }}
+      >
+        <Plus size={10} />
+      </button>
     </div>
   );
 }

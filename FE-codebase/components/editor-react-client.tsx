@@ -203,6 +203,15 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
     dispatch(addSlide({ ui: layout, atIndex: safeActive + 1 }));
     setActiveIndex(safeActive + 1);
   };
+  const handleAddAt = (index: number, layout?: Record<string, unknown>) => {
+    dispatch(
+      addSlide({
+        ui: layout ?? { id: "blank", components: [], elements: [] },
+        atIndex: index,
+      })
+    );
+    setActiveIndex(index);
+  };
   const handleDuplicate = (i: number) => {
     dispatch(duplicateSlide(i));
     setActiveIndex(i + 1);
@@ -419,6 +428,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
           activeIndex={safeActive}
           onSelect={setActiveIndex}
           onAdd={handleAdd}
+          onAddAt={handleAddAt}
           onDuplicate={handleDuplicate}
           onDelete={handleDelete}
           onReorder={handleReorder}

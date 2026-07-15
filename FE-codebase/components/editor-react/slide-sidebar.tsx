@@ -2,7 +2,21 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { ChevronRight, Copy, Plus, Trash2, X } from "lucide-react";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { ChevronRight, Copy, GripVertical, Plus, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { normalizeBackendAssetUrls } from "@/utils/api";
 
@@ -27,6 +41,7 @@ export interface SlideSidebarProps {
   onAdd: (layout: Record<string, unknown>) => void;
   onDuplicate: (index: number) => void;
   onDelete: (index: number) => void;
+  onReorder: (fromIndex: number, toIndex: number) => void;
 }
 
 export default function SlideSidebar({
@@ -36,70 +51,47 @@ export default function SlideSidebar({
   onAdd,
   onDuplicate,
   onDelete,
+  onReorder,
 }: SlideSidebarProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+  );
+
+  const handleDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const from = Number(active.id);
+    const to = Number(over.id);
+    onReorder(from, to);
+  };
+
+  const itemIds = slides.map((_, i) => i);
 
   return (
     <div className="flex h-full shrink-0">
       <aside className="flex h-full w-[150px] shrink-0 flex-col border-r border-zinc-800 bg-zinc-950">
       <div className="flex-1 space-y-2 overflow-y-auto p-2">
-        {slides.map((slide, i) => (
-          <div
-            key={i}
-            className={cn(
-              "group relative cursor-pointer overflow-hidden rounded-md border-2 transition-colors",
-              i === activeIndex
-                ? "border-indigo-500"
-                : "border-transparent hover:border-zinc-600"
-            )}
-            style={{ width: THUMB_W + 8, height: THUMB_H + 8 }}
-            onClick={() => onSelect(i)}
-          >
-            <div
-              className="pointer-events-none origin-top-left bg-white"
-              style={{
-                width: 1280,
-                height: 720,
-                transform: `scale(${THUMB_SCALE})`,
-              }}
-            >
-              {slide.ui ? (
-                <ThumbnailSlide
-                  layout={slide.ui as never}
-                  isEditMode={false}
-                  slideIndex={i}
-                />
-              ) : null}
-            </div>
-            <span className="absolute left-1 top-1 rounded bg-black/60 px-1 text-[10px] text-white">
-              {i + 1}
-            </span>
-            <div className="absolute bottom-0 right-0 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-              <button
-                className="rounded bg-black/70 p-1 text-zinc-300 hover:text-white"
-                title="Duplicate"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDuplicate(i);
-                }}
-              >
-                <Copy size={10} />
-              </button>
-              {slides.length > 1 && (
-                <button
-                  className="rounded bg-black/70 p-1 text-zinc-300 hover:text-red-400"
-                  title="Delete"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete(i);
-                  }}
-                >
-                  <Trash2 size={10} />
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
+            {slides.map((slide, i) => (
+              <SortableSlide
+                key={i}
+                id={i}
+                slide={slide}
+                isActive={i === activeIndex}
+                canDelete={slides.length > 1}
+                onSelect={() => onSelect(i)}
+                onDuplicate={() => onDuplicate(i)}
+                onDelete={() => onDelete(i)}
+              />
+            ))}
+          </SortableContext>
+        </DndContext>
         <div
           className="flex shrink-0 overflow-hidden rounded-md border border-zinc-700 bg-zinc-900"
           style={{ width: THUMB_W + 8, height: THUMB_H + 8 }}
@@ -135,6 +127,99 @@ export default function SlideSidebar({
           onClose={() => setPickerOpen(false)}
         />
       )}
+    </div>
+  );
+}
+
+function SortableSlide({
+  id,
+  slide,
+  isActive,
+  canDelete,
+  onSelect,
+  onDuplicate,
+  onDelete,
+}: {
+  id: number;
+  slide: { ui?: Record<string, unknown> | null | undefined };
+  isActive: boolean;
+  canDelete: boolean;
+  onSelect: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "group relative cursor-pointer overflow-hidden rounded-md border-2 transition-colors",
+        isActive
+          ? "border-indigo-500"
+          : "border-transparent hover:border-zinc-600",
+        isDragging && "opacity-50 z-50"
+      )}
+      style={{
+        width: THUMB_W + 8,
+        height: THUMB_H + 8,
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
+      onClick={onSelect}
+    >
+      <div
+        className="pointer-events-none origin-top-left bg-white"
+        style={{
+          width: 1280,
+          height: 720,
+          transform: `scale(${THUMB_SCALE})`,
+        }}
+      >
+        {slide.ui ? (
+          <ThumbnailSlide
+            layout={slide.ui as never}
+            isEditMode={false}
+            slideIndex={id}
+          />
+        ) : null}
+      </div>
+      <span className="absolute left-1 top-1 rounded bg-black/60 px-1 text-[10px] text-white">
+        {id + 1}
+      </span>
+      {/* Drag handle — visible on hover */}
+      <div
+        className="absolute left-0 top-0 flex h-full w-4 cursor-grab items-center justify-center bg-gradient-to-r from-black/40 to-transparent opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical size={10} className="text-white/70" />
+      </div>
+      <div className="absolute bottom-0 right-0 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+        <button
+          className="rounded bg-black/70 p-1 text-zinc-300 hover:text-white"
+          title="Duplicate"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDuplicate();
+          }}
+        >
+          <Copy size={10} />
+        </button>
+        {canDelete && (
+          <button
+            className="rounded bg-black/70 p-1 text-zinc-300 hover:text-red-400"
+            title="Delete"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+          >
+            <Trash2 size={10} />
+          </button>
+        )}
+      </div>
     </div>
   );
 }

@@ -85,8 +85,8 @@ interface PresentationGenerationState {
         if (!state.presentationData) return;
         const idx = action.payload;
         const src = state.presentationData.slides[idx];
-        if (!src) return;
-        const clone = { ui: structuredClone(src.ui) };
+        if (!src || !src.ui) return;
+        const clone = { ui: JSON.parse(JSON.stringify(src.ui)) };
         state.presentationData.slides.splice(idx + 1, 0, clone);
         state.presentationData.slides = reindex(state.presentationData.slides);
       },

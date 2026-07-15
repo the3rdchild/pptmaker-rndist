@@ -160,6 +160,10 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
     dispatch(deleteSlide(i));
     if (i <= activeIndex) setActiveIndex(Math.max(0, activeIndex - 1));
   };
+  const handleReorder = (from: number, to: number) => {
+    dispatch(reorderSlide({ fromIndex: from, toIndex: to }));
+    setActiveIndex(to);
+  };
   const handleInsert = (ui: Record<string, unknown>) => {
     dispatch(updateSlideUi({ index: safeActive, ui }));
   };
@@ -279,6 +283,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
           onAdd={handleAdd}
           onDuplicate={handleDuplicate}
           onDelete={handleDelete}
+          onReorder={handleReorder}
         />
         <div className="flex flex-1 items-center justify-center overflow-auto p-6">
           {activeUi ? (

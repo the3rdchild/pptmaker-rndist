@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useDispatch, useSelector } from "react-redux";
-import { Download, Play, Sparkles } from "lucide-react";
+import { Download, Play, Sparkles, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { RootState, AppDispatch } from "@/store/editorStore";
 import {
@@ -81,7 +81,54 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [showAiPanel, setShowAiPanel] = useState(false);
   const [presenting, setPresenting] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const canvasAreaRef = useRef<HTMLDivElement>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const resetView = () => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  };
+
+  // Native wheel listener (passive:false) so preventDefault works.
+  useEffect(() => {
+    const el = canvasAreaRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const delta = -e.deltaY * 0.002;
+        setZoom((z) => Math.min(3, Math.max(0.2, z + delta)));
+      } else if (zoomRef.current > 1) {
+        e.preventDefault();
+        setPan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }));
+      }
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  const onCanvasMouseDown = (e: React.MouseEvent) => {
+    if (zoom <= 1) return;
+    if (e.button !== 0 && e.button !== 1) return;
+    setIsPanning(true);
+    panStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+  };
+
+  const onCanvasMouseMove = (e: React.MouseEvent) => {
+    if (!isPanning) return;
+    setPan({
+      x: panStart.current.panX + (e.clientX - panStart.current.x),
+      y: panStart.current.panY + (e.clientY - panStart.current.y),
+    });
+  };
+
+  const onCanvasMouseUp = () => setIsPanning(false);
   const isFirstSave = useRef(true);
 
   // Load deck → init Redux presentationData (or fall back to default template).
@@ -376,10 +423,23 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
           onDelete={handleDelete}
           onReorder={handleReorder}
         />
-        <InsertToolbar activeUi={activeUi} onInsert={handleInsert} />
-        <div className="flex flex-1 items-center justify-center overflow-auto p-6">
+        <div
+          ref={canvasAreaRef}
+          className="relative flex flex-1 items-center justify-center overflow-hidden"
+          onMouseDown={onCanvasMouseDown}
+          onMouseMove={onCanvasMouseMove}
+          onMouseUp={onCanvasMouseUp}
+          onMouseLeave={onCanvasMouseUp}
+          style={{ cursor: isPanning ? "grabbing" : zoom > 1 ? "grab" : "default" }}
+        >
           {activeUi ? (
-            <div className="shadow-2xl">
+            <div
+              className="shadow-2xl"
+              style={{
+                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                transition: isPanning ? "none" : "transform 0.1s ease-out",
+              }}
+            >
               <TemplateV2KonvaSlide
                 key={safeActive}
                 layout={activeUi as never}
@@ -392,7 +452,40 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
           ) : (
             <p className="text-zinc-400">No slide selected.</p>
           )}
+
+          {/* Zoom controls bottom-right */}
+          <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-900/90 px-1.5 py-1 shadow-lg">
+            <button
+              className="rounded p-1 text-zinc-400 hover:text-white"
+              onClick={() => setZoom((z) => Math.max(0.2, z - 0.2))}
+              title="Zoom out"
+            >
+              <ZoomOut size={16} />
+            </button>
+            <button
+              className="min-w-[48px] rounded px-1 py-0.5 text-center text-xs text-zinc-300 hover:bg-zinc-800"
+              onClick={resetView}
+              title="Reset view"
+            >
+              {Math.round(zoom * 100)}%
+            </button>
+            <button
+              className="rounded p-1 text-zinc-400 hover:text-white"
+              onClick={() => setZoom((z) => Math.min(3, z + 0.2))}
+              title="Zoom in"
+            >
+              <ZoomIn size={16} />
+            </button>
+            <button
+              className="rounded p-1 text-zinc-400 hover:text-white"
+              onClick={resetView}
+              title="Fit to screen"
+            >
+              <Maximize2 size={14} />
+            </button>
+          </div>
         </div>
+        <InsertToolbar activeUi={activeUi} onInsert={handleInsert} />
         {showAiPanel && (
           <AIAssistantPanel
             slides={slides}

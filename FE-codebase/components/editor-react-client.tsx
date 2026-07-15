@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useDispatch, useSelector } from "react-redux";
-import { Play, Sparkles } from "lucide-react";
+import { Download, Play, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { RootState, AppDispatch } from "@/store/editorStore";
 import {
@@ -22,6 +22,7 @@ import { Toaster } from "@/components/ui/sonner";
 import SlideSidebar from "@/components/editor-react/slide-sidebar";
 import InsertToolbar from "@/components/editor-react/insert-toolbar";
 import PresentMode from "@/components/editor-react/present-mode";
+import { exportToPptx } from "@/components/editor-react/export-pptx";
 import AIAssistantPanel from "@/components/editor-react/ai-assistant-panel";
 import {
   applyFontToAllSlides,
@@ -166,6 +167,18 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
     dispatch(reorderSlide({ fromIndex: from, toIndex: to }));
     setActiveIndex(to);
   };
+  const handleExport = async () => {
+    const blob = await exportToPptx(
+      presentationData?.title ?? "Untitled Presentation",
+      slides
+    );
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${presentationData?.title ?? "presentation"}.pptx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
   const handleInsert = (ui: Record<string, unknown>) => {
     dispatch(updateSlideUi({ index: safeActive, ui }));
   };
@@ -279,6 +292,14 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
           >
             <Play className="h-3.5 w-3.5" />
             Present
+          </button>
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-1.5 rounded-md bg-[#1a1b2e] px-2.5 py-1 text-xs font-medium text-zinc-300 transition-colors hover:bg-[#2d2e42]"
+            title="Export to PPTX"
+          >
+            <Download className="h-3.5 w-3.5" />
+            PPTX
           </button>
         </div>
       </header>

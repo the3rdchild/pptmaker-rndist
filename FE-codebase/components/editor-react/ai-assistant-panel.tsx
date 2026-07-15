@@ -19,35 +19,82 @@ const SUGGESTIONS = [
   "Hapus slide terakhir",
 ];
 
-function buildDeckSummary(slides: SlideData[]) {
+function extractText(runs: unknown): string {
+  if (!Array.isArray(runs)) return "";
+  return runs
+    .map((r) => (typeof r === "object" && r !== null ? String((r as Record<string, unknown>).text ?? "") : ""))
+    .join("");
+}
+
+function describeElement(el: Record<string, unknown>): string {
+  const type = el.type;
+  switch (type) {
+    case "text": {
+      const text = extractText(el.runs).slice(0, 100);
+      return text ? `text: "${text}"` : "text (empty)";
+    }
+    case "text-list": {
+      const items = Array.isArray(el.items) ? el.items : [];
+      const labels = items
+        .map((it) => {
+          if (typeof it === "object" && it !== null) {
+            const t = extractText((it as Record<string, unknown>).runs);
+            return t ? `"${t.slice(0, 50)}"` : null;
+          }
+          return null;
+        })
+        .filter(Boolean);
+      return `text-list: [${labels.join(", ")}]`;
+    }
+    case "rectangle":
+    case "rect":
+      return `rectangle (${el.fill ? "filled" : "outline"})`;
+    case "ellipse":
+      return "ellipse";
+    case "image":
+      return "image";
+    case "chart":
+      return `chart (${typeof el.chart_type === "string" ? el.chart_type : "bar"})`;
+    case "table":
+      return "table";
+    case "line":
+      return "line";
+    case "svg":
+      return "svg/icon";
+    default:
+      return String(type ?? "unknown");
+  }
+}
+
+function buildDeckSummary(slides: SlideData[], activeIndex: number) {
   return {
+    activeSlideIndex: activeIndex,
     slideCount: slides.length,
     slides: slides.map((s, index) => {
       const ui = (s.ui ?? {}) as Record<string, unknown>;
-      const components = Array.isArray(ui.components) ? ui.components : [];
-      let elementCount = 0;
+      const components = Array.isArray(ui.components) ? (ui.components as Record<string, unknown>[]) : [];
+      const elementDescs: string[] = [];
       let title: string | undefined;
+
       for (const c of components) {
-        const els = Array.isArray((c as Record<string, unknown>)?.elements)
-          ? ((c as Record<string, unknown>).elements as unknown[])
-          : [];
-        elementCount += els.length;
-        if (!title) {
-          const headline = els.find(
-            (e) =>
-              typeof e === "object" &&
-              e !== null &&
-              (e as Record<string, unknown>).type === "text" &&
-              typeof (e as Record<string, unknown>).name === "string" &&
-              ((e as Record<string, unknown>).name as string).toLowerCase().includes("headline"),
-          ) as Record<string, unknown> | undefined;
-          const runs = headline?.runs;
-          if (Array.isArray(runs) && runs[0] && typeof (runs[0] as Record<string, unknown>).text === "string") {
-            title = ((runs[0] as Record<string, unknown>).text as string).slice(0, 60);
+        const els = Array.isArray(c.elements) ? (c.elements as Record<string, unknown>[]) : [];
+        for (const el of els) {
+          const desc = describeElement(el);
+          elementDescs.push(desc);
+          // First text element = title candidate
+          if (!title && el.type === "text") {
+            title = extractText(el.runs).slice(0, 80) || undefined;
           }
         }
       }
-      return { index, title, elementCount };
+
+      return {
+        index,
+        isActive: index === activeIndex,
+        title,
+        elementCount: elementDescs.length,
+        elements: elementDescs,
+      };
     }),
   };
 }
@@ -60,11 +107,12 @@ function summarizeArgs(args: Record<string, unknown>) {
 
 export interface AIAssistantPanelProps {
   slides: SlideData[];
+  activeIndex: number;
   onAction: (action: AgentAction) => Promise<string>;
   onClose: () => void;
 }
 
-export default function AIAssistantPanel({ slides, onAction, onClose }: AIAssistantPanelProps) {
+export default function AIAssistantPanel({ slides, activeIndex, onAction, onClose }: AIAssistantPanelProps) {
   const token = useSessionStore((s) => s.token);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -84,7 +132,7 @@ export default function AIAssistantPanel({ slides, onAction, onClose }: AIAssist
 
     let rawRes: Awaited<ReturnType<typeof streamAgent>>;
     try {
-      rawRes = await streamAgent(token, { message: msg, deckSummary: buildDeckSummary(slides) });
+      rawRes = await streamAgent(token, { message: msg, deckSummary: buildDeckSummary(slides, activeIndex) });
     } catch {
       setBusy(false);
       setMessages((m) => [...m, { role: "assistant", kind: "error", text: "Sorry, I couldn't reach the server. Please try again." }]);

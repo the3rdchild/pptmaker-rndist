@@ -489,6 +489,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
         {showAiPanel && (
           <AIAssistantPanel
             slides={slides}
+            activeIndex={safeActive}
             onAction={handleAgentAction}
             onClose={() => setShowAiPanel(false)}
           />

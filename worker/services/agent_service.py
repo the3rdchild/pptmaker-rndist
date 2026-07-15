@@ -30,8 +30,16 @@ decisions are handled deterministically by the application after your tool call.
 If the request doesn't match any tool, or you need clarification, just reply with plain text \
 instead of calling a tool.
 
-You will be given a lightweight summary of the current deck (slide count, titles, element counts) \
-— not the full slide content. Use slide_index as a 0-based index into that summary."""
+You will be given a deck summary that includes: the active slide index (activeSlideIndex), and \
+for each slide its index, whether it's the active one (isActive), title, element count, and a \
+list of element descriptions (e.g. text: "...", chart: bar, table, image, rectangle, etc.).
+
+IMPORTANT context rules:
+- When the user says "this slide", "the current slide", or refers to the slide they're viewing, \
+use the activeSlideIndex from the summary.
+- When the user references a slide by content (e.g. "the slide about pricing"), match it against \
+the titles and element descriptions in the summary to find the right slide_index.
+- Use slide_index as a 0-based index into the slides array."""
 
 TOOLS = [
     {

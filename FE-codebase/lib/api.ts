@@ -129,6 +129,22 @@ export async function streamAgent(
 	return res
 }
 
+export async function streamAipptDeck(
+	token: string,
+	body: { content: string; language?: string; style?: string },
+): Promise<{ state: -1; message: string } | Response> {
+	const res = await fetch(`${API_BASE}/api/v1/tools/aippt`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
+		body: JSON.stringify(body),
+	})
+	const contentType = res.headers.get('content-type') || ''
+	if (!contentType.includes('text/event-stream')) {
+		return res.json().catch(() => ({ state: -1, message: 'Request failed' }))
+	}
+	return res
+}
+
 // ── Status polling ──
 
 export type JobStatus = 'pending' | 'processing' | 'completed' | 'failed'

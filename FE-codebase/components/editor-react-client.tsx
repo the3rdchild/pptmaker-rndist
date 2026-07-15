@@ -16,7 +16,7 @@ import {
 } from "@/store/presentationGeneration";
 import type { PresentationData, SlideData } from "@/store/presentationGeneration";
 import { useSessionStore } from "@/store/session.store";
-import { getDeck, saveDeck, type AgentAction } from "@/lib/api";
+import { getDeck, saveDeck, streamAipptDeck, type AgentAction } from "@/lib/api";
 import { normalizeBackendAssetUrls } from "@/utils/api";
 import { Toaster } from "@/components/ui/sonner";
 import SlideSidebar from "@/components/editor-react/slide-sidebar";
@@ -24,6 +24,7 @@ import InsertToolbar from "@/components/editor-react/insert-toolbar";
 import PresentMode from "@/components/editor-react/present-mode";
 import { exportToPptx } from "@/components/editor-react/export-pptx";
 import AIAssistantPanel from "@/components/editor-react/ai-assistant-panel";
+import { mapAIPPTSlideToUi, type AIPPTSlide } from "@/components/editor-react/map-slide";
 import {
   applyFontToAllSlides,
   applyThemeToAllSlides,
@@ -244,8 +245,70 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
         dispatch(reorderSlide({ fromIndex: from, toIndex: to }));
         return `Moved slide ${from} to position ${to}.`;
       }
-      case "create_deck":
-        return "Generating a whole new deck from a topic isn't wired up yet — try editing the current one instead.";
+      case "create_deck": {
+        const topic = String(action.args.topic || action.args.content || "");
+        const language = action.args.language ? String(action.args.language) : undefined;
+        if (!topic) return "Please specify a topic to generate a deck about.";
+        if (!token) return "Session not ready — try again in a moment.";
+
+        const res = await streamAipptDeck(token, { content: topic, language });
+        if (!(res instanceof Response) || !res.body) {
+          return "Couldn't reach the generation service. Try again.";
+        }
+
+        // Clear existing slides first
+        if (presentationData) {
+          dispatch(setPresentationData({ ...presentationData, slides: [] }));
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buf = "";
+        let count = 0;
+
+        const readLoop = async () => {
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) {
+              if (buf.trim()) {
+                const ui = mapLine(buf.trim());
+                if (ui) {
+                  dispatch(addSlide({ ui }));
+                  count++;
+                }
+              }
+              break;
+            }
+            buf += decoder.decode(value, { stream: true });
+            const lines = buf.split("\n");
+            buf = lines.pop() || "";
+            for (const line of lines) {
+              const t = line.trim();
+              if (!t || t.startsWith("```")) continue;
+              const ui = mapLine(t);
+              if (ui) {
+                dispatch(addSlide({ ui }));
+                count++;
+                setActiveIndex(0);
+              }
+            }
+          }
+        };
+
+        const mapLine = (line: string): Record<string, unknown> | null => {
+          try {
+            const slide = JSON.parse(line) as AIPPTSlide;
+            return mapAIPPTSlideToUi(slide);
+          } catch {
+            return null;
+          }
+        };
+
+        await readLoop();
+        return count > 0
+          ? `Generated ${count} slides about "${topic}".`
+          : `No slides generated for "${topic}". Try a different prompt.`;
+      }
       default:
         return `Unknown action: ${action.tool}`;
     }

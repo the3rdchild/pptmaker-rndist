@@ -16,7 +16,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ChevronRight, Copy, GripVertical, Plus, Trash2, X } from "lucide-react";
+import { ChevronRight, Copy, Plus, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { normalizeBackendAssetUrls } from "@/utils/api";
 
@@ -155,7 +155,7 @@ function SortableSlide({
     <div
       ref={setNodeRef}
       className={cn(
-        "group relative cursor-pointer overflow-hidden rounded-md border-2 transition-colors",
+        "group relative cursor-grab overflow-hidden rounded-md border-2 transition-colors active:cursor-grabbing",
         isActive
           ? "border-indigo-500"
           : "border-transparent hover:border-zinc-600",
@@ -168,6 +168,8 @@ function SortableSlide({
         transition,
       }}
       onClick={onSelect}
+      {...attributes}
+      {...listeners}
     >
       <div
         className="pointer-events-none origin-top-left bg-white"
@@ -188,14 +190,6 @@ function SortableSlide({
       <span className="absolute left-1 top-1 rounded bg-black/60 px-1 text-[10px] text-white">
         {id + 1}
       </span>
-      {/* Drag handle — visible on hover */}
-      <div
-        className="absolute left-0 top-0 flex h-full w-4 cursor-grab items-center justify-center bg-gradient-to-r from-black/40 to-transparent opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing"
-        {...attributes}
-        {...listeners}
-      >
-        <GripVertical size={10} className="text-white/70" />
-      </div>
       <div className="absolute bottom-0 right-0 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
         <button
           className="rounded bg-black/70 p-1 text-zinc-300 hover:text-white"

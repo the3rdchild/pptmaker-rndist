@@ -376,6 +376,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
           onDelete={handleDelete}
           onReorder={handleReorder}
         />
+        <InsertToolbar activeUi={activeUi} onInsert={handleInsert} />
         <div className="flex flex-1 items-center justify-center overflow-auto p-6">
           {activeUi ? (
             <div className="shadow-2xl">
@@ -392,7 +393,6 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
             <p className="text-zinc-400">No slide selected.</p>
           )}
         </div>
-        <InsertToolbar activeUi={activeUi} onInsert={handleInsert} />
         {showAiPanel && (
           <AIAssistantPanel
             slides={slides}

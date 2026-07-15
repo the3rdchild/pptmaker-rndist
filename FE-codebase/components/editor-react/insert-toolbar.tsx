@@ -103,7 +103,7 @@ export default function InsertToolbar({ activeUi, onInsert }: InsertToolbarProps
   ];
 
   return (
-    <div className="relative flex h-full shrink-0 flex-col items-center gap-1 border-l border-zinc-800 bg-zinc-950 py-2 w-[52px]">
+    <div className="relative flex h-full shrink-0 flex-col items-center gap-1 border-r border-zinc-800 bg-zinc-950 py-2 w-[52px]">
       {tools.map((tool) => (
         <div key={tool.id} className="relative">
           <button

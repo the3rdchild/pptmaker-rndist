@@ -25,14 +25,15 @@ const writingSchema = z.object({
 })
 const agentSchema = z.object({
 	message: z.string(),
-	// Lightweight deck context — index/title/elementCount per slide, NOT full
-	// slide JSON. The LLM only needs to know what exists, never pixel-level data.
 	deckSummary: z.object({
+		activeSlideIndex: z.number().optional(),
 		slideCount: z.number(),
 		slides: z.array(z.object({
 			index: z.number(),
+			isActive: z.boolean().optional(),
 			title: z.string().optional(),
 			elementCount: z.number(),
+			elements: z.array(z.string()).optional(),
 		})),
 	}).optional(),
 })

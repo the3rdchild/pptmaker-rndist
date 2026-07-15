@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Bot, Loader2, Send, Trash2, User, X, Zap } from "lucide-react";
+import { Bot, FileText, Loader2, Send, Trash2, User, X, Zap } from "lucide-react";
+import { TEMPLATE_V2_SURFACE_SELECTED_EVENT } from "@/components/slide-editor/events/events";
 import { useSessionStore } from "@/store/session.store";
 import { streamAgent, type AgentAction } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -119,6 +120,29 @@ export default function AIAssistantPanel({ slides, activeIndex, onAction, onClos
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Track selected element via editor's custom event
+  const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      const sel = detail?.selection;
+      if (!sel) {
+        setSelectedLabel(null);
+        return;
+      }
+      if (sel.kind === "element") {
+        const name = sel.elementName || sel.elementType || "element";
+        setSelectedLabel(String(name));
+      } else if (sel.kind === "component") {
+        setSelectedLabel(sel.componentLabel || sel.componentId || "component");
+      } else {
+        setSelectedLabel(null);
+      }
+    };
+    window.addEventListener(TEMPLATE_V2_SURFACE_SELECTED_EVENT, handler);
+    return () => window.removeEventListener(TEMPLATE_V2_SURFACE_SELECTED_EVENT, handler);
+  }, []);
+
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages]);
@@ -215,6 +239,19 @@ export default function AIAssistantPanel({ slides, activeIndex, onAction, onClos
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
+      </div>
+
+      {/* Context indicator */}
+      <div className="flex items-center gap-1.5 border-b border-[#1e1e30] px-4 py-1.5">
+        <span className="rounded bg-[#1a1b2e] px-1.5 py-0.5 text-[10px] text-indigo-300">
+          Slide {activeIndex + 1}
+        </span>
+        {selectedLabel && (
+          <span className="flex max-w-[180px] items-center gap-1 truncate rounded bg-[#1a1b2e] px-1.5 py-0.5 text-[10px] text-zinc-400">
+            <FileText className="h-2.5 w-2.5 shrink-0" />
+            <span className="truncate">{selectedLabel}</span>
+          </span>
+        )}
       </div>
 
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">

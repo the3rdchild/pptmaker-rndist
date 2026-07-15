@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useDispatch, useSelector } from "react-redux";
-import { Sparkles } from "lucide-react";
+import { Play, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { RootState, AppDispatch } from "@/store/editorStore";
 import {
@@ -21,6 +21,7 @@ import { normalizeBackendAssetUrls } from "@/utils/api";
 import { Toaster } from "@/components/ui/sonner";
 import SlideSidebar from "@/components/editor-react/slide-sidebar";
 import InsertToolbar from "@/components/editor-react/insert-toolbar";
+import PresentMode from "@/components/editor-react/present-mode";
 import AIAssistantPanel from "@/components/editor-react/ai-assistant-panel";
 import {
   applyFontToAllSlides,
@@ -77,6 +78,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [showAiPanel, setShowAiPanel] = useState(false);
+  const [presenting, setPresenting] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFirstSave = useRef(true);
 
@@ -270,9 +272,14 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
             <Sparkles className="h-3.5 w-3.5" />
             AI Assistant
           </button>
-          <span className="text-xs text-zinc-500">
-            React editor · Konva
-          </span>
+          <button
+            onClick={() => setPresenting(true)}
+            className="flex items-center gap-1.5 rounded-md bg-[#1a1b2e] px-2.5 py-1 text-xs font-medium text-zinc-300 transition-colors hover:bg-[#2d2e42]"
+            title="Present"
+          >
+            <Play className="h-3.5 w-3.5" />
+            Present
+          </button>
         </div>
       </header>
       <div className="flex flex-1 overflow-hidden">
@@ -311,6 +318,13 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
         )}
       </div>
       <Toaster />
+      {presenting && (
+        <PresentMode
+          slides={slides}
+          startIndex={safeActive}
+          onClose={() => setPresenting(false)}
+        />
+      )}
     </div>
   );
 }

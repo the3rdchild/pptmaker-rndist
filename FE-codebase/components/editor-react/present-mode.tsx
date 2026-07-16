@@ -97,32 +97,40 @@ export default function PresentMode({
 
       {/* Controls */}
       <button
-        className="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
+        className="absolute right-4 top-4 rounded-full border border-white/15 bg-white/10 p-2 text-white/90 backdrop-blur transition-colors hover:bg-white/20 hover:text-white"
         onClick={onClose}
         title="Exit (Esc)"
       >
-        <X size={20} />
+        <X size={18} />
       </button>
-      <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-full bg-white/10 px-4 py-2 text-white">
+      <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-white backdrop-blur">
         <button
-          className="disabled:opacity-30"
+          className="rounded-full p-1 transition-colors hover:bg-white/15 disabled:opacity-30 disabled:hover:bg-transparent"
           onClick={prev}
           disabled={index === 0}
           title="Previous (←)"
         >
-          <ChevronLeft size={22} />
+          <ChevronLeft size={20} />
         </button>
-        <span className="min-w-[60px] text-center text-sm">
+        <span className="min-w-[56px] text-center text-sm tabular-nums text-white/90">
           {index + 1} / {total}
         </span>
         <button
-          className="disabled:opacity-30"
+          className="rounded-full p-1 transition-colors hover:bg-white/15 disabled:opacity-30 disabled:hover:bg-transparent"
           onClick={next}
           disabled={index === total - 1}
           title="Next (→)"
         >
-          <ChevronRight size={22} />
+          <ChevronRight size={20} />
         </button>
+      </div>
+
+      {/* Progress bar */}
+      <div className="absolute inset-x-0 bottom-0 h-0.5 bg-white/10">
+        <div
+          className="h-full bg-[var(--accent)] transition-[width] duration-300"
+          style={{ width: `${((index + 1) / Math.max(1, total)) * 100}%` }}
+        />
       </div>
     </div>
   );

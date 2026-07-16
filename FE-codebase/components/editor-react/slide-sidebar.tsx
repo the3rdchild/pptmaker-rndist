@@ -265,8 +265,12 @@ function LayoutPicker({
     })();
   }, []);
 
+  // Two columns of fixed-width cards; panel width = 2*card + gap + padding.
+  const cardW = 176;
+  const cardH = Math.round((cardW / 1280) * 720);
+
   return (
-    <div className="flex h-full w-[320px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-panel)]">
+    <div className="flex h-full w-[400px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-panel)]">
       <header className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-4 py-2.5">
         <div className="flex items-center gap-2">
           <LayoutTemplate size={14} className="text-[var(--accent-light)]" />
@@ -281,14 +285,14 @@ function LayoutPicker({
           <X size={14} />
         </button>
       </header>
-      <div className="grid flex-1 grid-cols-2 content-start gap-3 overflow-y-auto p-3">
+      <div className="grid flex-1 grid-cols-2 content-start justify-items-center gap-3 overflow-y-auto p-3">
         {layouts.map((layout, i) => {
-          const scale = 0.215;
+          const scale = cardW / 1280;
           return (
             <button
               key={i}
               className="group relative overflow-hidden rounded-lg bg-white ring-1 ring-[var(--border-strong)] transition-shadow hover:shadow-[var(--shadow-accent-glow)] hover:ring-[var(--accent)]"
-              style={{ width: 1280 * scale, height: 720 * scale }}
+              style={{ width: cardW, height: cardH }}
               onClick={() => onPick(normalizeBackendAssetUrls(layout))}
               title={String(layout.description ?? `Layout ${i + 1}`).slice(0, 80)}
             >

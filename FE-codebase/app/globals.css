@@ -25,15 +25,36 @@
 }
 
 :root {
+	/* Surfaces — darkest (canvas backdrop) → lightest (elevated controls) */
+	--bg-canvas: #0a0a12;
 	--bg-base: #0f0f1e;
-	--bg-panel: #1a1b2e;
+	--bg-panel: #13131f;
+	--bg-surface: #1a1b2e;
 	--bg-elevated: #2d2e42;
+
+	/* Accent */
 	--accent: #6c5ce7;
+	--accent-hover: #7d6ef0;
 	--accent-light: #a29bfe;
+	--accent-soft: rgba(108, 92, 231, 0.14);
+
+	/* Text */
 	--text-primary: #e4e4e7;
 	--text-secondary: #a1a1aa;
 	--text-muted: #71717a;
-	--border: #2d2e42;
+
+	/* Borders */
+	--border: #232336;
+	--border-strong: #2d2e42;
+
+	/* Elevation */
+	--shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.35);
+	--shadow-panel: 0 8px 28px rgba(0, 0, 0, 0.45);
+	--shadow-pop: 0 16px 48px rgba(0, 0, 0, 0.55), 0 4px 12px rgba(0, 0, 0, 0.35);
+	--shadow-slide:
+		0 24px 64px rgba(0, 0, 0, 0.55),
+		0 6px 18px rgba(0, 0, 0, 0.4);
+	--shadow-accent-glow: 0 0 0 1px rgba(108, 92, 231, 0.55), 0 4px 18px rgba(108, 92, 231, 0.3);
 }
 
 html,
@@ -77,4 +98,22 @@ body {
 .canvas-no-select {
 	user-select: none;
 	-webkit-user-select: none;
+}
+
+/* Editor canvas backdrop: subtle dot grid over the darkest surface */
+.editor-canvas-grid {
+	background-color: var(--bg-canvas);
+	background-image: radial-gradient(
+		circle,
+		rgba(228, 228, 231, 0.055) 1px,
+		transparent 1px
+	);
+	background-size: 24px 24px;
+}
+
+/* Slide frame on the canvas */
+.editor-slide-frame {
+	box-shadow: var(--shadow-slide);
+	border-radius: 2px;
+	outline: 1px solid rgba(255, 255, 255, 0.07);
 }

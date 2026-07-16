@@ -16,9 +16,10 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ChevronRight, Copy, Plus, Trash2, X } from "lucide-react";
+import { ChevronRight, Copy, LayoutTemplate, Plus, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { normalizeBackendAssetUrls } from "@/utils/api";
+import { ToolButton } from "@/components/editor-react/ui";
 
 const ThumbnailSlide = dynamic(
   () =>
@@ -28,7 +29,7 @@ const ThumbnailSlide = dynamic(
   { ssr: false }
 );
 
-const THUMB_SCALE = 0.094; // ~120px wide for a 1280px slide
+const THUMB_SCALE = 0.1; // 128px wide for a 1280px slide
 const THUMB_W = 1280 * THUMB_SCALE;
 const THUMB_H = 720 * THUMB_SCALE;
 
@@ -72,56 +73,51 @@ export default function SlideSidebar({
 
   return (
     <div className="flex h-full shrink-0">
-      <aside className="flex h-full w-[150px] shrink-0 flex-col border-r border-zinc-800 bg-zinc-950">
-      <div className="flex-1 space-y-2 overflow-y-auto p-2">
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
-            {slides.map((slide, i) => (
-              <div key={i}>
-                {i === 0 && <InsertSlot onAdd={() => onAddAt(0)} />}
-                <SortableSlide
-                  id={i}
-                  slide={slide}
-                  isActive={i === activeIndex}
-                  canDelete={slides.length > 1}
-                  onSelect={() => onSelect(i)}
-                  onDuplicate={() => onDuplicate(i)}
-                  onDelete={() => onDelete(i)}
-                />
-                <InsertSlot onAdd={() => onAddAt(i + 1)} />
-              </div>
-            ))}
-          </SortableContext>
-        </DndContext>
-        <div
-          className="flex shrink-0 overflow-hidden rounded-md border border-zinc-700 bg-zinc-900"
-          style={{ width: THUMB_W + 8, height: THUMB_H + 8 }}
-        >
+      <aside className="flex h-full w-[168px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-panel)]">
+        <div className="flex-1 overflow-y-auto px-3 py-2">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
+              {slides.map((slide, i) => (
+                <div key={i}>
+                  {i === 0 && <InsertSlot onAdd={() => onAddAt(0)} />}
+                  <SortableSlide
+                    id={i}
+                    slide={slide}
+                    isActive={i === activeIndex}
+                    canDelete={slides.length > 1}
+                    onSelect={() => onSelect(i)}
+                    onDuplicate={() => onDuplicate(i)}
+                    onDelete={() => onDelete(i)}
+                  />
+                  <InsertSlot onAdd={() => onAddAt(i + 1)} />
+                </div>
+              ))}
+            </SortableContext>
+          </DndContext>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5 border-t border-[var(--border)] p-2">
           <button
-            className="flex flex-1 items-center justify-center text-zinc-400 transition-colors hover:text-white"
+            className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg bg-[var(--bg-surface)] text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--accent-soft)] hover:text-[var(--accent-light)]"
             onClick={() => onAdd({ id: "blank", components: [], elements: [] })}
             title="Add blank slide"
           >
-            <Plus size={20} />
+            <Plus size={14} />
+            Add slide
           </button>
-          <button
-            className={cn(
-              "flex w-7 items-center justify-center border-l border-zinc-700 transition-colors",
-              pickerOpen
-                ? "bg-indigo-500/20 text-white"
-                : "text-zinc-400 hover:text-white"
-            )}
+          <ToolButton
+            variant="solid"
+            active={pickerOpen}
             onClick={() => setPickerOpen((v) => !v)}
             title="Pick a layout"
+            className="w-8"
           >
-            <ChevronRight size={14} className={cn("transition-transform", pickerOpen && "rotate-90")} />
-          </button>
+            <LayoutTemplate size={14} />
+          </ToolButton>
         </div>
-      </div>
       </aside>
       {pickerOpen && (
         <LayoutPicker
@@ -160,11 +156,11 @@ function SortableSlide({
     <div
       ref={setNodeRef}
       className={cn(
-        "group relative cursor-grab overflow-hidden rounded-md border-2 transition-colors active:cursor-grabbing",
+        "group relative mx-auto cursor-grab overflow-hidden rounded-lg transition-shadow active:cursor-grabbing",
         isActive
-          ? "border-indigo-500"
-          : "border-transparent hover:border-zinc-600",
-        isDragging && "opacity-50 z-50"
+          ? "shadow-[var(--shadow-accent-glow)] ring-2 ring-[var(--accent)]"
+          : "ring-1 ring-[var(--border-strong)] hover:ring-[var(--text-muted)]",
+        isDragging && "z-50 opacity-60"
       )}
       style={{
         width: THUMB_W + 8,
@@ -192,12 +188,19 @@ function SortableSlide({
           />
         ) : null}
       </div>
-      <span className="absolute left-1 top-1 rounded bg-black/60 px-1 text-[10px] text-white">
+      <span
+        className={cn(
+          "absolute bottom-1 left-1 rounded px-1 text-[10px] font-medium tabular-nums",
+          isActive
+            ? "bg-[var(--accent)] text-white"
+            : "bg-black/60 text-white/90"
+        )}
+      >
         {id + 1}
       </span>
-      <div className="absolute bottom-0 right-0 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+      <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
         <button
-          className="rounded bg-black/70 p-1 text-zinc-300 hover:text-white"
+          className="rounded-md bg-black/70 p-1 text-zinc-300 backdrop-blur transition-colors hover:text-white"
           title="Duplicate"
           onClick={(e) => {
             e.stopPropagation();
@@ -208,7 +211,7 @@ function SortableSlide({
         </button>
         {canDelete && (
           <button
-            className="rounded bg-black/70 p-1 text-zinc-300 hover:text-red-400"
+            className="rounded-md bg-black/70 p-1 text-zinc-300 backdrop-blur transition-colors hover:text-red-400"
             title="Delete"
             onClick={(e) => {
               e.stopPropagation();
@@ -225,10 +228,10 @@ function SortableSlide({
 
 function InsertSlot({ onAdd }: { onAdd: () => void }) {
   return (
-    <div className="group/insert relative flex h-3 items-center justify-center">
-      <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-indigo-500 opacity-0 transition-opacity group-hover/insert:opacity-100" />
+    <div className="group/insert relative mx-auto flex h-3 items-center justify-center" style={{ width: THUMB_W + 8 }}>
+      <div className="absolute inset-x-1 top-1/2 h-px -translate-y-1/2 bg-[var(--accent)] opacity-0 transition-opacity group-hover/insert:opacity-100" />
       <button
-        className="relative z-10 flex h-4 w-4 scale-75 items-center justify-center rounded-full bg-indigo-500 text-white opacity-0 transition-all group-hover/insert:scale-100 group-hover/insert:opacity-100 hover:bg-indigo-400"
+        className="relative z-10 flex h-4 w-4 scale-75 items-center justify-center rounded-full bg-[var(--accent)] text-white opacity-0 shadow-[var(--shadow-soft)] transition-all hover:bg-[var(--accent-hover)] group-hover/insert:scale-100 group-hover/insert:opacity-100"
         title="Insert slide here"
         onClick={(e) => {
           e.stopPropagation();
@@ -263,23 +266,28 @@ function LayoutPicker({
   }, []);
 
   return (
-    <div className="h-full w-[320px] shrink-0 border-r border-zinc-800 bg-zinc-950">
-      <header className="flex items-center justify-between border-b border-zinc-800 px-3 py-2">
-        <h2 className="text-xs font-medium text-zinc-300">Pick a layout</h2>
+    <div className="flex h-full w-[320px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-panel)]">
+      <header className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <LayoutTemplate size={14} className="text-[var(--accent-light)]" />
+          <h2 className="text-xs font-medium text-[var(--text-primary)]">
+            Pick a layout
+          </h2>
+        </div>
         <button
-          className="text-zinc-500 hover:text-white"
+          className="rounded-md p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
           onClick={onClose}
         >
-          <X size={16} />
+          <X size={14} />
         </button>
       </header>
-      <div className="grid grid-cols-2 gap-3 overflow-y-auto p-3" style={{ maxHeight: "calc(100vh - 48px)" }}>
+      <div className="grid flex-1 grid-cols-2 content-start gap-3 overflow-y-auto p-3">
         {layouts.map((layout, i) => {
-          const scale = 0.22;
+          const scale = 0.215;
           return (
             <button
               key={i}
-              className="overflow-hidden rounded-lg border border-zinc-700 bg-white transition-colors hover:border-indigo-500"
+              className="group relative overflow-hidden rounded-lg bg-white ring-1 ring-[var(--border-strong)] transition-shadow hover:shadow-[var(--shadow-accent-glow)] hover:ring-[var(--accent)]"
               style={{ width: 1280 * scale, height: 720 * scale }}
               onClick={() => onPick(normalizeBackendAssetUrls(layout))}
               title={String(layout.description ?? `Layout ${i + 1}`).slice(0, 80)}
@@ -298,6 +306,9 @@ function LayoutPicker({
                   slideIndex={0}
                 />
               </div>
+              <span className="pointer-events-none absolute inset-x-0 bottom-0 flex h-6 items-center justify-center bg-gradient-to-t from-black/70 to-transparent text-[10px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
+                Use layout
+              </span>
             </button>
           );
         })}

@@ -3,8 +3,18 @@
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useDispatch, useSelector } from "react-redux";
-import { Download, Play, Sparkles, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
+import {
+  Check,
+  Download,
+  Loader2,
+  Play,
+  Sparkles,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ToolButton, ToolDivider } from "@/components/editor-react/ui";
 import type { RootState, AppDispatch } from "@/store/editorStore";
 import {
   setPresentationData,
@@ -79,6 +89,9 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [saveState, setSaveState] = useState<
+    "idle" | "pending" | "saving" | "saved"
+  >("idle");
   const [showAiPanel, setShowAiPanel] = useState(false);
   const [presenting, setPresenting] = useState(false);
   const [zoom, setZoom] = useState(1);
@@ -176,7 +189,9 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
       return;
     }
     if (saveTimer.current) clearTimeout(saveTimer.current);
+    setSaveState("pending");
     saveTimer.current = setTimeout(async () => {
+      setSaveState("saving");
       try {
         await saveDeck(token, deckId, {
           title: presentationData.title ?? "Untitled",
@@ -185,8 +200,10 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
             slides: presentationData.slides,
           },
         } as unknown as Parameters<typeof saveDeck>[2]);
+        setSaveState("saved");
       } catch {
         // Swallow — save errors are non-critical here.
+        setSaveState("pending");
       }
     }, 1500);
     return () => {
@@ -372,54 +389,86 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center text-zinc-400">
-        Loading editor…
+      <div className="flex h-screen flex-col items-center justify-center gap-3 bg-[var(--bg-base)]">
+        <Loader2 className="h-6 w-6 animate-spin text-[var(--accent-light)]" />
+        <p className="text-sm text-[var(--text-secondary)]">Loading editor…</p>
       </div>
     );
   }
   if (error) {
     return (
-      <div className="flex h-screen items-center justify-center text-red-400">
-        {error}
+      <div className="flex h-screen items-center justify-center bg-[var(--bg-base)] px-6">
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-5 py-4 text-sm text-red-300 shadow-[var(--shadow-panel)]">
+          {error}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen flex-col bg-zinc-900">
-      <header className="flex items-center justify-between border-b border-zinc-800 px-4 py-2">
-        <h1 className="text-sm font-medium text-zinc-200">
-          {presentationData?.title ?? "Editor (React)"}
-        </h1>
-        <div className="flex items-center gap-3">
-          <button
+    <div className="flex h-screen flex-col bg-[var(--bg-base)]">
+      <header className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--bg-panel)] px-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[var(--accent)] to-[var(--accent-light)] shadow-[var(--shadow-soft)]">
+            <Sparkles className="h-3.5 w-3.5 text-white" />
+          </div>
+          <h1 className="truncate text-sm font-medium text-[var(--text-primary)]">
+            {presentationData?.title ?? "Untitled Presentation"}
+          </h1>
+          {saveState !== "idle" && (
+            <span
+              className={cn(
+                "flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+                saveState === "saved"
+                  ? "bg-emerald-500/10 text-emerald-400"
+                  : "bg-[var(--bg-surface)] text-[var(--text-muted)]"
+              )}
+            >
+              {saveState === "saving" ? (
+                <>
+                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                  Saving…
+                </>
+              ) : saveState === "saved" ? (
+                <>
+                  <Check className="h-2.5 w-2.5" />
+                  Saved
+                </>
+              ) : (
+                "Unsaved changes"
+              )}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <ToolButton
+            variant="solid"
+            active={showAiPanel}
             onClick={() => setShowAiPanel((v) => !v)}
-            className={cn(
-              "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
-              showAiPanel
-                ? "bg-[#6c5ce7] text-white"
-                : "bg-[#1a1b2e] text-zinc-300 hover:bg-[#2d2e42]"
-            )}
+            className="px-2.5"
           >
             <Sparkles className="h-3.5 w-3.5" />
             AI Assistant
-          </button>
-          <button
+          </ToolButton>
+          <ToolButton
+            variant="solid"
             onClick={() => setPresenting(true)}
-            className="flex items-center gap-1.5 rounded-md bg-[#1a1b2e] px-2.5 py-1 text-xs font-medium text-zinc-300 transition-colors hover:bg-[#2d2e42]"
             title="Present"
+            className="px-2.5"
           >
             <Play className="h-3.5 w-3.5" />
             Present
-          </button>
-          <button
+          </ToolButton>
+          <ToolDivider className="mx-1" />
+          <ToolButton
+            variant="accent"
             onClick={handleExport}
-            className="flex items-center gap-1.5 rounded-md bg-[#1a1b2e] px-2.5 py-1 text-xs font-medium text-zinc-300 transition-colors hover:bg-[#2d2e42]"
             title="Export to PPTX"
+            className="px-3"
           >
             <Download className="h-3.5 w-3.5" />
-            PPTX
-          </button>
+            Export
+          </ToolButton>
         </div>
       </header>
       <div className="flex flex-1 overflow-hidden">
@@ -435,7 +484,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
         />
         <div
           ref={canvasAreaRef}
-          className="relative flex flex-1 items-center justify-center overflow-hidden"
+          className="editor-canvas-grid relative flex flex-1 items-center justify-center overflow-hidden"
           onMouseDown={onCanvasMouseDown}
           onMouseMove={onCanvasMouseMove}
           onMouseUp={onCanvasMouseUp}
@@ -444,7 +493,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
         >
           {activeUi ? (
             <div
-              className="shadow-2xl"
+              className="editor-slide-frame"
               style={{
                 transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
                 transition: isPanning ? "none" : "transform 0.1s ease-out",
@@ -460,39 +509,44 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
               />
             </div>
           ) : (
-            <p className="text-zinc-400">No slide selected.</p>
+            <div className="flex flex-col items-center gap-2 text-center">
+              <p className="text-sm text-[var(--text-secondary)]">
+                No slide selected
+              </p>
+              <p className="text-xs text-[var(--text-muted)]">
+                Pick a slide from the sidebar, or add a new one.
+              </p>
+            </div>
           )}
 
           {/* Zoom controls bottom-right */}
-          <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-900/90 px-1.5 py-1 shadow-lg">
-            <button
-              className="rounded p-1 text-zinc-400 hover:text-white"
+          <div className="absolute bottom-3 right-3 flex items-center gap-0.5 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-surface)]/95 p-1 shadow-[var(--shadow-panel)] backdrop-blur">
+            <ToolButton
+              size="sm"
               onClick={() => setZoom((z) => Math.max(0.2, z - 0.2))}
               title="Zoom out"
             >
-              <ZoomOut size={16} />
-            </button>
-            <button
-              className="min-w-[48px] rounded px-1 py-0.5 text-center text-xs text-zinc-300 hover:bg-zinc-800"
+              <ZoomOut size={15} />
+            </ToolButton>
+            <ToolButton
+              size="sm"
               onClick={resetView}
               title="Reset view"
+              className="min-w-[46px] tabular-nums"
             >
               {Math.round(zoom * 100)}%
-            </button>
-            <button
-              className="rounded p-1 text-zinc-400 hover:text-white"
+            </ToolButton>
+            <ToolButton
+              size="sm"
               onClick={() => setZoom((z) => Math.min(3, z + 0.2))}
               title="Zoom in"
             >
-              <ZoomIn size={16} />
-            </button>
-            <button
-              className="rounded p-1 text-zinc-400 hover:text-white"
-              onClick={resetView}
-              title="Fit to screen"
-            >
-              <Maximize2 size={14} />
-            </button>
+              <ZoomIn size={15} />
+            </ToolButton>
+            <ToolDivider className="mx-0.5 h-4" />
+            <ToolButton size="sm" onClick={resetView} title="Fit to screen">
+              <Maximize2 size={13} />
+            </ToolButton>
           </div>
         </div>
         <InsertToolbar activeUi={activeUi} onInsert={handleInsert} />

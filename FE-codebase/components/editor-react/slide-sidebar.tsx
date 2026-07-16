@@ -163,8 +163,8 @@ function SortableSlide({
         isDragging && "z-50 opacity-60"
       )}
       style={{
-        width: THUMB_W + 8,
-        height: THUMB_H + 8,
+        width: THUMB_W,
+        height: THUMB_H,
         transform: CSS.Transform.toString(transform),
         transition,
       }}
@@ -228,7 +228,7 @@ function SortableSlide({
 
 function InsertSlot({ onAdd }: { onAdd: () => void }) {
   return (
-    <div className="group/insert relative mx-auto flex h-3 items-center justify-center" style={{ width: THUMB_W + 8 }}>
+    <div className="group/insert relative mx-auto flex h-3 items-center justify-center" style={{ width: THUMB_W }}>
       <div className="absolute inset-x-1 top-1/2 h-px -translate-y-1/2 bg-[var(--accent)] opacity-0 transition-opacity group-hover/insert:opacity-100" />
       <button
         className="relative z-10 flex h-4 w-4 scale-75 items-center justify-center rounded-full bg-[var(--accent)] text-white opacity-0 shadow-[var(--shadow-soft)] transition-all hover:bg-[var(--accent-hover)] group-hover/insert:scale-100 group-hover/insert:opacity-100"

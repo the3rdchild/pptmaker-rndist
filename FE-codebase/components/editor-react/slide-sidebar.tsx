@@ -19,7 +19,6 @@ import { CSS } from "@dnd-kit/utilities";
 import { ChevronRight, Copy, LayoutTemplate, Plus, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { normalizeBackendAssetUrls } from "@/utils/api";
-import { ToolButton } from "@/components/editor-react/ui";
 
 const ThumbnailSlide = dynamic(
   () =>
@@ -98,25 +97,33 @@ export default function SlideSidebar({
               ))}
             </SortableContext>
           </DndContext>
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5 border-t border-[var(--border)] p-2">
-          <button
-            className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg bg-[var(--bg-surface)] text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--accent-soft)] hover:text-[var(--accent-light)]"
-            onClick={() => onAdd({ id: "blank", components: [], elements: [] })}
-            title="Add blank slide"
+          <div
+            className="mx-auto flex overflow-hidden rounded-lg bg-[var(--bg-surface)] ring-1 ring-[var(--border-strong)] transition-shadow hover:ring-[var(--text-muted)]"
+            style={{ width: THUMB_W, height: THUMB_H }}
           >
-            <Plus size={14} />
-            Add slide
-          </button>
-          <ToolButton
-            variant="solid"
-            active={pickerOpen}
-            onClick={() => setPickerOpen((v) => !v)}
-            title="Pick a layout"
-            className="w-8"
-          >
-            <LayoutTemplate size={14} />
-          </ToolButton>
+            <button
+              className="flex flex-1 items-center justify-center text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
+              onClick={() => onAdd({ id: "blank", components: [], elements: [] })}
+              title="Add blank slide"
+            >
+              <Plus size={18} />
+            </button>
+            <button
+              className={cn(
+                "flex w-7 items-center justify-center border-l border-[var(--border-strong)] transition-colors",
+                pickerOpen
+                  ? "bg-[var(--accent-soft)] text-[var(--accent-light)]"
+                  : "text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
+              )}
+              onClick={() => setPickerOpen((v) => !v)}
+              title="Pick a layout"
+            >
+              <ChevronRight
+                size={13}
+                className={cn("transition-transform", pickerOpen && "rotate-180")}
+              />
+            </button>
+          </div>
         </div>
       </aside>
       {pickerOpen && (

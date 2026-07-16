@@ -125,6 +125,7 @@ import {
   eventTargetsThisSlide,
   getElementAtSelection,
   syncComponentHeightToElement,
+  isBackgroundComponent,
   isEditableTarget,
   isManualPositioned,
   isRecord,
@@ -1892,6 +1893,7 @@ function TemplateV2KonvaSlideComponent({
               key={componentKey(component, componentIndex)}
               component={component}
               componentIndex={componentIndex}
+              isBackground={isBackgroundComponent(component)}
               isEditMode={isEditMode}
               isMultiSelectedComponent={
                 selectedComponentIndexes.length > 1 &&

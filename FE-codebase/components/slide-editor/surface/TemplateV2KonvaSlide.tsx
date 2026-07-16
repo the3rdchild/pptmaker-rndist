@@ -13,7 +13,7 @@ import {
 import type Konva from "konva";
 import { useDispatch } from "react-redux";
 import { Loader2 } from "lucide-react";
-import { Layer, Rect, Stage } from "react-konva";
+import { Layer, Stage } from "react-konva";
 import { notify } from "@/components/ui/sonner";
 import type { TemplateV2Layout } from "@/components/slide-editor/importing/template-v2-import";
 import {
@@ -94,6 +94,7 @@ import {
 } from "@/components/slide-editor/selection/layering";
 import { TemplateV2SelectionTransformers } from "@/components/slide-editor/selection/SelectionTransformers";
 import { useFontLoadState } from "@/components/slide-editor/surface/fontLoading";
+import { SlideBackground } from "@/components/slide-editor/surface/SlideBackground";
 import {
   clearSnapGuides,
   computeSnap,
@@ -115,7 +116,6 @@ import {
   absoluteInlineEditBox,
   appendInsertedContent,
   asRecord,
-  backgroundColor,
   childArrayInfo,
   childrenBounds,
   cloneJson,
@@ -1902,7 +1902,7 @@ function TemplateV2KonvaSlideComponent({
         }}
       >
         <Layer listening={false}>
-          <Rect width={STAGE_WIDTH} height={STAGE_HEIGHT} fill={backgroundColor(uiDraft)} />
+          <SlideBackground ui={uiDraft} />
         </Layer>
         <Layer ref={contentLayerRef} listening={isEditMode}>
           {rootElements.map((element, elementIndex) => (

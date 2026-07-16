@@ -11,6 +11,7 @@ import {
   LineChart,
   List,
   ListOrdered,
+  PaintBucket,
   PieChart,
   Quote,
   Shapes,
@@ -21,6 +22,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PopItem, PopPanel, PanelLabel } from "@/components/editor-react/ui";
+import BackgroundPanel from "@/components/editor-react/background-panel";
 import { appendInsertedContent } from "@/components/slide-editor/model/inserted-content";
 import {
   createChartInsertElements,
@@ -154,6 +156,29 @@ export default function InsertToolbar({ activeUi, onInsert }: InsertToolbarProps
           )}
         </div>
       ))}
+
+      <div className="relative mt-auto">
+        <button
+          className={cn(
+            "flex h-11 w-11 flex-col items-center justify-center gap-0.5 rounded-lg text-[9px] font-medium transition-colors",
+            openMenu === "background"
+              ? "bg-[var(--accent-soft)] text-[var(--accent-light)]"
+              : "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
+          )}
+          title="Background"
+          onClick={() =>
+            setOpenMenu((cur) => (cur === "background" ? null : "background"))
+          }
+        >
+          <PaintBucket size={17} />
+          <span>BG</span>
+        </button>
+        {openMenu === "background" && (
+          <PopPanel className="absolute bottom-0 right-full z-50 mr-2">
+            <BackgroundPanel activeUi={activeUi} onApply={onInsert} />
+          </PopPanel>
+        )}
+      </div>
     </div>
   );
 }

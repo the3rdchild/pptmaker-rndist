@@ -95,6 +95,12 @@ import {
 import { TemplateV2SelectionTransformers } from "@/components/slide-editor/selection/SelectionTransformers";
 import { useFontLoadState } from "@/components/slide-editor/surface/fontLoading";
 import {
+  clearSnapGuides,
+  computeSnap,
+  drawSnapGuides,
+  stopsForBoxes,
+} from "@/components/slide-editor/surface/snap-guides";
+import {
   MemoizedRawComponentNode,
   MemoizedRawElementNode,
 } from "@/components/slide-editor/surface/nodes";
@@ -241,6 +247,7 @@ function TemplateV2KonvaSlideComponent({
   const [rootElement, setRootElement] = useState<HTMLDivElement | null>(null);
   const nodeRefs = useRef(new Map<string, Konva.Node>());
   const contentLayerRef = useRef<Konva.Layer | null>(null);
+  const snapGuidesLayerRef = useRef<Konva.Layer | null>(null);
   const imageUploadInputRef = useRef<HTMLInputElement | null>(null);
   const pendingImageUploadRef = useRef<ElementSelection | null>(null);
   const undoStackRef = useRef<RawUi[]>([]);
@@ -911,10 +918,39 @@ function TemplateV2KonvaSlideComponent({
     [],
   );
 
+  const applyDragSnap = useCallback(
+    (componentIndex: number, node: Konva.Node) => {
+      const layer = node.getLayer();
+      if (!layer) return;
+      const dragState = multiComponentDragRef.current;
+      const excluded = new Set(
+        dragState?.draggedComponentIndex === componentIndex
+          ? dragState.nodes.map((entry) => entry.componentIndex)
+          : [componentIndex],
+      );
+      const targetBoxes = readArray(currentUiRef.current.components).flatMap(
+        (raw, index) => {
+          if (excluded.has(index)) return [];
+          const component = asRecord(raw);
+          return component ? [componentBox(component)] : [];
+        },
+      );
+      const stops = stopsForBoxes(targetBoxes, STAGE_WIDTH, STAGE_HEIGHT);
+      const box = node.getClientRect({ relativeTo: layer });
+      const snap = computeSnap(box, stops);
+      if (snap.dx !== 0) node.x(node.x() + snap.dx);
+      if (snap.dy !== 0) node.y(node.y() + snap.dy);
+      drawSnapGuides(snapGuidesLayerRef.current, snap, STAGE_WIDTH, STAGE_HEIGHT);
+    },
+    [],
+  );
+
   const handleComponentDragMove = useCallback(
     (componentIndex: number, node: Konva.Node) => {
+      applyDragSnap(componentIndex, node);
       const dragState = multiComponentDragRef.current;
       if (!dragState || dragState.draggedComponentIndex !== componentIndex) {
+        node.getLayer()?.batchDraw();
         return;
       }
       const position = node.position();
@@ -930,11 +966,12 @@ function TemplateV2KonvaSlideComponent({
       });
       node.getLayer()?.batchDraw();
     },
-    [],
+    [applyDragSnap],
   );
 
   const handleComponentDragEnd = useCallback(
     (componentIndex: number, node: Konva.Node) => {
+      clearSnapGuides(snapGuidesLayerRef.current);
       const dragState = multiComponentDragRef.current;
       if (!dragState || dragState.draggedComponentIndex !== componentIndex) {
         updateComponent(componentIndex, (current) => ({
@@ -1930,6 +1967,7 @@ function TemplateV2KonvaSlideComponent({
             />
           ) : null}
         </Layer>
+        <Layer ref={snapGuidesLayerRef} listening={false} />
       </Stage>
       <TemplateV2SelectionToolbar
         anchorBox={floatingToolbarAnchorBox}

@@ -1934,10 +1934,21 @@ function TemplateV2KonvaSlideComponent({
     if (!isEditMode || typeof window === "undefined") return;
 
     const handleApplyColor = (event: Event) => {
-      if (!isSurfaceActive()) return;
       const detail = (event as CustomEvent<TemplateV2ApplyColorDetail>).detail;
+      const surfaceActive = isSurfaceActive();
+      const current =
+        detail?.color && selection && selection.kind === "element"
+          ? getElementAtSelection(currentUiRef.current, selection)
+          : null;
+      if (typeof window !== "undefined") {
+        (window as unknown as { __applyColorDebug?: unknown }).__applyColorDebug = {
+          surfaceActive,
+          color: detail?.color,
+          selection,
+          elementType: current ? readString(current.type) : null,
+        };
+      }
       if (!detail?.color || !selection || selection.kind !== "element") return;
-      const current = getElementAtSelection(currentUiRef.current, selection);
       if (!current) return;
       const type = readString(current.type);
       let next: RawElement | null = null;

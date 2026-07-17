@@ -162,6 +162,42 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "regenerate_slide",
+            "description": (
+                "Replace one existing slide's content and hero image based on a new "
+                "instruction (e.g. 'edit slide ini jadi tentang ...'). Picks a new template "
+                "layout and fills it — layout/positions/colors are handled deterministically "
+                "by the client, you only supply the new text content and an image prompt."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "slide_index": {"type": "integer", "description": "0-based index"},
+                    "title": {"type": "string"},
+                    "items": {
+                        "type": "array",
+                        "description": "2-4 bullet points for the new slide content.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "title": {"type": "string"},
+                                "text": {"type": "string"},
+                            },
+                            "required": ["title", "text"],
+                        },
+                    },
+                    "image_prompt": {
+                        "type": "string",
+                        "description": "Short visual description for the slide's hero photo.",
+                    },
+                },
+                "required": ["slide_index", "title", "items", "image_prompt"],
+            },
+        },
+    },
 ]
 
 

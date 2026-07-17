@@ -440,6 +440,37 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
           ? `Generated ${count} slides about "${topic}".`
           : `No slides generated for "${topic}". Try a different prompt.`;
       }
+      case "regenerate_slide": {
+        const slideIndex = Number(action.args.slide_index);
+        if (!currentSlides[slideIndex]) return `Slide ${slideIndex} doesn't exist.`;
+        const title = String(action.args.title || "");
+        const items = Array.isArray(action.args.items)
+          ? (action.args.items as { title: string; text: string }[])
+          : [];
+        if (!title || !items.length) return "Missing slide content.";
+        if (!token) return "Session not ready — try again in a moment.";
+
+        // Same pack every time for this deck (seeded by deckId) so a
+        // regenerated slide stays visually consistent with the rest.
+        const picker = new DeckLayoutPicker(deckId);
+        const filled = await mapAIPPTSlideToTemplateUi({ type: "content", data: { title, items } }, picker);
+        if (!filled) return "Couldn't find a layout to use.";
+
+        dispatch(updateSlideUi({ index: slideIndex, ui: filled.ui }));
+
+        if (filled.heroImage) {
+          const marker = filled.heroImage;
+          const baseUi = filled.ui;
+          const imagePrompt = String(action.args.image_prompt || title);
+          const prompt = `${imagePrompt}. editorial photograph, cinematic natural lighting, cohesive color grading, no text, no watermark, no logo`;
+          void generateImage(token, prompt).then((dataUrl) => {
+            if (!dataUrl) return;
+            dispatch(updateSlideUi({ index: slideIndex, ui: patchHeroImage(baseUi, marker, dataUrl) }));
+          });
+        }
+
+        return `Updated slide ${slideIndex}: "${title}"${filled.heroImage ? " (generating a new hero image…)" : ""}.`;
+      }
       default:
         return `Unknown action: ${action.tool}`;
     }

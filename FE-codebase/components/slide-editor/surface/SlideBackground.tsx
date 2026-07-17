@@ -1,29 +1,33 @@
 "use client";
 
-import { useMemo } from "react";
-import { Rect } from "react-konva";
+import { useEffect, useMemo, useState } from "react";
+import { Image as KonvaImage, Rect } from "react-konva";
 import {
   EDITOR_STAGE_HEIGHT,
   EDITOR_STAGE_WIDTH,
 } from "@/components/slide-editor/types";
 import { backgroundColor } from "@/components/slide-editor/model/render-style";
+import { loadKonvaImage } from "@/components/slide-editor/surface/exportAssets";
 import type { RawUi } from "@/components/slide-editor/model/core";
 
 /**
- * Stage background: solid color, linear/radial gradient, plus an optional
- * subtle repeating pattern (grid or dots). Configured via `ui.backgroundStyle`
- * — falls back to the legacy solid `ui.background` string.
+ * Stage background: solid color, linear/radial gradient, or an uploaded
+ * image (cover-fit), plus an optional subtle repeating pattern (grid or
+ * dots) layered on top. Configured via `ui.backgroundStyle` — falls back to
+ * the legacy solid `ui.background` string.
  */
 
 export type BackgroundStyle = {
-  type: "solid" | "linear" | "radial";
-  /** Primary color (solid fill, or gradient start). */
+  type: "solid" | "linear" | "radial" | "image";
+  /** Primary color (solid fill, gradient start, or the fallback shown while/if the image fails to load). */
   from: string;
   /** Gradient end color. */
   to?: string;
   /** Linear gradient direction in degrees; 0 = left→right, 90 = top→bottom. */
   angle?: number;
   pattern?: "none" | "grid" | "dots";
+  /** Uploaded background image URL, used when type === "image". */
+  imageUrl?: string;
 };
 
 export function readBackgroundStyle(ui: RawUi): BackgroundStyle {
@@ -34,7 +38,7 @@ export function readBackgroundStyle(ui: RawUi): BackgroundStyle {
     const from = typeof record.from === "string" ? record.from : null;
     if (
       from &&
-      (type === "solid" || type === "linear" || type === "radial")
+      (type === "solid" || type === "linear" || type === "radial" || type === "image")
     ) {
       return {
         type,
@@ -45,6 +49,7 @@ export function readBackgroundStyle(ui: RawUi): BackgroundStyle {
           record.pattern === "grid" || record.pattern === "dots"
             ? record.pattern
             : "none",
+        imageUrl: typeof record.imageUrl === "string" ? record.imageUrl : undefined,
       };
     }
   }
@@ -92,6 +97,75 @@ function makePatternCanvas(
   return canvas;
 }
 
+/** Konva `crop` rect (in image-space) that achieves object-fit: cover for boxW x boxH. */
+function coverCrop(imgW: number, imgH: number, boxW: number, boxH: number) {
+  const imgRatio = imgW / imgH;
+  const boxRatio = boxW / boxH;
+  if (imgRatio > boxRatio) {
+    const cropWidth = imgH * boxRatio;
+    return { x: (imgW - cropWidth) / 2, y: 0, width: cropWidth, height: imgH };
+  }
+  const cropHeight = imgW / boxRatio;
+  return { x: 0, y: (imgH - cropHeight) / 2, width: imgW, height: cropHeight };
+}
+
+function useLoadedImage(src: string | undefined): HTMLImageElement | null {
+  const [loaded, setLoaded] = useState<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    if (!src) {
+      setLoaded(null);
+      return;
+    }
+    let cancelled = false;
+    void loadKonvaImage(src).then((image) => {
+      if (!cancelled) setLoaded(image);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [src]);
+
+  return loaded;
+}
+
+function BackgroundImageFill({
+  src,
+  fallbackColor,
+}: {
+  src: string;
+  fallbackColor: string;
+}) {
+  const image = useLoadedImage(src);
+  const crop = useMemo(
+    () =>
+      image
+        ? coverCrop(
+            image.naturalWidth || image.width,
+            image.naturalHeight || image.height,
+            EDITOR_STAGE_WIDTH,
+            EDITOR_STAGE_HEIGHT,
+          )
+        : null,
+    [image],
+  );
+
+  if (!image || !crop) {
+    return (
+      <Rect width={EDITOR_STAGE_WIDTH} height={EDITOR_STAGE_HEIGHT} fill={fallbackColor} />
+    );
+  }
+
+  return (
+    <KonvaImage
+      image={image}
+      crop={crop}
+      width={EDITOR_STAGE_WIDTH}
+      height={EDITOR_STAGE_HEIGHT}
+    />
+  );
+}
+
 function linearGradientPoints(angleDeg: number) {
   const radians = (angleDeg * Math.PI) / 180;
   const dx = Math.cos(radians);
@@ -123,7 +197,9 @@ export function SlideBackground({ ui }: { ui: RawUi }) {
 
   return (
     <>
-      {type === "solid" ? (
+      {type === "image" ? (
+        <BackgroundImageFill src={style.imageUrl ?? ""} fallbackColor={from} />
+      ) : type === "solid" ? (
         <Rect
           width={EDITOR_STAGE_WIDTH}
           height={EDITOR_STAGE_HEIGHT}

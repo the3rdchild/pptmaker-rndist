@@ -22,11 +22,9 @@ import {
   TEMPLATE_V2_APPLY_COLOR_EVENT,
   TEMPLATE_V2_HISTORY_EVENT,
   TEMPLATE_V2_REDO_EVENT,
-  TEMPLATE_V2_SURFACE_SELECTED_EVENT,
   TEMPLATE_V2_UNDO_EVENT,
   type TemplateV2ApplyColorDetail,
   type TemplateV2HistoryDetail,
-  type TemplateV2SurfaceSelectedDetail,
 } from "@/components/slide-editor/events/events";
 import type { RootState, AppDispatch } from "@/store/editorStore";
 import {
@@ -115,7 +113,6 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
   const [showAiPanel, setShowAiPanel] = useState(false);
   const [presenting, setPresenting] = useState(false);
   const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false });
-  const [hasElementSelection, setHasElementSelection] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
@@ -141,19 +138,6 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
     };
     window.addEventListener(TEMPLATE_V2_HISTORY_EVENT, onHistory);
     return () => window.removeEventListener(TEMPLATE_V2_HISTORY_EVENT, onHistory);
-  }, []);
-
-  // Tracks whether a single element (text/shape) is currently selected on
-  // the canvas, so the color-palette panel knows whether clicking a swatch
-  // should apply straight to the selection instead of just copying the hex.
-  useEffect(() => {
-    const onSurfaceSelected = (event: Event) => {
-      const detail = (event as CustomEvent<TemplateV2SurfaceSelectedDetail>).detail;
-      setHasElementSelection(detail?.selection?.kind === "element");
-    };
-    window.addEventListener(TEMPLATE_V2_SURFACE_SELECTED_EVENT, onSurfaceSelected);
-    return () =>
-      window.removeEventListener(TEMPLATE_V2_SURFACE_SELECTED_EVENT, onSurfaceSelected);
   }, []);
 
   const handleApplyColorToSelection = (color: string) => {
@@ -704,7 +688,6 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
         <InsertToolbar
           activeUi={activeUi}
           onInsert={handleInsert}
-          hasElementSelection={hasElementSelection}
           onApplyColorToSelection={handleApplyColorToSelection}
         />
         {showAiPanel && (

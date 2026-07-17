@@ -221,12 +221,10 @@ function generateQuickPalette(hue: number, saturation: number, value: number, sc
 /* ---------------------------------- Panel ----------------------------------- */
 
 export interface ColorPalettePanelProps {
-  hasElementSelection: boolean;
   onApplyColorToSelection: (color: string) => void;
 }
 
 export default function ColorPalettePanel({
-  hasElementSelection,
   onApplyColorToSelection,
 }: ColorPalettePanelProps) {
   const [hue, setHue] = useState(272);
@@ -235,7 +233,6 @@ export default function ColorPalettePanel({
   const [scheme, setScheme] = useState<Scheme>("monochrome");
   const [rerollNonce, setRerollNonce] = useState(0);
   const [copied, setCopied] = useState<string | null>(null);
-  const [applied, setApplied] = useState<string | null>(null);
 
   const rgb = useMemo(() => hsvToRgb(hue, saturation, value), [hue, saturation, value]);
   const hex = useMemo(() => rgbToHex(...rgb), [rgb]);
@@ -417,11 +414,9 @@ export default function ColorPalettePanel({
       </button>
 
       <PanelLabel>Palette</PanelLabel>
-      {hasElementSelection && (
-        <p className="mx-2.5 mb-1.5 rounded-md bg-[var(--accent-soft)] px-2 py-1 text-[10px] text-[var(--accent-light)]">
-          A shape or text is selected — click a color to apply it.
-        </p>
-      )}
+      <p className="mx-2.5 mb-1.5 rounded-md bg-[var(--accent-soft)] px-2 py-1 text-[10px] text-[var(--accent-light)]">
+        Click a color to apply it to the current selection (if any) and copy its hex.
+      </p>
       <div className="flex flex-col gap-1 px-2.5 py-1">
         {palette.map((color, i) => {
           const { h, s, l } = hexToHsl(color);
@@ -431,21 +426,20 @@ export default function ColorPalettePanel({
             <button
               key={`${color}-${i}`}
               onClick={() => {
-                if (hasElementSelection) {
-                  onApplyColorToSelection(color);
-                  setApplied(color);
-                  setTimeout(() => setApplied((c) => (c === color ? null : c)), 1200);
-                } else {
-                  copyHex(color);
-                }
+                // Always try both — don't gate on a mirrored "is something
+                // selected" flag that can desync from the canvas's own
+                // selection state. Applying is a no-op on the canvas side
+                // when nothing valid is selected, so this is always safe.
+                onApplyColorToSelection(color);
+                copyHex(color);
               }}
-              title={hasElementSelection ? `Apply ${color} to selection` : `Copy ${color}`}
+              title={`Apply ${color} to selection & copy`}
               className="flex h-9 w-full items-center justify-between rounded-md px-2.5 transition-transform hover:scale-[1.01]"
               style={{ backgroundColor: color, color: isLight ? "#111827" : "#F9FAFB" }}
             >
               <span className="text-[11px] font-medium">{color.toUpperCase()}</span>
               <span className="flex items-center gap-1.5 text-[11px]">
-                {(copied === color || applied === color) && <Check size={12} />}
+                {copied === color && <Check size={12} />}
                 {name}
               </span>
             </button>

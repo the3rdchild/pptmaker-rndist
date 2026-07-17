@@ -18,15 +18,22 @@ const HUE_SCHEME_LABEL: Record<number, string> = {
 
 export interface ColorPalettePanelProps {
   onApplyTheme: (opts: { background?: string; fontColor?: string }) => void;
+  hasElementSelection: boolean;
+  onApplyColorToSelection: (color: string) => void;
 }
 
-export default function ColorPalettePanel({ onApplyTheme }: ColorPalettePanelProps) {
+export default function ColorPalettePanel({
+  onApplyTheme,
+  hasElementSelection,
+  onApplyColorToSelection,
+}: ColorPalettePanelProps) {
   const [baseHex, setBaseHex] = useState("#6C5CE7");
   const [hueCount, setHueCount] = useState(3);
   const [toneCount, setToneCount] = useState(5);
   const [analogous, setAnalogous] = useState(false);
   const [angle, setAngle] = useState(30);
   const [copied, setCopied] = useState<string | null>(null);
+  const [applied, setApplied] = useState<string | null>(null);
 
   const rows: HueRow[] = useMemo(
     () =>
@@ -126,24 +133,45 @@ export default function ColorPalettePanel({ onApplyTheme }: ColorPalettePanelPro
       )}
 
       <PanelLabel>Palette</PanelLabel>
+      {hasElementSelection && (
+        <p className="mx-2.5 mb-1.5 rounded-md bg-[var(--accent-soft)] px-2 py-1 text-[10px] text-[var(--accent-light)]">
+          A shape or text is selected — click a swatch to apply its color to it.
+        </p>
+      )}
       <div className="flex flex-col gap-1.5 px-2.5 py-1">
         {rows.map((row) => (
           <div key={row.hue} className="flex gap-1">
             {row.swatches.map((hex, i) => (
               <div key={`${hex}-${i}`} className="group relative flex-1">
                 <button
-                  onClick={() => copyHex(hex)}
-                  title={hex}
+                  onClick={() => {
+                    if (hasElementSelection) {
+                      onApplyColorToSelection(hex);
+                      setApplied(hex);
+                      setTimeout(() => setApplied((c) => (c === hex ? null : c)), 1200);
+                    } else {
+                      copyHex(hex);
+                    }
+                  }}
+                  title={hasElementSelection ? `Apply ${hex} to selection` : hex}
                   className="h-9 w-full rounded-md ring-1 ring-[var(--border-strong)] transition-transform hover:scale-[1.04]"
                   style={{ backgroundColor: hex }}
                 >
-                  {copied === hex && (
+                  {(copied === hex || applied === hex) && (
                     <span className="flex h-full w-full items-center justify-center">
                       <Check size={13} className="text-white drop-shadow" />
                     </span>
                   )}
                 </button>
                 <div className="pointer-events-none absolute inset-x-0 -bottom-1 z-10 hidden translate-y-full flex-col gap-0.5 rounded-md bg-[var(--bg-elevated)] p-1 shadow-[var(--shadow-pop)] group-hover:pointer-events-auto group-hover:flex">
+                  {hasElementSelection && (
+                    <button
+                      onClick={() => onApplyColorToSelection(hex)}
+                      className="whitespace-nowrap rounded px-1.5 py-0.5 text-left text-[10px] font-medium text-[var(--accent-light)] hover:bg-[var(--bg-surface)]"
+                    >
+                      Apply to selection
+                    </button>
+                  )}
                   <button
                     onClick={() => onApplyTheme({ background: hex })}
                     className="whitespace-nowrap rounded px-1.5 py-0.5 text-left text-[10px] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)]"

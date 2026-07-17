@@ -45,6 +45,8 @@ export interface InsertToolbarProps {
   activeUi: Record<string, unknown> | null;
   onInsert: InsertHandler;
   onApplyTheme: (opts: { background?: string; fontColor?: string }) => void;
+  hasElementSelection: boolean;
+  onApplyColorToSelection: (color: string) => void;
 }
 
 type TabId =
@@ -96,7 +98,13 @@ function backgroundStyleKey(style: BackgroundStyle): string {
   return `${style.type}:${style.from}:${style.to ?? ""}:${style.angle ?? ""}:${style.imageUrl ?? ""}:${style.pattern ?? ""}`;
 }
 
-export default function InsertToolbar({ activeUi, onInsert, onApplyTheme }: InsertToolbarProps) {
+export default function InsertToolbar({
+  activeUi,
+  onInsert,
+  onApplyTheme,
+  hasElementSelection,
+  onApplyColorToSelection,
+}: InsertToolbarProps) {
   const [openTab, setOpenTab] = useState<TabId | null>(null);
   const [search, setSearch] = useState("");
   const [recentElementKeys, setRecentElementKeys] = useState<string[]>([]);
@@ -185,7 +193,13 @@ export default function InsertToolbar({ activeUi, onInsert, onApplyTheme }: Inse
             {openTab === "text" && <TextTab search={search} onInsertElements={runInsert} />}
             {openTab === "chart" && <ChartTab search={search} onInsertElements={runInsert} />}
             {openTab === "table" && <TableTab onInsertElements={runInsert} />}
-            {openTab === "palette" && <ColorPalettePanel onApplyTheme={onApplyTheme} />}
+            {openTab === "palette" && (
+              <ColorPalettePanel
+                onApplyTheme={onApplyTheme}
+                hasElementSelection={hasElementSelection}
+                onApplyColorToSelection={onApplyColorToSelection}
+              />
+            )}
             {openTab === "uploads" && (
               <UploadsTab
                 search={search}

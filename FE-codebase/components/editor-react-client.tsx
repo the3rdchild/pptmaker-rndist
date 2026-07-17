@@ -9,13 +9,25 @@ import {
   Download,
   Loader2,
   Play,
+  Redo2,
   Sparkles,
+  Undo2,
   ZoomIn,
   ZoomOut,
   Maximize2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ToolButton, ToolDivider } from "@/components/editor-react/ui";
+import {
+  TEMPLATE_V2_APPLY_COLOR_EVENT,
+  TEMPLATE_V2_HISTORY_EVENT,
+  TEMPLATE_V2_REDO_EVENT,
+  TEMPLATE_V2_SURFACE_SELECTED_EVENT,
+  TEMPLATE_V2_UNDO_EVENT,
+  type TemplateV2ApplyColorDetail,
+  type TemplateV2HistoryDetail,
+  type TemplateV2SurfaceSelectedDetail,
+} from "@/components/slide-editor/events/events";
 import type { RootState, AppDispatch } from "@/store/editorStore";
 import {
   setPresentationData,
@@ -102,6 +114,8 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
   >("idle");
   const [showAiPanel, setShowAiPanel] = useState(false);
   const [presenting, setPresenting] = useState(false);
+  const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false });
+  const [hasElementSelection, setHasElementSelection] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
@@ -115,6 +129,43 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
     setZoom(1);
     setPan({ x: 0, y: 0 });
   };
+
+  // The active slide's TemplateV2KonvaSlide surface owns the actual undo/redo
+  // stack; it announces availability via this event whenever it commits an
+  // edit or becomes the active surface (switching slides).
+  useEffect(() => {
+    const onHistory = (event: Event) => {
+      const detail = (event as CustomEvent<TemplateV2HistoryDetail>).detail;
+      if (!detail) return;
+      setHistoryState({ canUndo: detail.canUndo, canRedo: detail.canRedo });
+    };
+    window.addEventListener(TEMPLATE_V2_HISTORY_EVENT, onHistory);
+    return () => window.removeEventListener(TEMPLATE_V2_HISTORY_EVENT, onHistory);
+  }, []);
+
+  // Tracks whether a single element (text/shape) is currently selected on
+  // the canvas, so the color-palette panel knows whether clicking a swatch
+  // should apply straight to the selection instead of just copying the hex.
+  useEffect(() => {
+    const onSurfaceSelected = (event: Event) => {
+      const detail = (event as CustomEvent<TemplateV2SurfaceSelectedDetail>).detail;
+      setHasElementSelection(detail?.selection?.kind === "element");
+    };
+    window.addEventListener(TEMPLATE_V2_SURFACE_SELECTED_EVENT, onSurfaceSelected);
+    return () =>
+      window.removeEventListener(TEMPLATE_V2_SURFACE_SELECTED_EVENT, onSurfaceSelected);
+  }, []);
+
+  const handleApplyColorToSelection = (color: string) => {
+    window.dispatchEvent(
+      new CustomEvent<TemplateV2ApplyColorDetail>(TEMPLATE_V2_APPLY_COLOR_EVENT, {
+        detail: { color },
+      }),
+    );
+  };
+
+  const handleUndo = () => window.dispatchEvent(new CustomEvent(TEMPLATE_V2_UNDO_EVENT));
+  const handleRedo = () => window.dispatchEvent(new CustomEvent(TEMPLATE_V2_REDO_EVENT));
 
   // Native wheel listener (passive:false) so preventDefault works.
   useEffect(() => {
@@ -531,6 +582,23 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
         </div>
         <div className="flex items-center gap-1.5">
           <ToolButton
+            size="sm"
+            onClick={handleUndo}
+            disabled={!historyState.canUndo}
+            title="Undo (Ctrl+Z)"
+          >
+            <Undo2 className="h-3.5 w-3.5" />
+          </ToolButton>
+          <ToolButton
+            size="sm"
+            onClick={handleRedo}
+            disabled={!historyState.canRedo}
+            title="Redo (Ctrl+Y)"
+          >
+            <Redo2 className="h-3.5 w-3.5" />
+          </ToolButton>
+          <ToolDivider className="mx-1" />
+          <ToolButton
             variant="solid"
             active={showAiPanel}
             onClick={() => setShowAiPanel((v) => !v)}
@@ -638,7 +706,13 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
             </ToolButton>
           </div>
         </div>
-        <InsertToolbar activeUi={activeUi} onInsert={handleInsert} onApplyTheme={handleApplyTheme} />
+        <InsertToolbar
+          activeUi={activeUi}
+          onInsert={handleInsert}
+          onApplyTheme={handleApplyTheme}
+          hasElementSelection={hasElementSelection}
+          onApplyColorToSelection={handleApplyColorToSelection}
+        />
         {showAiPanel && (
           <AIAssistantPanel
             slides={slides}

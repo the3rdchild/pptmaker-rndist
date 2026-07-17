@@ -15,6 +15,7 @@ import { useDispatch } from "react-redux";
 import { Loader2 } from "lucide-react";
 import { Layer, Stage } from "react-konva";
 import { notify } from "@/components/ui/sonner";
+import { mergeFont } from "@/components/slide-editor/model/element-model";
 import type { TemplateV2Layout } from "@/components/slide-editor/importing/template-v2-import";
 import {
   templateFontOptionsFromMap,
@@ -175,9 +176,15 @@ import {
 } from "@/components/slide-editor/model/model";
 import {
   TEMPLATE_V2_ACTIVATE_SURFACE_EVENT,
+  TEMPLATE_V2_APPLY_COLOR_EVENT,
+  TEMPLATE_V2_HISTORY_EVENT,
   TEMPLATE_V2_INSERT_ELEMENTS_EVENT,
+  TEMPLATE_V2_REDO_EVENT,
   TEMPLATE_V2_SURFACE_SELECTED_EVENT,
+  TEMPLATE_V2_UNDO_EVENT,
   type TemplateV2ActivateSurfaceDetail,
+  type TemplateV2ApplyColorDetail,
+  type TemplateV2HistoryDetail,
   type TemplateV2InsertElementsDetail,
   type TemplateV2SurfaceSelectedDetail,
 } from "@/components/slide-editor/events/events";
@@ -626,6 +633,16 @@ function TemplateV2KonvaSlideComponent({
         },
       ),
     );
+    // Re-announce this surface's own undo/redo availability so the toolbar
+    // button reflects whichever slide just became active, not the last one.
+    window.dispatchEvent(
+      new CustomEvent<TemplateV2HistoryDetail>(TEMPLATE_V2_HISTORY_EVENT, {
+        detail: {
+          canUndo: undoStackRef.current.length > 0,
+          canRedo: redoStackRef.current.length > 0,
+        },
+      }),
+    );
   }, [isEditMode, slideId, surfaceId, surfaceSlideIndex]);
 
   useEffect(() => {
@@ -805,12 +822,20 @@ function TemplateV2KonvaSlideComponent({
           ui: nextUi as Record<string, unknown>,
         }),
       );
-      setHistoryAvailability({
+      const nextHistoryAvailability = {
         canUndo: undoStackRef.current.length > 0,
         canRedo: redoStackRef.current.length > 0,
-      });
+      };
+      setHistoryAvailability(nextHistoryAvailability);
+      if (typeof window !== "undefined" && isSurfaceActive()) {
+        window.dispatchEvent(
+          new CustomEvent<TemplateV2HistoryDetail>(TEMPLATE_V2_HISTORY_EVENT, {
+            detail: nextHistoryAvailability,
+          }),
+        );
+      }
     },
-    [dispatch, isEditMode, slideIndex, surfaceSlideIndex],
+    [dispatch, isEditMode, isSurfaceActive, slideIndex, surfaceSlideIndex],
   );
 
   const undo = useCallback(() => {
@@ -1879,6 +1904,59 @@ function TemplateV2KonvaSlideComponent({
     return () =>
       document.removeEventListener("keydown", handleUndoRedoShortcut, true);
   }, [isEditMode, isSurfaceActive, redo, undo]);
+
+  // Lets the header's Undo/Redo buttons trigger the same history stack as
+  // Ctrl/Cmd+Z / Ctrl/Cmd+Y — only the currently active surface responds.
+  useEffect(() => {
+    if (!isEditMode || typeof window === "undefined") return;
+
+    const handleUndoEvent = () => {
+      if (!isSurfaceActive()) return;
+      undo();
+    };
+    const handleRedoEvent = () => {
+      if (!isSurfaceActive()) return;
+      redo();
+    };
+
+    window.addEventListener(TEMPLATE_V2_UNDO_EVENT, handleUndoEvent);
+    window.addEventListener(TEMPLATE_V2_REDO_EVENT, handleRedoEvent);
+    return () => {
+      window.removeEventListener(TEMPLATE_V2_UNDO_EVENT, handleUndoEvent);
+      window.removeEventListener(TEMPLATE_V2_REDO_EVENT, handleRedoEvent);
+    };
+  }, [isEditMode, isSurfaceActive, redo, undo]);
+
+  // Lets the color-palette panel apply a swatch directly to whatever's
+  // currently selected (text font color, or a shape's fill) instead of only
+  // offering deck-wide background/text theme colors.
+  useEffect(() => {
+    if (!isEditMode || typeof window === "undefined") return;
+
+    const handleApplyColor = (event: Event) => {
+      if (!isSurfaceActive()) return;
+      const detail = (event as CustomEvent<TemplateV2ApplyColorDetail>).detail;
+      if (!detail?.color || !selection || selection.kind !== "element") return;
+      const current = getElementAtSelection(currentUiRef.current, selection);
+      if (!current) return;
+      const type = readString(current.type);
+      let next: RawElement | null = null;
+      if (type === "text" || type === "text-list") {
+        next = mergeFont(current, { color: detail.color }) as RawElement;
+      } else if (type === "rectangle" || type === "ellipse") {
+        next = {
+          ...current,
+          fill: { ...(isRecord(current.fill) ? current.fill : {}), color: detail.color },
+        };
+      }
+      if (!next) return;
+      updateElement(selection, () => next as RawElement);
+    };
+
+    window.addEventListener(TEMPLATE_V2_APPLY_COLOR_EVENT, handleApplyColor);
+    return () =>
+      window.removeEventListener(TEMPLATE_V2_APPLY_COLOR_EVENT, handleApplyColor);
+  }, [isEditMode, isSurfaceActive, selection, updateElement]);
 
   if (!uiDraft) {
     return (

@@ -6,6 +6,10 @@ export const TEMPLATE_V2_SURFACE_SELECTED_EVENT =
   "presenton:template-v2-surface-selected";
 export const TEMPLATE_V2_ACTIVATE_SURFACE_EVENT =
   "presenton:template-v2-activate-surface";
+export const TEMPLATE_V2_UNDO_EVENT = "presenton:template-v2-undo";
+export const TEMPLATE_V2_REDO_EVENT = "presenton:template-v2-redo";
+export const TEMPLATE_V2_HISTORY_EVENT = "presenton:template-v2-history";
+export const TEMPLATE_V2_APPLY_COLOR_EVENT = "presenton:template-v2-apply-color";
 
 export type TemplateV2InsertComponent = {
   id?: string;
@@ -54,4 +58,13 @@ export type TemplateV2SurfaceSelectedDetail = {
 export type TemplateV2ActivateSurfaceDetail = {
   slideId?: string | number | null;
   slideIndex?: number | null;
+};
+
+export type TemplateV2HistoryDetail = {
+  canUndo: boolean;
+  canRedo: boolean;
+};
+
+export type TemplateV2ApplyColorDetail = {
+  color: string;
 };

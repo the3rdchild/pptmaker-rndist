@@ -35,6 +35,7 @@ import {
 } from "@/components/slide-editor/surface/SlideBackground";
 import type { RawUi } from "@/components/slide-editor/model/core";
 import type { SlideElement } from "@/components/slide-editor/types";
+import type { TemplateV2InsertComponent } from "@/components/slide-editor/events/events";
 
 type InsertHandler = (ui: Record<string, unknown>) => void;
 
@@ -110,8 +111,18 @@ export default function InsertToolbar({ activeUi, onInsert }: InsertToolbarProps
     onInsert(next);
   };
 
+  const runInsertComponent = (component: TemplateV2InsertComponent) => {
+    const next = appendInsertedContent(activeUi as RawUi, [], [component]);
+    onInsert(next);
+  };
+
   const handleElementInsert = (entry: ElementCatalogEntry) => {
-    runInsert(entry.build());
+    const built = entry.build();
+    if (Array.isArray(built)) {
+      runInsert(built);
+    } else {
+      runInsertComponent(built);
+    }
     setRecentElementKeys((prev) => [entry.key, ...prev.filter((k) => k !== entry.key)].slice(0, 8));
   };
 

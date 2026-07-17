@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { createElementInsertElements } from "@/components/slide-editor/insert/insert-elements";
 import { ShapePreview, shapeDataUri, type ShapeKind } from "@/components/editor-react/shape-icons";
+import { MOTIF_BUILDERS } from "@/components/editor-react/motif-library";
+import type { TemplateV2InsertComponent } from "@/components/slide-editor/events/events";
 import type { SlideElement } from "@/components/slide-editor/types";
 
 export type ElementCategory =
@@ -18,7 +20,8 @@ export type ElementCategory =
   | "polygons"
   | "stars"
   | "arrows"
-  | "flowchart";
+  | "flowchart"
+  | "infographics";
 
 export type ElementCatalogEntry = {
   key: string;
@@ -27,7 +30,10 @@ export type ElementCatalogEntry = {
   icon:
     | { kind: "lucide"; Icon: ComponentType<LucideProps> }
     | { kind: "shape"; shape: ShapeKind };
-  build: () => SlideElement[];
+  // Most entries insert loose elements (each becomes its own movable box).
+  // Motifs return a single positioned component so their children move
+  // together as one composed graphic while staying individually editable.
+  build: () => SlideElement[] | TemplateV2InsertComponent;
 };
 
 const DEFAULT_SHAPE_POSITION = { x: 168, y: 176 };
@@ -51,6 +57,7 @@ export const ELEMENT_CATEGORY_LABELS: Record<ElementCategory, string> = {
   stars: "Stars",
   arrows: "Arrows",
   flowchart: "Flowchart shapes",
+  infographics: "Infographics",
 };
 
 export const ELEMENT_CATALOG: ElementCatalogEntry[] = [
@@ -180,10 +187,38 @@ export const ELEMENT_CATALOG: ElementCatalogEntry[] = [
     icon: { kind: "lucide", Icon: Slash },
     build: () => createElementInsertElements("pill"),
   },
+  {
+    key: "motif-radial-gauge",
+    label: "Radial gauge",
+    category: "infographics",
+    icon: { kind: "shape", shape: "hexagon" },
+    build: () => MOTIF_BUILDERS["radial-gauge"](),
+  },
+  {
+    key: "motif-leader-callout",
+    label: "Leader callout",
+    category: "infographics",
+    icon: { kind: "lucide", Icon: Minus },
+    build: () => MOTIF_BUILDERS["leader-callout"](),
+  },
+  {
+    key: "motif-bracket-frame",
+    label: "Bracket frame",
+    category: "infographics",
+    icon: { kind: "lucide", Icon: Square },
+    build: () => MOTIF_BUILDERS["bracket-frame"](),
+  },
+  {
+    key: "motif-big-stat",
+    label: "Big stat",
+    category: "infographics",
+    icon: { kind: "lucide", Icon: Circle },
+    build: () => MOTIF_BUILDERS["big-stat"](),
+  },
 ];
 
 export function elementCategoryOrder(): ElementCategory[] {
-  return ["lines", "basic", "polygons", "stars", "arrows", "flowchart"];
+  return ["infographics", "lines", "basic", "polygons", "stars", "arrows", "flowchart"];
 }
 
 export function renderCatalogIcon(entry: ElementCatalogEntry, size = 22) {

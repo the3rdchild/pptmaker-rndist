@@ -221,13 +221,11 @@ function generateQuickPalette(hue: number, saturation: number, value: number, sc
 /* ---------------------------------- Panel ----------------------------------- */
 
 export interface ColorPalettePanelProps {
-  onApplyTheme: (opts: { background?: string; fontColor?: string }) => void;
   hasElementSelection: boolean;
   onApplyColorToSelection: (color: string) => void;
 }
 
 export default function ColorPalettePanel({
-  onApplyTheme,
   hasElementSelection,
   onApplyColorToSelection,
 }: ColorPalettePanelProps) {
@@ -421,56 +419,27 @@ export default function ColorPalettePanel({
           const name = colorName(h, s, l);
           const isLight = l > 60;
           return (
-            <div key={`${color}-${i}`} className="group relative">
-              <button
-                onClick={() => {
-                  if (hasElementSelection) {
-                    onApplyColorToSelection(color);
-                    setApplied(color);
-                    setTimeout(() => setApplied((c) => (c === color ? null : c)), 1200);
-                  } else {
-                    copyHex(color);
-                  }
-                }}
-                title={hasElementSelection ? `Apply ${color} to selection` : color}
-                className="flex h-9 w-full items-center justify-between rounded-md px-2.5 transition-transform hover:scale-[1.01]"
-                style={{ backgroundColor: color, color: isLight ? "#111827" : "#F9FAFB" }}
-              >
-                <span className="text-[11px] font-medium">{color.toUpperCase()}</span>
-                <span className="flex items-center gap-1.5 text-[11px]">
-                  {(copied === color || applied === color) && <Check size={12} />}
-                  {name}
-                </span>
-              </button>
-              <div className="pointer-events-none absolute inset-x-0 -bottom-1 z-10 hidden translate-y-full flex-col gap-0.5 rounded-md bg-[var(--bg-elevated)] p-1 shadow-[var(--shadow-pop)] group-hover:pointer-events-auto group-hover:flex">
-                {hasElementSelection && (
-                  <button
-                    onClick={() => onApplyColorToSelection(color)}
-                    className="whitespace-nowrap rounded px-1.5 py-0.5 text-left text-[10px] font-medium text-[var(--accent-light)] hover:bg-[var(--bg-surface)]"
-                  >
-                    Apply to selection
-                  </button>
-                )}
-                <button
-                  onClick={() => onApplyTheme({ background: color })}
-                  className="whitespace-nowrap rounded px-1.5 py-0.5 text-left text-[10px] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)]"
-                >
-                  Use as background
-                </button>
-                <button
-                  onClick={() => onApplyTheme({ fontColor: color })}
-                  className="whitespace-nowrap rounded px-1.5 py-0.5 text-left text-[10px] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)]"
-                >
-                  Use as text color
-                </button>
-                <button
-                  onClick={() => copyHex(color)}
-                  className="flex items-center gap-1 whitespace-nowrap rounded px-1.5 py-0.5 text-left text-[10px] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)]"
-                >
-                  <Copy size={10} /> Copy hex
-                </button>
-              </div>
-            </div>
+            <button
+              key={`${color}-${i}`}
+              onClick={() => {
+                if (hasElementSelection) {
+                  onApplyColorToSelection(color);
+                  setApplied(color);
+                  setTimeout(() => setApplied((c) => (c === color ? null : c)), 1200);
+                } else {
+                  copyHex(color);
+                }
+              }}
+              title={hasElementSelection ? `Apply ${color} to selection` : `Copy ${color}`}
+              className="flex h-9 w-full items-center justify-between rounded-md px-2.5 transition-transform hover:scale-[1.01]"
+              style={{ backgroundColor: color, color: isLight ? "#111827" : "#F9FAFB" }}
+            >
+              <span className="text-[11px] font-medium">{color.toUpperCase()}</span>
+              <span className="flex items-center gap-1.5 text-[11px]">
+                {(copied === color || applied === color) && <Check size={12} />}
+                {name}
+              </span>
+            </button>
           );
         })}
       </div>

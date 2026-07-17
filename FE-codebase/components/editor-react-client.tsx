@@ -315,11 +315,6 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
   const handleInsert = (ui: Record<string, unknown>) => {
     dispatch(updateSlideUi({ index: safeActive, ui }));
   };
-  const handleApplyTheme = (opts: { background?: string; fontColor?: string }) => {
-    if (!presentationData) return;
-    const next = applyThemeToAllSlides(presentationData.slides, opts);
-    dispatch(setPresentationData({ ...presentationData, slides: next }));
-  };
 
   // Streams AIPPTSlide JSONL for a topic and appends each mapped slide.
   // Shared by the AI Assistant's create_deck tool and the one-time
@@ -709,7 +704,6 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
         <InsertToolbar
           activeUi={activeUi}
           onInsert={handleInsert}
-          onApplyTheme={handleApplyTheme}
           hasElementSelection={hasElementSelection}
           onApplyColorToSelection={handleApplyColorToSelection}
         />

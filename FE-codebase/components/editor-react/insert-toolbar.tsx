@@ -44,7 +44,6 @@ type InsertHandler = (ui: Record<string, unknown>) => void;
 export interface InsertToolbarProps {
   activeUi: Record<string, unknown> | null;
   onInsert: InsertHandler;
-  onApplyTheme: (opts: { background?: string; fontColor?: string }) => void;
   hasElementSelection: boolean;
   onApplyColorToSelection: (color: string) => void;
 }
@@ -101,7 +100,6 @@ function backgroundStyleKey(style: BackgroundStyle): string {
 export default function InsertToolbar({
   activeUi,
   onInsert,
-  onApplyTheme,
   hasElementSelection,
   onApplyColorToSelection,
 }: InsertToolbarProps) {
@@ -195,7 +193,6 @@ export default function InsertToolbar({
             {openTab === "table" && <TableTab onInsertElements={runInsert} />}
             {openTab === "palette" && (
               <ColorPalettePanel
-                onApplyTheme={onApplyTheme}
                 hasElementSelection={hasElementSelection}
                 onApplyColorToSelection={onApplyColorToSelection}
               />

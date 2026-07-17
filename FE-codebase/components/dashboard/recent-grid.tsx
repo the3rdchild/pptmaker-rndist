@@ -75,7 +75,7 @@ export function RecentGrid() {
 				<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 					{useDeckStore.getState().filtered().map((deck) => (
 						<div key={deck.id} className="group rounded-xl border border-[#2d2e42] bg-[#1a1b2e] p-3 transition-colors hover:border-[#3a3b52]">
-							<Link href={`/editor/${deck.id}`} className="block">
+							<Link href={`/editor-react/${deck.id}`} className="block">
 								{/* Thumbnail */}
 								<div className="mb-3 flex aspect-video items-center justify-center rounded-lg bg-gradient-to-br from-[#2d2e42] to-[#1a1b2e]">
 									<span className="text-2xl font-bold text-zinc-700">

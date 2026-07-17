@@ -1,9 +1,9 @@
-"""Deck generation service — emits AIPPTSlide JSONL stream for PPTist.
+"""Deck generation service — emits AIPPTSlide JSONL stream.
 
-PPTist reads the stream line-by-line and maps each AIPPTSlide to its
-240 template slides (font-fitting, image-placing, shapes).
+FE-codebase/components/editor-react/map-slide.ts reads the stream line-by-line
+and maps each AIPPTSlide to a pre-baked Template V2 layout.
 
-AIPPTSlide contract (matching editor/src/types/AIPPT.ts):
+AIPPTSlide contract (matching FE-codebase/components/editor-react/map-slide.ts):
   {"type":"cover","data":{"title":"...","text":"..."}}
   {"type":"contents","data":{"items":["...","..."]}}
   {"type":"transition","data":{"title":"...","text":"..."}}

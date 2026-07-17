@@ -1,8 +1,8 @@
 """Outline generation service.
 
 Two modes:
-  - stream_mode='raw' (PPTist integration): publish markdown text chunks,
-    PPTist reads them as raw text stream.
+  - stream_mode='raw' (used by the /tools/aippt_outline SSE route): publish
+    markdown text chunks as they're generated.
   - default: save result as JSON, publish 'done' for our Next.js outline screen.
 """
 import logging
@@ -55,7 +55,7 @@ def process(ctx: dict):
     ]
 
     if stream_mode == "raw":
-        # PPTist mode: stream markdown as raw text chunks
+        # Stream markdown as raw text chunks (consumed by /tools/aippt_outline)
         full_text = ""
         for chunk in llm_client.chat_stream(messages, temperature=0.7):
             full_text += chunk
@@ -64,7 +64,6 @@ def process(ctx: dict):
         publish(ctx["job_id"], {"type": "done"})
         logger.info("[outline_service] raw stream done | job_id=%s len=%d", ctx["job_id"], len(full_text))
     else:
-        # Our Next.js mode: single JSON result
         text = llm_client.chat(messages, temperature=0.7)
         outline = {"title": text.split("\n")[0].replace("#", "").strip() or prompt[:60], "markdown": text}
         save_result(ctx["request_id"], ctx["job_id"], "outline", outline)

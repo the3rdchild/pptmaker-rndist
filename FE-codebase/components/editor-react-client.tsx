@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
 import { useDispatch, useSelector } from "react-redux";
 import {
   Check,
@@ -85,6 +86,8 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
     (s: RootState) => s.presentationGeneration.presentationData
   );
   const token = useSessionStore((s) => s.token);
+  const searchParams = useSearchParams();
+  const autoGenerateRan = useRef(false);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -257,6 +260,73 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
     dispatch(updateSlideUi({ index: safeActive, ui }));
   };
 
+  // Streams AIPPTSlide JSONL for a topic and appends each mapped slide.
+  // Shared by the AI Assistant's create_deck tool and the one-time
+  // auto-generate-on-open flow (?prompt= from the homepage).
+  const generateDeckFromTopic = async (topic: string, language?: string): Promise<number> => {
+    if (!token) return 0;
+    const res = await streamAipptDeck(token, { content: topic, language });
+    if (!(res instanceof Response) || !res.body) return 0;
+
+    if (presentationData) {
+      dispatch(setPresentationData({ ...presentationData, slides: [] }));
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buf = "";
+    let count = 0;
+
+    const mapLine = (line: string): Record<string, unknown> | null => {
+      try {
+        const slide = JSON.parse(line) as AIPPTSlide;
+        return mapAIPPTSlideToUi(slide);
+      } catch {
+        return null;
+      }
+    };
+
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) {
+        if (buf.trim()) {
+          const ui = mapLine(buf.trim());
+          if (ui) {
+            dispatch(addSlide({ ui }));
+            count++;
+          }
+        }
+        break;
+      }
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop() || "";
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t || t.startsWith("```")) continue;
+        const ui = mapLine(t);
+        if (ui) {
+          dispatch(addSlide({ ui }));
+          count++;
+          setActiveIndex(0);
+        }
+      }
+    }
+    return count;
+  };
+
+  // Auto-generate once when opened with ?prompt= (homepage "Generate" flow
+  // creates an empty deck, then routes here with the prompt in the query
+  // string — cross-origin-safe, survives a reload).
+  useEffect(() => {
+    if (autoGenerateRan.current || loading || !token) return;
+    const prompt = searchParams.get("prompt");
+    if (!prompt) return;
+    autoGenerateRan.current = true;
+    const language = searchParams.get("lang") ?? undefined;
+    void generateDeckFromTopic(prompt, language);
+  }, [loading, token, searchParams]);
+
   // Every branch calls an EXISTING function (Redux action or an
   // agent-dispatch.ts transform) — the agent only decides + supplies text
   // content, it never authors layout/HTML itself. Returns the chat message
@@ -324,60 +394,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
         if (!topic) return "Please specify a topic to generate a deck about.";
         if (!token) return "Session not ready — try again in a moment.";
 
-        const res = await streamAipptDeck(token, { content: topic, language });
-        if (!(res instanceof Response) || !res.body) {
-          return "Couldn't reach the generation service. Try again.";
-        }
-
-        // Clear existing slides first
-        if (presentationData) {
-          dispatch(setPresentationData({ ...presentationData, slides: [] }));
-        }
-
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder("utf-8");
-        let buf = "";
-        let count = 0;
-
-        const readLoop = async () => {
-          for (;;) {
-            const { done, value } = await reader.read();
-            if (done) {
-              if (buf.trim()) {
-                const ui = mapLine(buf.trim());
-                if (ui) {
-                  dispatch(addSlide({ ui }));
-                  count++;
-                }
-              }
-              break;
-            }
-            buf += decoder.decode(value, { stream: true });
-            const lines = buf.split("\n");
-            buf = lines.pop() || "";
-            for (const line of lines) {
-              const t = line.trim();
-              if (!t || t.startsWith("```")) continue;
-              const ui = mapLine(t);
-              if (ui) {
-                dispatch(addSlide({ ui }));
-                count++;
-                setActiveIndex(0);
-              }
-            }
-          }
-        };
-
-        const mapLine = (line: string): Record<string, unknown> | null => {
-          try {
-            const slide = JSON.parse(line) as AIPPTSlide;
-            return mapAIPPTSlideToUi(slide);
-          } catch {
-            return null;
-          }
-        };
-
-        await readLoop();
+        const count = await generateDeckFromTopic(topic, language);
         return count > 0
           ? `Generated ${count} slides about "${topic}".`
           : `No slides generated for "${topic}". Try a different prompt.`;

@@ -31,14 +31,14 @@ export function PromptInput() {
 		setSubmitting(true)
 		setLocalError(null)
 		try {
-			// Create an empty deck, then open PPTist editor passing the prompt
-			// via URL query params (cross-origin safe, survives iframe reload).
+			// Create an empty deck, then open the editor passing the prompt via
+			// URL query params — editor-react-client auto-generates from it on mount.
 			const deck = await createDeck(token, { title: prompt.slice(0, 60) })
 			const qs = new URLSearchParams({
 				prompt,
 				lang: language,
 			})
-			router.push(`/editor/${deck.id}?${qs.toString()}`)
+			router.push(`/editor-react/${deck.id}?${qs.toString()}`)
 		} catch (e) {
 			setLocalError(e instanceof Error ? e.message : 'Failed to start')
 			setSubmitting(false)

@@ -2,10 +2,7 @@
 
 import { useState } from "react";
 import {
-  Award,
   BarChart3,
-  FolderKanban,
-  Grid3x3,
   LayoutTemplate,
   PaintBucket,
   Shapes,
@@ -13,7 +10,6 @@ import {
   Table as TableIcon,
   Type,
   Upload as UploadIcon,
-  Wrench,
   X,
 } from "lucide-react";
 import { PanelLabel, RailTabButton, SearchField } from "@/components/editor-react/ui";
@@ -53,11 +49,7 @@ type TabId =
   | "text"
   | "chart"
   | "table"
-  | "brand"
   | "uploads"
-  | "tools"
-  | "projects"
-  | "apps"
   | "magic-media"
   | "background";
 
@@ -72,11 +64,7 @@ const TABS: {
   { id: "text", label: "Text", icon: Type, searchPlaceholder: "Search text styles" },
   { id: "chart", label: "Chart", icon: BarChart3, searchPlaceholder: "Search charts" },
   { id: "table", label: "Table", icon: TableIcon },
-  { id: "brand", label: "Brand", icon: Award },
   { id: "uploads", label: "Uploads", icon: UploadIcon, searchPlaceholder: "Search uploads" },
-  { id: "tools", label: "Tools", icon: Wrench },
-  { id: "projects", label: "Projects", icon: FolderKanban },
-  { id: "apps", label: "Apps", icon: Grid3x3 },
   { id: "magic-media", label: "Magic Media", icon: Sparkles },
   { id: "background", label: "Background", icon: PaintBucket },
 ];
@@ -211,34 +199,6 @@ export default function InsertToolbar({ activeUi, onInsert }: InsertToolbarProps
                 )}
                 <BackgroundPanel activeUi={activeUi} onApply={handleBackgroundApply} />
               </div>
-            )}
-            {openTab === "brand" && (
-              <PlaceholderTab
-                icon={<Award size={20} />}
-                title="Brand Kit"
-                description="Save your brand colors, fonts, and logo for quick reuse. Coming soon."
-              />
-            )}
-            {openTab === "tools" && (
-              <PlaceholderTab
-                icon={<Wrench size={20} />}
-                title="Tools"
-                description="Alignment helpers, eyedropper, and other quick tools are coming soon."
-              />
-            )}
-            {openTab === "projects" && (
-              <PlaceholderTab
-                icon={<FolderKanban size={20} />}
-                title="Projects"
-                description="Organize your decks into projects and folders. Coming soon."
-              />
-            )}
-            {openTab === "apps" && (
-              <PlaceholderTab
-                icon={<Grid3x3 size={20} />}
-                title="Apps"
-                description="Connect third-party apps and integrations. Coming soon."
-              />
             )}
             {openTab === "magic-media" && (
               <PlaceholderTab

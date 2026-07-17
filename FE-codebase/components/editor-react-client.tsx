@@ -35,7 +35,11 @@ import InsertToolbar from "@/components/editor-react/insert-toolbar";
 import PresentMode from "@/components/editor-react/present-mode";
 import { exportToPptx } from "@/components/editor-react/export-pptx";
 import AIAssistantPanel from "@/components/editor-react/ai-assistant-panel";
-import { mapAIPPTSlideToUi, type AIPPTSlide } from "@/components/editor-react/map-slide";
+import {
+  DeckLayoutPicker,
+  mapAIPPTSlideToTemplateUi,
+  type AIPPTSlide,
+} from "@/components/editor-react/ai-layout-fill";
 import {
   applyFontToAllSlides,
   applyThemeToAllSlides,
@@ -276,11 +280,12 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
     const decoder = new TextDecoder("utf-8");
     let buf = "";
     let count = 0;
+    const layoutPicker = new DeckLayoutPicker(topic);
 
-    const mapLine = (line: string): Record<string, unknown> | null => {
+    const mapLine = async (line: string): Promise<Record<string, unknown> | null> => {
       try {
         const slide = JSON.parse(line) as AIPPTSlide;
-        return mapAIPPTSlideToUi(slide);
+        return await mapAIPPTSlideToTemplateUi(slide, layoutPicker);
       } catch {
         return null;
       }
@@ -290,7 +295,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
       const { done, value } = await reader.read();
       if (done) {
         if (buf.trim()) {
-          const ui = mapLine(buf.trim());
+          const ui = await mapLine(buf.trim());
           if (ui) {
             dispatch(addSlide({ ui }));
             count++;
@@ -304,7 +309,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
       for (const line of lines) {
         const t = line.trim();
         if (!t || t.startsWith("```")) continue;
-        const ui = mapLine(t);
+        const ui = await mapLine(t);
         if (ui) {
           dispatch(addSlide({ ui }));
           count++;

@@ -245,9 +245,10 @@ function fillGlobalText(global: TextLeaf[], values: string[]): void {
 }
 
 /** Deep-clones the layout, then fills its text placeholders with the given
- * AIPPTSlide's content. Returns a Ui record ({id, components}) ready to
- * assign to a slide. */
-export function fillLayout(layout: TemplateLayout, slide: AIPPTSlide): Rec {
+ * AIPPTSlide's content. Returns the Ui record ({id, components}) ready to
+ * assign to a slide, plus the hero image slot (if any) for the caller to
+ * fill asynchronously with a generated image. */
+export function fillLayout(layout: TemplateLayout, slide: AIPPTSlide): FilledSlide {
   const components = JSON.parse(JSON.stringify(layout.components)) as Rec[];
 
   const allGlobal: TextLeaf[] = [];
@@ -294,14 +295,92 @@ export function fillLayout(layout: TemplateLayout, slide: AIPPTSlide): Rec {
       break;
   }
 
-  return { id: layout.id, components };
+  const heroImage = findHeroImage(components);
+
+  return { ui: { id: layout.id, components }, heroImage };
+}
+
+/* --------------------------- Hero image slot ------------------------------ */
+
+export interface HeroImageMarker {
+  componentId: string;
+  elementName: string;
+}
+
+/** Finds the largest non-icon, non-decorative image element in the layout —
+ * almost always the template's "hero photo" slot (main_photo, header_photo,
+ * background_photo, ...). Used to drop an AI-generated image in without
+ * flattening the slide — the image stays its own editable element. */
+type HeroCandidate = { area: number; componentId: string; elementName: string };
+
+function findHeroImage(components: Rec[]): HeroImageMarker | null {
+  const candidates: HeroCandidate[] = [];
+
+  const visit = (el: Rec, componentId: string) => {
+    if (el.type === "image" && el.is_icon !== true && el.decorative !== true && el.name) {
+      const size = el.size as Rec | undefined;
+      const w = typeof size?.width === "number" ? (size.width as number) : 0;
+      const h = typeof size?.height === "number" ? (size.height as number) : 0;
+      const area = w * h;
+      if (area > 20000) {
+        candidates.push({ area, componentId, elementName: String(el.name) });
+      }
+      return;
+    }
+    const children = el.children as Rec[] | undefined;
+    if (Array.isArray(children)) {
+      for (const child of children) visit(child, componentId);
+      return;
+    }
+    const child = el.child as Rec | undefined;
+    if (child) visit(child, componentId);
+  };
+
+  for (const component of components) {
+    const elements = (component.elements as Rec[]) ?? [];
+    for (const el of elements) visit(el, component.id as string);
+  }
+
+  candidates.sort((a, b) => b.area - a.area);
+  const best = candidates[0];
+  return best ? { componentId: best.componentId, elementName: best.elementName } : null;
+}
+
+/** Deep-clones `ui` and swaps the hero image slot's `data` for a generated
+ * image URL/data-URL. No-ops if the marker no longer matches anything. */
+export function patchHeroImage(ui: Rec, marker: HeroImageMarker, dataUrl: string): Rec {
+  const cloned = JSON.parse(JSON.stringify(ui)) as Rec;
+  const components = (cloned.components as Rec[]) ?? [];
+  const component = components.find((c) => c.id === marker.componentId);
+  if (!component) return cloned;
+
+  const visit = (el: Rec): boolean => {
+    if (el.type === "image" && el.name === marker.elementName) {
+      el.data = dataUrl;
+      return true;
+    }
+    const children = el.children as Rec[] | undefined;
+    if (Array.isArray(children)) return children.some(visit);
+    const child = el.child as Rec | undefined;
+    if (child) return visit(child);
+    return false;
+  };
+
+  const elements = (component.elements as Rec[]) ?? [];
+  elements.some(visit);
+  return cloned;
+}
+
+export interface FilledSlide {
+  ui: Rec;
+  heroImage: HeroImageMarker | null;
 }
 
 /** High-level entry point: pick a layout for this slide's role and fill it. */
 export async function mapAIPPTSlideToTemplateUi(
   slide: AIPPTSlide,
   picker: DeckLayoutPicker
-): Promise<Rec | null> {
+): Promise<FilledSlide | null> {
   await picker.ensureLoaded();
   const layout = picker.pickFor(slide.type);
   if (!layout) return null;

@@ -23,6 +23,10 @@ const writingSchema = z.object({
 	content: z.string(),
 	command: z.string().optional().default('polish'),
 })
+const imageSchema = z.object({
+	prompt: z.string(),
+	size: z.string().optional(),
+})
 const agentSchema = z.object({
 	message: z.string(),
 	deckSummary: z.object({
@@ -281,6 +285,40 @@ tools.post('/agent', async (c) => {
 			s.write(text + '\n').catch(() => {})
 		}, 30000) // single-turn tool-call-or-reply, no need for the long idle window
 	})
+})
+
+// ── POST /tools/image — enqueues an image-gen job, returns jobId to poll ──
+//
+// Not SSE like the other tools: image generation is one shot (no partial
+// chunks worth streaming), so this reuses the existing poll infrastructure
+// (GET /status/:jobId + worker's save_result) instead of the chunk-forwarding
+// stream() plumbing above.
+
+tools.post('/image', async (c) => {
+	const body = await c.req.json().catch(() => ({}))
+	const parsed = imageSchema.safeParse(body)
+	if (!parsed.success) return c.json({ state: -1, message: 'Invalid body' }, 400)
+
+	const sessionId = requireSession(c)
+	if (!sessionId) return c.json({ state: -1, message: 'Missing session' }, 401)
+
+	const jobId = crypto.randomUUID()
+
+	const request = await createPoolRequest({
+		job_id: jobId,
+		session_id: sessionId,
+		status: 'pending',
+		params: { type: 'image', prompt: parsed.data.prompt, size: parsed.data.size },
+	})
+	await QueueClient.enqueueJob(jobId, {
+		request_id: request.id,
+		session_id: sessionId,
+		type: 'image',
+		prompt: parsed.data.prompt,
+		size: parsed.data.size,
+	})
+
+	return c.json({ message: 'sukses', data: { jobId } })
 })
 
 // ── POST /tools/img_search — returns PPTist-expected shape ──

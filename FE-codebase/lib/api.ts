@@ -145,6 +145,48 @@ export async function streamAipptDeck(
 	return res
 }
 
+// ── Image generation (poll-based — see /tools/image + /status/:jobId) ──
+
+export async function requestImage(
+	token: string,
+	body: { prompt: string; size?: string },
+): Promise<{ jobId: string }> {
+	const res = await fetch(`${API_BASE}/api/v1/tools/image`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
+		body: JSON.stringify(body),
+	})
+	const json = await unwrap<{ jobId: string }>(res)
+	return json
+}
+
+/** Enqueues an image job and polls until it completes/fails/times out. Returns
+ * a data: URL, or null if generation failed (never throws — callers should
+ * treat a null as "keep the template's placeholder image"). */
+export async function generateImage(
+	token: string,
+	prompt: string,
+	opts: { size?: string; timeoutMs?: number; intervalMs?: number } = {},
+): Promise<string | null> {
+	const { size, timeoutMs = 45000, intervalMs = 1200 } = opts
+	try {
+		const { jobId } = await requestImage(token, { prompt, size })
+		const deadline = Date.now() + timeoutMs
+		while (Date.now() < deadline) {
+			const status = await pollStatus(token, jobId)
+			if (status.status === 'completed') {
+				const result = status.result as { data_url?: string } | undefined
+				return result?.data_url ?? null
+			}
+			if (status.status === 'failed') return null
+			await new Promise((resolve) => setTimeout(resolve, intervalMs))
+		}
+		return null
+	} catch {
+		return null
+	}
+}
+
 // ── Status polling ──
 
 export type JobStatus = 'pending' | 'processing' | 'completed' | 'failed'

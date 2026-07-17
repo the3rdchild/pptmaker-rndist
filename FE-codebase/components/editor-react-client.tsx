@@ -27,7 +27,7 @@ import {
 } from "@/store/presentationGeneration";
 import type { PresentationData, SlideData } from "@/store/presentationGeneration";
 import { useSessionStore } from "@/store/session.store";
-import { getDeck, saveDeck, streamAipptDeck, type AgentAction } from "@/lib/api";
+import { getDeck, saveDeck, streamAipptDeck, generateImage, type AgentAction } from "@/lib/api";
 import { normalizeBackendAssetUrls } from "@/utils/api";
 import { Toaster } from "@/components/ui/sonner";
 import SlideSidebar from "@/components/editor-react/slide-sidebar";
@@ -38,6 +38,7 @@ import AIAssistantPanel from "@/components/editor-react/ai-assistant-panel";
 import {
   DeckLayoutPicker,
   mapAIPPTSlideToTemplateUi,
+  patchHeroImage,
   type AIPPTSlide,
 } from "@/components/editor-react/ai-layout-fill";
 import {
@@ -286,11 +287,37 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
     let buf = "";
     let count = 0;
     const layoutPicker = new DeckLayoutPicker(topic);
+    const currentToken = token;
 
-    const mapLine = async (line: string): Promise<Record<string, unknown> | null> => {
+    const slideSubject = (slide: AIPPTSlide): string => {
+      if (slide.type === "cover" || slide.type === "transition") return slide.data.title;
+      if (slide.type === "content") return slide.data.title;
+      return topic;
+    };
+
+    // Hero photo generated per slide, kept in one consistent style so a
+    // deck doesn't look like a grab-bag of unrelated stock photos.
+    const heroStyle =
+      "editorial photograph, cinematic natural lighting, cohesive color grading, " +
+      "no text, no watermark, no logo";
+
+    const requestHeroImage = (index: number, ui: Record<string, unknown>, marker: { componentId: string; elementName: string }, subject: string) => {
+      const prompt = `${subject} — related to ${topic}. ${heroStyle}`;
+      void generateImage(currentToken, prompt).then((dataUrl) => {
+        if (!dataUrl) return;
+        const patched = patchHeroImage(ui, marker, dataUrl);
+        dispatch(updateSlideUi({ index, ui: patched }));
+      });
+    };
+
+    const mapLine = async (
+      line: string
+    ): Promise<{ ui: Record<string, unknown>; heroImage: { componentId: string; elementName: string } | null; subject: string } | null> => {
       try {
         const slide = JSON.parse(line) as AIPPTSlide;
-        return await mapAIPPTSlideToTemplateUi(slide, layoutPicker);
+        const filled = await mapAIPPTSlideToTemplateUi(slide, layoutPicker);
+        if (!filled) return null;
+        return { ui: filled.ui, heroImage: filled.heroImage, subject: slideSubject(slide) };
       } catch {
         return null;
       }
@@ -300,10 +327,12 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
       const { done, value } = await reader.read();
       if (done) {
         if (buf.trim()) {
-          const ui = await mapLine(buf.trim());
-          if (ui) {
-            dispatch(addSlide({ ui }));
+          const filled = await mapLine(buf.trim());
+          if (filled) {
+            const index = count;
+            dispatch(addSlide({ ui: filled.ui }));
             count++;
+            if (filled.heroImage) requestHeroImage(index, filled.ui, filled.heroImage, filled.subject);
           }
         }
         break;
@@ -314,11 +343,13 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
       for (const line of lines) {
         const t = line.trim();
         if (!t || t.startsWith("```")) continue;
-        const ui = await mapLine(t);
-        if (ui) {
-          dispatch(addSlide({ ui }));
+        const filled = await mapLine(t);
+        if (filled) {
+          const index = count;
+          dispatch(addSlide({ ui: filled.ui }));
           count++;
           setActiveIndex(0);
+          if (filled.heroImage) requestHeroImage(index, filled.ui, filled.heroImage, filled.subject);
         }
       }
     }

@@ -85,6 +85,33 @@ function hslToHex(h: number, s: number, l: number): string {
 	return `#${toByte(r)}${toByte(g)}${toByte(b)}`;
 }
 
+export function hexToHsl(hex: string): { h: number; s: number; l: number } {
+	const clean = hex.replace("#", "");
+	const full = clean.length === 3 ? clean.split("").map((c) => c + c).join("") : clean;
+	const r = parseInt(full.slice(0, 2), 16) / 255;
+	const g = parseInt(full.slice(2, 4), 16) / 255;
+	const b = parseInt(full.slice(4, 6), 16) / 255;
+
+	const max = Math.max(r, g, b);
+	const min = Math.min(r, g, b);
+	const l = (max + min) / 2;
+	const delta = max - min;
+
+	if (delta === 0) return { h: 0, s: 0, l: l * 100 };
+
+	const s = delta / (1 - Math.abs(2 * l - 1));
+	let h: number;
+	if (max === r) h = ((g - b) / delta) % 6;
+	else if (max === g) h = (b - r) / delta + 2;
+	else h = (r - g) / delta + 4;
+	h *= 60;
+	if (h < 0) h += 360;
+
+	return { h, s: s * 100, l: l * 100 };
+}
+
+export { hslToHex };
+
 /** Hue offsets (from the base hue) for each accent slot, per scheme. */
 function accentHueOffsets(scheme: HarmonyScheme): [number, number, number] {
 	switch (scheme) {
@@ -158,4 +185,55 @@ export function generateDeckPalette(options: GeneratePaletteOptions = {}): DeckP
 		accentSecondary,
 		accentTertiary,
 	};
+}
+
+/* --------------------------- Manual palette picker ------------------------- */
+// Interactive palette generator for the color-palette panel: pick a base
+// color, spread N hues around the wheel (evenly, or analogous at a custom
+// angle), and generate a light→dark tone ramp at each hue — the same model
+// as Chromora's hue+tone grid (see colorGenerator.js's _generateHues /
+// _calculateShadesAndTones), reimplemented here in HSL against our own
+// hslToHex/hexToHsl instead of Chromora's HSV pipeline.
+
+export interface ManualPaletteOptions {
+	baseHex: string;
+	/** Hues in the wheel, including the base. 2=complementary, 3=triadic, 4=tetradic, 5-6=analogous-ish fan. */
+	hueCount: number;
+	/** Shades generated per hue (light→dark), including the base tone. */
+	toneCount: number;
+	/** When set, hues fan out ±angle from the base instead of spreading evenly around the full circle. */
+	analogousAngle?: number;
+}
+
+export interface HueRow {
+	hue: number;
+	swatches: string[];
+}
+
+export function generateManualPalette(options: ManualPaletteOptions): HueRow[] {
+	const { baseHex, hueCount, toneCount, analogousAngle } = options;
+	const base = hexToHsl(baseHex);
+	const count = Math.max(1, Math.round(hueCount));
+	const tones = Math.max(1, Math.round(toneCount));
+
+	const hues: number[] = [];
+	for (let i = 0; i < count; i++) {
+		if (analogousAngle) {
+			const step = i % 2 === 0 ? -Math.ceil(i / 2) : Math.ceil(i / 2);
+			hues.push(base.h + step * analogousAngle);
+		} else {
+			hues.push(base.h + (360 / count) * i);
+		}
+	}
+
+	return hues.map((hue) => {
+		const swatches: string[] = [];
+		for (let t = 0; t < tones; t++) {
+			// Spread lightness from dark to light, keeping the base tone's own
+			// saturation/lightness as the middle-ish anchor when tones is odd.
+			const l = tones === 1 ? base.l : 15 + (t / (tones - 1)) * 70;
+			swatches.push(hslToHex(hue, base.s, l));
+		}
+		return { hue: ((hue % 360) + 360) % 360, swatches };
+	});
 }

@@ -5,6 +5,7 @@ import {
   BarChart3,
   LayoutTemplate,
   PaintBucket,
+  Palette,
   Shapes,
   Sparkles,
   Table as TableIcon,
@@ -16,6 +17,7 @@ import { PanelLabel, RailTabButton, SearchField } from "@/components/editor-reac
 import BackgroundPanel, {
   applyBackgroundStyle,
 } from "@/components/editor-react/background-panel";
+import ColorPalettePanel from "@/components/editor-react/color-palette-panel";
 import {
   ChartTab,
   ElementsTab,
@@ -42,6 +44,7 @@ type InsertHandler = (ui: Record<string, unknown>) => void;
 export interface InsertToolbarProps {
   activeUi: Record<string, unknown> | null;
   onInsert: InsertHandler;
+  onApplyTheme: (opts: { background?: string; fontColor?: string }) => void;
 }
 
 type TabId =
@@ -52,6 +55,7 @@ type TabId =
   | "table"
   | "uploads"
   | "magic-media"
+  | "palette"
   | "background";
 
 const TABS: {
@@ -65,6 +69,7 @@ const TABS: {
   { id: "text", label: "Text", icon: Type, searchPlaceholder: "Search text styles" },
   { id: "chart", label: "Chart", icon: BarChart3, searchPlaceholder: "Search charts" },
   { id: "table", label: "Table", icon: TableIcon },
+  { id: "palette", label: "Palette", icon: Palette },
   { id: "uploads", label: "Uploads", icon: UploadIcon, searchPlaceholder: "Search uploads" },
   { id: "magic-media", label: "Magic Media", icon: Sparkles },
   { id: "background", label: "Background", icon: PaintBucket },
@@ -91,7 +96,7 @@ function backgroundStyleKey(style: BackgroundStyle): string {
   return `${style.type}:${style.from}:${style.to ?? ""}:${style.angle ?? ""}:${style.imageUrl ?? ""}:${style.pattern ?? ""}`;
 }
 
-export default function InsertToolbar({ activeUi, onInsert }: InsertToolbarProps) {
+export default function InsertToolbar({ activeUi, onInsert, onApplyTheme }: InsertToolbarProps) {
   const [openTab, setOpenTab] = useState<TabId | null>(null);
   const [search, setSearch] = useState("");
   const [recentElementKeys, setRecentElementKeys] = useState<string[]>([]);
@@ -180,6 +185,7 @@ export default function InsertToolbar({ activeUi, onInsert }: InsertToolbarProps
             {openTab === "text" && <TextTab search={search} onInsertElements={runInsert} />}
             {openTab === "chart" && <ChartTab search={search} onInsertElements={runInsert} />}
             {openTab === "table" && <TableTab onInsertElements={runInsert} />}
+            {openTab === "palette" && <ColorPalettePanel onApplyTheme={onApplyTheme} />}
             {openTab === "uploads" && (
               <UploadsTab
                 search={search}

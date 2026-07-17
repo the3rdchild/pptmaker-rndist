@@ -13,4 +13,7 @@ DEEPINFRA_API_KEY      = os.getenv("DEEPINFRA_API_KEY", "")
 DEEPINFRA_BASE_URL     = os.getenv("DEEPINFRA_BASE_URL", "https://api.deepinfra.com/v1/openai")
 DEEPINFRA_MODEL        = os.getenv("DEEPINFRA_MODEL", "deepseek-ai/DeepSeek-V3.1-Terminus")
 
+# DeepInfra image generation — used by image_client
+DEEPINFRA_IMAGE_MODEL  = os.getenv("DEEPINFRA_IMAGE_MODEL", "black-forest-labs/FLUX-2-klein-4b")
+
 STREAM_CHANNEL_PREFIX  = os.getenv("STREAM_CHANNEL_PREFIX", "ppt:stream")

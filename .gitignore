@@ -48,3 +48,6 @@ _reference-pptist/
 
 # local verification screenshots
 editor-*.png
+
+# session handoff notes (local only, not for the repo)
+HANDOFF.md

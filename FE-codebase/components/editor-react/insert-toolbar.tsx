@@ -157,7 +157,7 @@ export default function InsertToolbar({ activeUi, onInsert }: InsertToolbarProps
         </div>
       ))}
 
-      <div className="relative mt-auto">
+      <div className="relative">
         <button
           className={cn(
             "flex h-11 w-11 flex-col items-center justify-center gap-0.5 rounded-lg text-[9px] font-medium transition-colors",
@@ -174,7 +174,7 @@ export default function InsertToolbar({ activeUi, onInsert }: InsertToolbarProps
           <span>BG</span>
         </button>
         {openMenu === "background" && (
-          <PopPanel className="absolute bottom-0 right-full z-50 mr-2">
+          <PopPanel className="absolute right-full top-0 z-50 mr-2">
             <BackgroundPanel activeUi={activeUi} onApply={onInsert} />
           </PopPanel>
         )}

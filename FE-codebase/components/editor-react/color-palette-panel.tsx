@@ -233,14 +233,23 @@ export default function ColorPalettePanel({
   const [saturation, setSaturation] = useState(100);
   const [value, setValue] = useState(100);
   const [scheme, setScheme] = useState<Scheme>("monochrome");
-  const [palette, setPalette] = useState<string[]>(() => generateQuickPalette(272, 100, 100, "monochrome"));
+  const [rerollNonce, setRerollNonce] = useState(0);
   const [copied, setCopied] = useState<string | null>(null);
   const [applied, setApplied] = useState<string | null>(null);
 
   const rgb = useMemo(() => hsvToRgb(hue, saturation, value), [hue, saturation, value]);
   const hex = useMemo(() => rgbToHex(...rgb), [rgb]);
 
-  const handleGenerate = () => setPalette(generateQuickPalette(hue, saturation, value, scheme));
+  // Live — regenerates as soon as the wheel/value/scheme changes, no button
+  // needed. Reroll still bumps a nonce so "Random" can be re-rolled even
+  // when the base color didn't change.
+  const palette = useMemo(
+    () => generateQuickPalette(hue, saturation, value, scheme),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [hue, saturation, value, scheme, rerollNonce]
+  );
+
+  const handleGenerate = () => setRerollNonce((n) => n + 1);
 
   const handleHexInput = (raw: string) => {
     const parsed = hexToRgb(raw);

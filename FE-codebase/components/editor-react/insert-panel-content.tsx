@@ -1,0 +1,455 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import {
+  BarChart3,
+  CircleDot,
+  Heading1,
+  Heading2,
+  ImagePlus,
+  LayoutGrid,
+  LineChart,
+  List,
+  ListOrdered,
+  Loader2,
+  PieChart,
+  Quote,
+  Table as TableIcon,
+  Type,
+  Wand2,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { notify } from "@/components/ui/sonner";
+import { EmptyState, GridCard, PanelLabel } from "@/components/editor-react/ui";
+import {
+  ELEMENT_CATALOG,
+  ELEMENT_CATEGORY_LABELS,
+  elementCategoryOrder,
+  renderCatalogIcon,
+  type ElementCatalogEntry,
+} from "@/components/editor-react/element-catalog";
+import {
+  createChartInsertElements,
+  createTableInsertElements,
+  createTextInsertElements,
+} from "@/components/slide-editor/insert/insert-elements";
+import { normalizeBackendAssetUrls, resolveBackendAssetSource } from "@/utils/api";
+import { ImagesApi } from "@/app/(presentation-generator)/services/api/images";
+import type { SlideElement } from "@/components/slide-editor/types";
+
+const ThumbnailSlide = dynamic(
+  () =>
+    import("@/components/slide-editor/surface/TemplateV2KonvaSlide").then(
+      (m) => m.TemplateV2KonvaSlide
+    ),
+  { ssr: false }
+);
+
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+
+function matches(label: string, search: string) {
+  return !search || label.toLowerCase().includes(search.toLowerCase());
+}
+
+/* ------------------------------- Templates ------------------------------ */
+
+type Layout = Record<string, unknown>;
+
+export function TemplatesTab({
+  search,
+  onApplyLayout,
+}: {
+  search: string;
+  onApplyLayout: (layout: Layout) => void;
+}) {
+  const [layouts, setLayouts] = useState<Layout[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/templates/general/template.json");
+        const tpl = await res.json();
+        setLayouts((tpl.layouts ?? []) as Layout[]);
+      } catch {
+        // ignore
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const filtered = layouts.filter((layout) =>
+    matches(String(layout.description ?? layout.id ?? ""), search)
+  );
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16 text-[var(--text-muted)]">
+        <Loader2 size={18} className="animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-3">
+      <PanelLabel>All templates</PanelLabel>
+      <div className="grid grid-cols-2 gap-3 px-2.5 py-1.5">
+        {filtered.map((layout, i) => {
+          const scale = 0.19;
+          return (
+            <button
+              key={i}
+              onClick={() => onApplyLayout(normalizeBackendAssetUrls(layout))}
+              className="group relative overflow-hidden rounded-lg bg-white ring-1 ring-[var(--border-strong)] transition-shadow hover:shadow-[var(--shadow-accent-glow)] hover:ring-[var(--accent)]"
+              style={{ width: "100%", aspectRatio: "16 / 9" }}
+              title={String(layout.description ?? `Layout ${i + 1}`).slice(0, 80)}
+            >
+              <div
+                className="pointer-events-none origin-top-left"
+                style={{ width: 1280, height: 720, transform: `scale(${scale})` }}
+              >
+                <ThumbnailSlide
+                  layout={normalizeBackendAssetUrls(layout) as never}
+                  isEditMode={false}
+                  slideIndex={0}
+                />
+              </div>
+              <span className="pointer-events-none absolute inset-x-0 bottom-0 flex h-6 items-center justify-center bg-gradient-to-t from-black/70 to-transparent text-[10px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
+                Use template
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------------- Elements ------------------------------- */
+
+export function ElementsTab({
+  search,
+  recentKeys,
+  onInsertElements,
+}: {
+  search: string;
+  recentKeys: string[];
+  onInsertElements: (entry: ElementCatalogEntry) => void;
+}) {
+  const catalogByKey = new Map(ELEMENT_CATALOG.map((entry) => [entry.key, entry]));
+  const recent = recentKeys
+    .map((key) => catalogByKey.get(key))
+    .filter((entry): entry is ElementCatalogEntry => Boolean(entry));
+
+  const categories = elementCategoryOrder()
+    .map((category) => ({
+      category,
+      entries: ELEMENT_CATALOG.filter(
+        (entry) => entry.category === category && matches(entry.label, search)
+      ),
+    }))
+    .filter((group) => group.entries.length > 0);
+
+  return (
+    <div className="p-1.5">
+      {recent.length > 0 && !search && (
+        <>
+          <PanelLabel>Recently used</PanelLabel>
+          <div className="grid grid-cols-4 gap-2.5 px-2.5 pb-2">
+            {recent.map((entry) => (
+              <GridCard
+                key={`recent-${entry.key}`}
+                label={entry.label}
+                onClick={() => onInsertElements(entry)}
+              >
+                {renderCatalogIcon(entry)}
+              </GridCard>
+            ))}
+          </div>
+        </>
+      )}
+      {categories.map(({ category, entries }) => (
+        <div key={category}>
+          <PanelLabel>{ELEMENT_CATEGORY_LABELS[category]}</PanelLabel>
+          <div className="grid grid-cols-4 gap-2.5 px-2.5 pb-2">
+            {entries.map((entry) => (
+              <GridCard
+                key={entry.key}
+                label={entry.label}
+                onClick={() => onInsertElements(entry)}
+              >
+                {renderCatalogIcon(entry)}
+              </GridCard>
+            ))}
+          </div>
+        </div>
+      ))}
+      {categories.length === 0 && (
+        <EmptyState
+          icon={<LayoutGrid size={20} />}
+          title="No shapes found"
+          description={`Nothing matches "${search}".`}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------- Text --------------------------------- */
+
+const TEXT_STYLES: {
+  kind: string;
+  label: string;
+  icon: typeof Heading1;
+  preview: string;
+  className: string;
+}[] = [
+  { kind: "title-block", label: "Add a heading", icon: Heading1, preview: "Heading", className: "text-lg font-bold" },
+  { kind: "subtitle", label: "Add a subheading", icon: Heading2, preview: "Subheading", className: "text-sm font-semibold" },
+  { kind: "body-text", label: "Add body text", icon: Type, preview: "Body text", className: "text-xs" },
+  { kind: "quote", label: "Add a quote", icon: Quote, preview: "“Quote”", className: "text-xs italic" },
+  { kind: "bullet-list", label: "Bullet list", icon: List, preview: "• List", className: "text-xs" },
+  { kind: "numbered-list", label: "Numbered list", icon: ListOrdered, preview: "1. List", className: "text-xs" },
+];
+
+export function TextTab({
+  search,
+  onInsertElements,
+}: {
+  search: string;
+  onInsertElements: (elements: SlideElement[]) => void;
+}) {
+  const filtered = TEXT_STYLES.filter((style) => matches(style.label, search));
+
+  return (
+    <div className="p-2.5">
+      <button
+        onClick={() => onInsertElements(createTextInsertElements("body-text"))}
+        className="mb-3 flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[var(--accent)] text-sm font-medium text-white transition-colors hover:bg-[var(--accent-hover)]"
+      >
+        <Type size={15} />
+        Add a text box
+      </button>
+
+      <button
+        disabled
+        title="Coming soon"
+        className="mb-1 flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--border-strong)] text-sm font-medium text-[var(--text-muted)]"
+      >
+        <Wand2 size={15} />
+        Magic Write
+        <span className="rounded-full bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide">
+          Soon
+        </span>
+      </button>
+
+      <PanelLabel>Default text styles</PanelLabel>
+      <div className="space-y-1.5 px-2.5">
+        {filtered.map((style) => (
+          <button
+            key={style.kind}
+            onClick={() => onInsertElements(createTextInsertElements(style.kind))}
+            className="flex w-full items-center gap-2.5 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3 py-2.5 text-left transition-colors hover:border-[var(--accent)]/50 hover:bg-[var(--accent-soft)]"
+          >
+            <style.icon size={14} className="shrink-0 text-[var(--text-muted)]" />
+            <span className={cn("truncate text-[var(--text-primary)]", style.className)}>
+              {style.preview}
+            </span>
+          </button>
+        ))}
+        {filtered.length === 0 && (
+          <p className="px-1 py-4 text-center text-xs text-[var(--text-muted)]">
+            No text styles match &quot;{search}&quot;.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* --------------------------------- Chart --------------------------------- */
+
+const CHART_KINDS: { kind: string; label: string; icon: typeof BarChart3 }[] = [
+  { kind: "bar", label: "Bar", icon: BarChart3 },
+  { kind: "line", label: "Line", icon: LineChart },
+  { kind: "pie", label: "Pie", icon: PieChart },
+  { kind: "donut", label: "Donut", icon: CircleDot },
+  { kind: "area", label: "Area", icon: LineChart },
+  { kind: "radar", label: "Radar", icon: CircleDot },
+];
+
+export function ChartTab({
+  search,
+  onInsertElements,
+}: {
+  search: string;
+  onInsertElements: (elements: SlideElement[]) => void;
+}) {
+  const filtered = CHART_KINDS.filter((c) => matches(c.label, search));
+  return (
+    <div className="p-1.5">
+      <PanelLabel>Chart</PanelLabel>
+      <div className="grid grid-cols-3 gap-2.5 px-2.5 pb-2">
+        {filtered.map((chart) => (
+          <GridCard
+            key={chart.kind}
+            label={chart.label}
+            onClick={() => onInsertElements(createChartInsertElements(chart.kind))}
+          >
+            <chart.icon size={22} />
+          </GridCard>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* --------------------------------- Table --------------------------------- */
+
+export function TableTab({
+  onInsertElements,
+}: {
+  onInsertElements: (elements: SlideElement[]) => void;
+}) {
+  return (
+    <div className="p-2.5">
+      <PanelLabel>Table</PanelLabel>
+      <div className="px-2.5">
+        <GridCard
+          label="Simple table"
+          aspect="wide"
+          className="w-32"
+          onClick={() => onInsertElements(createTableInsertElements("simple-table"))}
+        >
+          <TableIcon size={26} />
+        </GridCard>
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------------- Uploads -------------------------------- */
+
+export type UploadedAsset = { url: string; name: string };
+
+export function UploadsTab({
+  search,
+  uploads,
+  onUploaded,
+  onInsertImage,
+}: {
+  search: string;
+  uploads: UploadedAsset[];
+  onUploaded: (asset: UploadedAsset) => void;
+  onInsertImage: (url: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const filtered = uploads.filter((asset) => matches(asset.name, search));
+
+  const handleFiles = async (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      notify.warning("Invalid file", "Please upload an image file.");
+      return;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      notify.warning("File too large", "Image files must be smaller than 5MB.");
+      return;
+    }
+    try {
+      setUploading(true);
+      const uploaded = await ImagesApi.uploadImage(file);
+      const url = resolveBackendAssetSource(uploaded);
+      if (!url) throw new Error("Upload did not return an image URL.");
+      onUploaded({ url, name: file.name });
+    } catch (error) {
+      notify.error(
+        "Upload failed",
+        error instanceof Error ? error.message : "Failed to upload image."
+      );
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div
+      className="p-2.5"
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => {
+        e.preventDefault();
+        void handleFiles(e.dataTransfer.files);
+      }}
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          void handleFiles(e.target.files);
+          e.target.value = "";
+        }}
+      />
+      <button
+        onClick={() => inputRef.current?.click()}
+        disabled={uploading}
+        className="mb-3 flex h-24 w-full flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--border-strong)] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent-light)] disabled:opacity-60"
+      >
+        {uploading ? (
+          <Loader2 size={18} className="animate-spin" />
+        ) : (
+          <ImagePlus size={18} />
+        )}
+        <span className="text-[11px] font-medium">
+          {uploading ? "Uploading…" : "Upload image, or drag & drop"}
+        </span>
+      </button>
+
+      {filtered.length > 0 ? (
+        <>
+          <PanelLabel>Recently uploaded</PanelLabel>
+          <div className="grid grid-cols-3 gap-2.5 px-2.5">
+            {filtered.map((asset, i) => (
+              <GridCard
+                key={`${asset.url}-${i}`}
+                label={asset.name}
+                onClick={() => onInsertImage(asset.url)}
+              >
+                <img
+                  src={asset.url}
+                  alt={asset.name}
+                  className="h-full w-full object-cover"
+                />
+              </GridCard>
+            ))}
+          </div>
+        </>
+      ) : (
+        <EmptyState
+          icon={<ImagePlus size={20} />}
+          title="No uploads yet"
+          description="Images you upload will show up here for quick reuse."
+        />
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------- Placeholder ------------------------------ */
+
+export function PlaceholderTab({
+  icon,
+  title,
+  description,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+}) {
+  return <EmptyState icon={icon} title={title} description={description} />;
+}

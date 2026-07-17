@@ -674,12 +674,55 @@ export function createElementInsertElements(kind?: string): SlideElement[] {
           border_radius: { tl: 10, tr: 10, bl: 10, br: 10 },
         },
       ];
+    case "square":
+      return [
+        {
+          type: "rectangle",
+          position: { x: 134, y: 134 },
+          size: { width: 240, height: 240 },
+          fill: { color: "F4F3FF", opacity: 1 },
+          stroke: { color: "7A5AF8", width: 1.5 },
+          border_radius: { tl: 0, tr: 0, bl: 0, br: 0 },
+        },
+      ];
+    case "rounded-rectangle":
+      return [
+        {
+          type: "rectangle",
+          position: { x: 134, y: 134 },
+          size: { width: 384, height: 192 },
+          fill: { color: "F4F3FF", opacity: 1 },
+          stroke: { color: "7A5AF8", width: 1.5 },
+          border_radius: { tl: 28, tr: 28, bl: 28, br: 28 },
+        },
+      ];
+    case "pill":
+      return [
+        {
+          type: "rectangle",
+          position: { x: 134, y: 134 },
+          size: { width: 384, height: 120 },
+          fill: { color: "F4F3FF", opacity: 1 },
+          stroke: { color: "7A5AF8", width: 1.5 },
+          border_radius: { tl: 60, tr: 60, bl: 60, br: 60 },
+        },
+      ];
     case "ellipse":
       return [
         {
           type: "ellipse",
           position: { x: 134, y: 134 },
           size: { width: 346, height: 198 },
+          fill: { color: "F4F3FF", opacity: 1 },
+          stroke: { color: "7A5AF8", width: 1.5 },
+        },
+      ];
+    case "circle":
+      return [
+        {
+          type: "ellipse",
+          position: { x: 134, y: 134 },
+          size: { width: 240, height: 240 },
           fill: { color: "F4F3FF", opacity: 1 },
           stroke: { color: "7A5AF8", width: 1.5 },
         },

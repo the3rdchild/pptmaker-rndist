@@ -27,14 +27,26 @@ const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 const SWATCHES = [
   "#FFFFFF",
   "#F4F4F5",
+  "#E4E4E7",
+  "#A1A1AA",
   "#0F0F1E",
+  "#18181B",
   "#1E293B",
+  "#334155",
   "#6C5CE7",
+  "#7C3AED",
   "#2563EB",
+  "#0EA5E9",
   "#059669",
+  "#12B76A",
   "#DC2626",
+  "#EF4444",
   "#EA580C",
+  "#F97316",
   "#FACC15",
+  "#EAB308",
+  "#DB2777",
+  "#EC4899",
 ];
 
 const FILL_TYPES: { id: BackgroundStyle["type"]; label: string }[] = [
@@ -255,7 +267,7 @@ export default function BackgroundPanel({ activeUi, onApply }: BackgroundPanelPr
   };
 
   return (
-    <div className="w-56 pb-1.5">
+    <div className="w-full pb-1.5">
       <PanelLabel>Background</PanelLabel>
       <Segmented options={FILL_TYPES} value={style.type} onChange={(type) => apply({ type })} />
 

@@ -1,8 +1,16 @@
 "use client";
 
-import { useEffect, useRef, type RefObject } from "react";
+import { useCallback, useEffect, useRef, type RefObject } from "react";
 import type Konva from "konva";
 import { Transformer } from "react-konva";
+import { EDITOR_STAGE_HEIGHT, EDITOR_STAGE_WIDTH } from "@/components/slide-editor/types";
+import {
+  clearSnapGuides,
+  computeResizeSnap,
+  drawSnapGuides,
+  isResizeAnchor,
+  type SnapStops,
+} from "@/components/slide-editor/surface/snap-guides";
 
 const CORNER_HANDLE_SIZE = 14;
 const EDGE_HANDLE_LENGTH = 28;
@@ -36,6 +44,10 @@ type TemplateV2SelectionTransformersProps = {
   selectionKind: SelectionKind;
   horizontalResizeOnly?: boolean;
   suppressSelectedOutline?: boolean;
+  /** Overlay layer the resize snap guide lines are drawn onto. */
+  snapGuidesLayerRef?: RefObject<Konva.Layer | null>;
+  /** Alignment stops (other components' edges/centers) for a resize, excluding the resized component. */
+  getResizeSnapStops?: (excludeComponentIndex: number) => SnapStops;
 };
 
 function drawRotationHandle(context: Konva.Context, shape: Konva.Shape) {
@@ -225,9 +237,39 @@ export function TemplateV2SelectionTransformers({
   selectionKind,
   horizontalResizeOnly = false,
   suppressSelectedOutline = false,
+  snapGuidesLayerRef,
+  getResizeSnapStops,
 }: TemplateV2SelectionTransformersProps) {
   const selectedTransformerRef = useRef<Konva.Transformer | null>(null);
   const contextTransformerRef = useRef<Konva.Transformer | null>(null);
+
+  const resizeBoundBoxFunc = useCallback(
+    (
+      oldBox: { x: number; y: number; width: number; height: number; rotation: number },
+      newBox: { x: number; y: number; width: number; height: number; rotation: number },
+    ) => {
+      const guidesLayer = snapGuidesLayerRef?.current ?? null;
+      if (selectionKind !== "component" || !getResizeSnapStops) {
+        return newBox;
+      }
+      if (Math.abs(newBox.rotation) > 0.001) {
+        clearSnapGuides(guidesLayer);
+        return newBox;
+      }
+      const anchor = selectedTransformerRef.current?.getActiveAnchor();
+      if (!isResizeAnchor(anchor)) {
+        clearSnapGuides(guidesLayer);
+        return newBox;
+      }
+      const componentIndex = selectedKey ? Number(selectedKey.split(":")[1]) : NaN;
+      if (!Number.isFinite(componentIndex)) return newBox;
+      const stops = getResizeSnapStops(componentIndex);
+      const snap = computeResizeSnap(newBox, anchor, stops);
+      drawSnapGuides(guidesLayer, snap, EDITOR_STAGE_WIDTH, EDITOR_STAGE_HEIGHT);
+      return { ...newBox, x: snap.x, y: snap.y, width: snap.width, height: snap.height };
+    },
+    [getResizeSnapStops, selectedKey, selectionKind, snapGuidesLayerRef],
+  );
   const isMultiComponentSelection = selectionKind === "multi-component";
   const selectedNode =
     selectionKind === "component" && selectedKey
@@ -359,6 +401,8 @@ export function TemplateV2SelectionTransformers({
         rotateAnchorOffset={BOTTOM_CENTER_ROTATION_ANCHOR_OFFSET}
         rotateEnabled={selectionKind === "component"}
         rotateLineVisible={false}
+        boundBoxFunc={resizeBoundBoxFunc}
+        onTransformEnd={() => clearSnapGuides(snapGuidesLayerRef?.current ?? null)}
       />
       {multiSelectionMemberKeys.map((key) => (
         <TemplateV2MultiSelectionMemberOutline

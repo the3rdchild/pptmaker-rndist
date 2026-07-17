@@ -102,6 +102,11 @@ import {
   stopsForBoxes,
 } from "@/components/slide-editor/surface/snap-guides";
 import {
+  clearSpacingBadges,
+  computeSpacingBadges,
+  drawSpacingBadges,
+} from "@/components/slide-editor/surface/spacing-badges";
+import {
   MemoizedRawComponentNode,
   MemoizedRawElementNode,
 } from "@/components/slide-editor/surface/nodes";
@@ -248,6 +253,7 @@ function TemplateV2KonvaSlideComponent({
   const nodeRefs = useRef(new Map<string, Konva.Node>());
   const contentLayerRef = useRef<Konva.Layer | null>(null);
   const snapGuidesLayerRef = useRef<Konva.Layer | null>(null);
+  const spacingBadgesLayerRef = useRef<Konva.Layer | null>(null);
   const imageUploadInputRef = useRef<HTMLInputElement | null>(null);
   const pendingImageUploadRef = useRef<ElementSelection | null>(null);
   const undoStackRef = useRef<RawUi[]>([]);
@@ -918,36 +924,54 @@ function TemplateV2KonvaSlideComponent({
     [],
   );
 
-  const applyDragSnap = useCallback(
+  const componentBoxesExcluding = useCallback(
+    (excludeIndexes: Iterable<number>) => {
+      const excluded = new Set(excludeIndexes);
+      return readArray(currentUiRef.current.components).flatMap((raw, index) => {
+        if (excluded.has(index)) return [];
+        const component = asRecord(raw);
+        return component ? [componentBox(component)] : [];
+      });
+    },
+    [],
+  );
+
+  const getResizeSnapStops = useCallback(
+    (excludeComponentIndex: number) =>
+      stopsForBoxes(
+        componentBoxesExcluding([excludeComponentIndex]),
+        STAGE_WIDTH,
+        STAGE_HEIGHT,
+      ),
+    [componentBoxesExcluding],
+  );
+
+  const applyDragOverlay = useCallback(
     (componentIndex: number, node: Konva.Node) => {
       const layer = node.getLayer();
       if (!layer) return;
       const dragState = multiComponentDragRef.current;
-      const excluded = new Set(
+      const excluded =
         dragState?.draggedComponentIndex === componentIndex
           ? dragState.nodes.map((entry) => entry.componentIndex)
-          : [componentIndex],
-      );
-      const targetBoxes = readArray(currentUiRef.current.components).flatMap(
-        (raw, index) => {
-          if (excluded.has(index)) return [];
-          const component = asRecord(raw);
-          return component ? [componentBox(component)] : [];
-        },
-      );
-      const stops = stopsForBoxes(targetBoxes, STAGE_WIDTH, STAGE_HEIGHT);
+          : [componentIndex];
+      const others = componentBoxesExcluding(excluded);
+      const stops = stopsForBoxes(others, STAGE_WIDTH, STAGE_HEIGHT);
       const box = node.getClientRect({ relativeTo: layer });
       const snap = computeSnap(box, stops);
       if (snap.dx !== 0) node.x(node.x() + snap.dx);
       if (snap.dy !== 0) node.y(node.y() + snap.dy);
       drawSnapGuides(snapGuidesLayerRef.current, snap, STAGE_WIDTH, STAGE_HEIGHT);
+      const snappedBox = { ...box, x: box.x + snap.dx, y: box.y + snap.dy };
+      const badges = computeSpacingBadges(snappedBox, others);
+      drawSpacingBadges(spacingBadgesLayerRef.current, badges);
     },
-    [],
+    [componentBoxesExcluding],
   );
 
   const handleComponentDragMove = useCallback(
     (componentIndex: number, node: Konva.Node) => {
-      applyDragSnap(componentIndex, node);
+      applyDragOverlay(componentIndex, node);
       const dragState = multiComponentDragRef.current;
       if (!dragState || dragState.draggedComponentIndex !== componentIndex) {
         node.getLayer()?.batchDraw();
@@ -966,12 +990,13 @@ function TemplateV2KonvaSlideComponent({
       });
       node.getLayer()?.batchDraw();
     },
-    [applyDragSnap],
+    [applyDragOverlay],
   );
 
   const handleComponentDragEnd = useCallback(
     (componentIndex: number, node: Konva.Node) => {
       clearSnapGuides(snapGuidesLayerRef.current);
+      clearSpacingBadges(spacingBadgesLayerRef.current);
       const dragState = multiComponentDragRef.current;
       if (!dragState || dragState.draggedComponentIndex !== componentIndex) {
         updateComponent(componentIndex, (current) => ({
@@ -1964,10 +1989,13 @@ function TemplateV2KonvaSlideComponent({
                   inlineEdit ||
                   readString(selectedElement?.type) === "chart",
               )}
+              snapGuidesLayerRef={snapGuidesLayerRef}
+              getResizeSnapStops={getResizeSnapStops}
             />
           ) : null}
         </Layer>
         <Layer ref={snapGuidesLayerRef} listening={false} />
+        <Layer ref={spacingBadgesLayerRef} listening={false} />
       </Stage>
       <TemplateV2SelectionToolbar
         anchorBox={floatingToolbarAnchorBox}

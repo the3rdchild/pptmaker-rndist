@@ -85,6 +85,103 @@ export function computeSnap(box: Box, stops: SnapStops): SnapAdjustment {
   };
 }
 
+/**
+ * Resize snapping: only the edges a given Transformer anchor actually moves
+ * are compared against stops — the opposite (anchored) edges stay put. Corner
+ * anchors free both a vertical and a horizontal edge; edge anchors free one.
+ */
+export type ResizeAnchor =
+  | "top-left"
+  | "top-center"
+  | "top-right"
+  | "middle-left"
+  | "middle-right"
+  | "bottom-left"
+  | "bottom-center"
+  | "bottom-right";
+
+const RESIZE_ANCHORS = new Set<string>([
+  "top-left",
+  "top-center",
+  "top-right",
+  "middle-left",
+  "middle-right",
+  "bottom-left",
+  "bottom-center",
+  "bottom-right",
+]);
+
+export function isResizeAnchor(
+  value: string | null | undefined,
+): value is ResizeAnchor {
+  return !!value && RESIZE_ANCHORS.has(value);
+}
+
+export type ResizeSnapResult = Box & {
+  verticalLines: number[];
+  horizontalLines: number[];
+};
+
+export function computeResizeSnap(
+  box: Box,
+  anchor: ResizeAnchor,
+  stops: SnapStops,
+): ResizeSnapResult {
+  const freeLeft =
+    anchor === "top-left" || anchor === "bottom-left" || anchor === "middle-left";
+  const freeRight =
+    anchor === "top-right" || anchor === "bottom-right" || anchor === "middle-right";
+  const freeTop =
+    anchor === "top-left" || anchor === "top-center" || anchor === "top-right";
+  const freeBottom =
+    anchor === "bottom-left" || anchor === "bottom-center" || anchor === "bottom-right";
+
+  let left = box.x;
+  let right = box.x + box.width;
+  let top = box.y;
+  let bottom = box.y + box.height;
+  const verticalLines: number[] = [];
+  const horizontalLines: number[] = [];
+
+  if (freeLeft) {
+    const offset = bestOffset([left], stops.vertical);
+    if (offset !== null) {
+      left += offset;
+      verticalLines.push(left);
+    }
+  }
+  if (freeRight) {
+    const offset = bestOffset([right], stops.vertical);
+    if (offset !== null) {
+      right += offset;
+      verticalLines.push(right);
+    }
+  }
+  if (freeTop) {
+    const offset = bestOffset([top], stops.horizontal);
+    if (offset !== null) {
+      top += offset;
+      horizontalLines.push(top);
+    }
+  }
+  if (freeBottom) {
+    const offset = bestOffset([bottom], stops.horizontal);
+    if (offset !== null) {
+      bottom += offset;
+      horizontalLines.push(bottom);
+    }
+  }
+
+  return {
+    x: left,
+    y: top,
+    width: Math.max(1, right - left),
+    height: Math.max(1, bottom - top),
+    verticalLines,
+    horizontalLines,
+  };
+}
+
 export function drawSnapGuides(
   layer: Konva.Layer | null,
   adjustment: Pick<SnapAdjustment, "verticalLines" | "horizontalLines">,

@@ -71,7 +71,7 @@ export default function SlideSidebar({
   const itemIds = slides.map((_, i) => i);
 
   return (
-    <div className="flex h-full shrink-0">
+    <div className="flex h-full shrink-0" data-inline-edit-ignore="true">
       <aside className="flex h-full w-[168px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-panel)]">
         <div className="flex-1 overflow-y-auto px-3 py-2">
           <DndContext

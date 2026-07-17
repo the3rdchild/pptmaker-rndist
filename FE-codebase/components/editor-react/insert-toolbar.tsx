@@ -155,7 +155,7 @@ export default function InsertToolbar({
   const activeTab = TABS.find((t) => t.id === openTab) ?? null;
 
   return (
-    <div className="flex h-full shrink-0">
+    <div className="flex h-full shrink-0" data-inline-edit-ignore="true">
       {activeTab && (
         <div className="flex h-full w-[560px] shrink-0 flex-col border-l border-[var(--border)] bg-[var(--bg-panel)]">
           <div className="flex shrink-0 flex-col gap-2 border-b border-[var(--border)] p-3">

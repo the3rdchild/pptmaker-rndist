@@ -219,35 +219,40 @@ export default function AIAssistantPanel({ slides, activeIndex, onAction, onClos
   };
 
   return (
-    <aside className="flex h-full w-[320px] shrink-0 flex-col border-l border-[#1e1e30] bg-[#13131f]">
-      <div className="flex items-center justify-between border-b border-[#1e1e30] px-4 py-3">
+    <aside className="flex h-full w-[320px] shrink-0 flex-col border-l border-[var(--border)] bg-[var(--bg-panel)]">
+      <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
         <div className="flex items-center gap-2">
-          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#6c5ce7]">
+          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--accent-light)] shadow-[var(--shadow-soft)]">
             <Bot className="h-3.5 w-3.5 text-white" />
           </div>
-          <span className="text-sm font-medium text-white">AI Assistant</span>
+          <span className="text-sm font-medium text-[var(--text-primary)]">
+            AI Assistant
+          </span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5">
           <button
             onClick={() => setMessages([])}
-            className="rounded p-1 text-zinc-500 hover:bg-[#2d2e42] hover:text-white"
+            className="rounded-md p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
             title="Clear chat"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
-          <button onClick={onClose} className="rounded p-1 text-zinc-500 hover:bg-[#2d2e42] hover:text-white">
+          <button
+            onClick={onClose}
+            className="rounded-md p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
+          >
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
       </div>
 
       {/* Context indicator */}
-      <div className="flex items-center gap-1.5 border-b border-[#1e1e30] px-4 py-1.5">
-        <span className="rounded bg-[#1a1b2e] px-1.5 py-0.5 text-[10px] text-indigo-300">
+      <div className="flex items-center gap-1.5 border-b border-[var(--border)] px-4 py-1.5">
+        <span className="rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] font-medium text-[var(--accent-light)]">
           Slide {activeIndex + 1}
         </span>
         {selectedLabel && (
-          <span className="flex max-w-[180px] items-center gap-1 truncate rounded bg-[#1a1b2e] px-1.5 py-0.5 text-[10px] text-zinc-400">
+          <span className="flex max-w-[180px] items-center gap-1 truncate rounded-full bg-[var(--bg-surface)] px-2 py-0.5 text-[10px] text-[var(--text-secondary)]">
             <FileText className="h-2.5 w-2.5 shrink-0" />
             <span className="truncate">{selectedLabel}</span>
           </span>
@@ -257,13 +262,21 @@ export default function AIAssistantPanel({ slides, activeIndex, onAction, onClos
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center text-center">
-            <p className="mb-3 text-sm text-zinc-500">Ask me to edit your presentation</p>
+            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-2xl bg-[var(--accent-soft)]">
+              <Bot className="h-5 w-5 text-[var(--accent-light)]" />
+            </div>
+            <p className="mb-1 text-sm font-medium text-[var(--text-primary)]">
+              Ask me to edit your presentation
+            </p>
+            <p className="mb-4 text-xs text-[var(--text-muted)]">
+              I can restyle, rewrite, and reorganize slides.
+            </p>
             <div className="w-full space-y-2">
               {SUGGESTIONS.map((s) => (
                 <button
                   key={s}
                   onClick={() => send(s)}
-                  className="w-full rounded-lg border border-[#2d2e42] bg-[#1a1b2e] px-3 py-2 text-left text-xs text-zinc-400 transition-colors hover:border-[#6c5ce7]/50 hover:text-white"
+                  className="w-full rounded-lg border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3 py-2 text-left text-xs text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)]/60 hover:bg-[var(--accent-soft)] hover:text-[var(--text-primary)]"
                 >
                   {s}
                 </button>
@@ -275,25 +288,27 @@ export default function AIAssistantPanel({ slides, activeIndex, onAction, onClos
             {messages.map((m, i) => (
               <div key={i} className={cn("flex gap-2", m.role === "user" ? "justify-end" : "justify-start")}>
                 {m.role === "assistant" && (
-                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#6c5ce7]">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--accent-light)]">
                     <Bot className="h-3 w-3 text-white" />
                   </div>
                 )}
                 <div
                   className={cn(
-                    "max-w-[220px] rounded-lg px-3 py-2 text-xs",
+                    "max-w-[220px] rounded-2xl px-3 py-2 text-xs leading-relaxed",
                     m.role === "user"
-                      ? "bg-[#6c5ce7] text-white"
+                      ? "rounded-br-md bg-[var(--accent)] text-white"
                       : m.kind === "error"
-                        ? "bg-red-500/10 text-red-400"
-                        : "bg-[#1a1b2e] text-zinc-200",
+                        ? "rounded-bl-md border border-red-500/20 bg-red-500/10 text-red-300"
+                        : "rounded-bl-md bg-[var(--bg-surface)] text-[var(--text-primary)]",
                   )}
                 >
                   {m.kind === "action" ? (
                     <>
-                      <div className="mb-1 flex items-center gap-1 text-[10px] font-mono text-[#a29bfe]">
-                        <Zap className="h-2.5 w-2.5" />
-                        {m.tool}({m.argsSummary})
+                      <div className="mb-1 flex items-center gap-1 rounded-md bg-[var(--accent-soft)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--accent-light)]">
+                        <Zap className="h-2.5 w-2.5 shrink-0" />
+                        <span className="truncate">
+                          {m.tool}({m.argsSummary})
+                        </span>
                       </div>
                       {m.text}
                     </>
@@ -302,20 +317,20 @@ export default function AIAssistantPanel({ slides, activeIndex, onAction, onClos
                   )}
                 </div>
                 {m.role === "user" && (
-                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#2d2e42]">
-                    <User className="h-3 w-3 text-zinc-400" />
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--bg-elevated)]">
+                    <User className="h-3 w-3 text-[var(--text-secondary)]" />
                   </div>
                 )}
               </div>
             ))}
             {busy && (
               <div className="flex gap-2">
-                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#6c5ce7]">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--accent-light)]">
                   <Bot className="h-3 w-3 text-white" />
                 </div>
-                <div className="flex items-center gap-1 rounded-lg bg-[#1a1b2e] px-3 py-2">
-                  <Loader2 className="h-3 w-3 animate-spin text-[#a29bfe]" />
-                  <span className="text-xs text-zinc-500">Thinking...</span>
+                <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md bg-[var(--bg-surface)] px-3 py-2">
+                  <Loader2 className="h-3 w-3 animate-spin text-[var(--accent-light)]" />
+                  <span className="text-xs text-[var(--text-muted)]">Thinking…</span>
                 </div>
               </div>
             )}
@@ -323,24 +338,29 @@ export default function AIAssistantPanel({ slides, activeIndex, onAction, onClos
         )}
       </div>
 
-      <div className="border-t border-[#1e1e30] p-3">
-        <div className="flex items-center gap-2 rounded-lg border border-[#2d2e42] bg-[#0f0f1e] px-3 py-2">
+      <div className="border-t border-[var(--border)] p-3">
+        <div className="flex items-center gap-2 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-base)] py-1.5 pl-3 pr-1.5 transition-colors focus-within:border-[var(--accent)]/60">
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") send();
             }}
-            placeholder="Ask Anything..."
-            className="flex-1 bg-transparent text-xs text-zinc-200 placeholder-zinc-600 outline-none"
+            placeholder="Ask anything…"
+            className="flex-1 bg-transparent text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none"
             disabled={busy}
           />
           <button
             onClick={() => send()}
             disabled={!input.trim() || busy}
-            className="rounded p-1 text-[#a29bfe] hover:bg-[#2d2e42] disabled:opacity-30"
+            className={cn(
+              "flex h-6 w-6 items-center justify-center rounded-lg transition-colors",
+              input.trim() && !busy
+                ? "bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+                : "text-[var(--text-muted)]"
+            )}
           >
-            <Send className="h-3.5 w-3.5" />
+            <Send className="h-3 w-3" />
           </button>
         </div>
       </div>

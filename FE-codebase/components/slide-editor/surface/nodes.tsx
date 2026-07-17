@@ -305,6 +305,7 @@ function componentFromNodeTransform(
 export function RawComponentNode({
   component,
   componentIndex,
+  isBackground = false,
   isEditMode,
   isMultiSelectedComponent,
   editingKey,
@@ -323,6 +324,7 @@ export function RawComponentNode({
 }: {
   component: RawComponent;
   componentIndex: number;
+  isBackground?: boolean;
   isEditMode: boolean;
   isMultiSelectedComponent: boolean;
   editingKey: string | null;
@@ -385,7 +387,8 @@ export function RawComponentNode({
       clipY={clipBounds?.y}
       clipWidth={clipBounds?.width}
       clipHeight={clipBounds?.height}
-      draggable={isEditMode}
+      listening={!isBackground}
+      draggable={isEditMode && !isBackground}
       onMouseDown={(event) => {
         if (!isEditMode) return;
         event.cancelBubble = true;
@@ -573,6 +576,7 @@ export const MemoizedRawComponentNode = memo(
     if (
       previous.component !== next.component ||
       previous.componentIndex !== next.componentIndex ||
+      previous.isBackground !== next.isBackground ||
       previous.isEditMode !== next.isEditMode ||
       previous.isMultiSelectedComponent !== next.isMultiSelectedComponent ||
       previous.setNodeRef !== next.setNodeRef ||

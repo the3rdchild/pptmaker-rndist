@@ -2,16 +2,27 @@
 
 import { useState } from "react";
 import {
-  ChevronDown,
+  BarChart3,
+  Circle,
+  CircleDot,
+  Heading1,
+  Heading2,
   Image as ImageIcon,
-  MousePointerClick,
-  PencilLine,
+  LineChart,
+  List,
+  ListOrdered,
+  PaintBucket,
+  PieChart,
+  Quote,
   Shapes,
-  Spline,
+  Slash,
+  Square,
   Table as TableIcon,
   Type,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PopItem, PopPanel, PanelLabel } from "@/components/editor-react/ui";
+import BackgroundPanel from "@/components/editor-react/background-panel";
 import { appendInsertedContent } from "@/components/slide-editor/model/inserted-content";
 import {
   createChartInsertElements,
@@ -46,12 +57,12 @@ export default function InsertToolbar({ activeUi, onInsert }: InsertToolbarProps
       label: "Text",
       onClick: () => run(createTextInsertElements("body-text")),
       submenu: [
-        { label: "Title", kind: "title-block", icon: Type },
-        { label: "Subtitle", kind: "subtitle", icon: Type },
+        { label: "Title", kind: "title-block", icon: Heading1 },
+        { label: "Subtitle", kind: "subtitle", icon: Heading2 },
         { label: "Body text", kind: "body-text", icon: Type },
-        { label: "Bullet list", kind: "bullet-list", icon: PencilLine },
-        { label: "Numbered list", kind: "numbered-list", icon: PencilLine },
-        { label: "Quote", kind: "quote", icon: Type },
+        { label: "Bullet list", kind: "bullet-list", icon: List },
+        { label: "Numbered list", kind: "numbered-list", icon: ListOrdered },
+        { label: "Quote", kind: "quote", icon: Quote },
       ],
       submenuKind: (k: string) => run(createTextInsertElements(k)),
     },
@@ -75,22 +86,22 @@ export default function InsertToolbar({ activeUi, onInsert }: InsertToolbarProps
       label: "Shape",
       onClick: () => run(createElementInsertElements("rectangle")),
       submenu: [
-        { label: "Rectangle", kind: "rectangle", icon: Shapes },
-        { label: "Ellipse", kind: "ellipse", icon: Shapes },
-        { label: "Line", kind: "line", icon: Spline },
+        { label: "Rectangle", kind: "rectangle", icon: Square },
+        { label: "Ellipse", kind: "ellipse", icon: Circle },
+        { label: "Line", kind: "line", icon: Slash },
       ],
       submenuKind: (k: string) => run(createElementInsertElements(k)),
     },
     {
       id: "chart",
-      icon: MousePointerClick,
+      icon: BarChart3,
       label: "Chart",
       onClick: () => run(createChartInsertElements("bar")),
       submenu: [
-        { label: "Bar", kind: "bar", icon: MousePointerClick },
-        { label: "Line", kind: "line", icon: Spline },
-        { label: "Pie", kind: "pie", icon: MousePointerClick },
-        { label: "Donut", kind: "donut", icon: MousePointerClick },
+        { label: "Bar", kind: "bar", icon: BarChart3 },
+        { label: "Line", kind: "line", icon: LineChart },
+        { label: "Pie", kind: "pie", icon: PieChart },
+        { label: "Donut", kind: "donut", icon: CircleDot },
       ],
       submenuKind: (k: string) => run(createChartInsertElements(k)),
     },
@@ -103,13 +114,15 @@ export default function InsertToolbar({ activeUi, onInsert }: InsertToolbarProps
   ];
 
   return (
-    <div className="relative flex h-full shrink-0 flex-col items-center gap-1 border-l border-zinc-800 bg-zinc-950 py-2 w-[52px]">
+    <div className="relative flex h-full w-[60px] shrink-0 flex-col items-center gap-1 border-l border-[var(--border)] bg-[var(--bg-panel)] py-3">
       {tools.map((tool) => (
         <div key={tool.id} className="relative">
           <button
             className={cn(
-              "flex h-10 w-10 flex-col items-center justify-center rounded-md text-[10px] text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white",
-              openMenu === tool.id && "bg-zinc-800 text-white"
+              "flex h-11 w-11 flex-col items-center justify-center gap-0.5 rounded-lg text-[9px] font-medium transition-colors",
+              openMenu === tool.id
+                ? "bg-[var(--accent-soft)] text-[var(--accent-light)]"
+                : "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
             )}
             title={tool.label}
             onClick={() => {
@@ -121,29 +134,51 @@ export default function InsertToolbar({ activeUi, onInsert }: InsertToolbarProps
               }
             }}
           >
-            <tool.icon size={18} />
-            <span className="mt-0.5">{tool.label}</span>
+            <tool.icon size={17} />
+            <span>{tool.label}</span>
           </button>
 
           {tool.submenu && openMenu === tool.id && (
-            <div className="absolute right-full top-0 z-50 mr-1 w-36 rounded-md border border-zinc-700 bg-zinc-900 py-1 shadow-xl">
+            <PopPanel className="absolute right-full top-0 z-50 mr-2 w-40">
+              <PanelLabel>{tool.label}</PanelLabel>
               {tool.submenu.map((item) => (
-                <button
+                <PopItem
                   key={item.kind}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                  icon={<item.icon size={13} className="shrink-0" />}
+                  label={item.label}
                   onClick={() => {
                     tool.submenuKind(item.kind);
                     setOpenMenu(null);
                   }}
-                >
-                  <item.icon size={12} />
-                  {item.label}
-                </button>
+                />
               ))}
-            </div>
+            </PopPanel>
           )}
         </div>
       ))}
+
+      <div className="relative">
+        <button
+          className={cn(
+            "flex h-11 w-11 flex-col items-center justify-center gap-0.5 rounded-lg text-[9px] font-medium transition-colors",
+            openMenu === "background"
+              ? "bg-[var(--accent-soft)] text-[var(--accent-light)]"
+              : "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
+          )}
+          title="Background"
+          onClick={() =>
+            setOpenMenu((cur) => (cur === "background" ? null : "background"))
+          }
+        >
+          <PaintBucket size={17} />
+          <span>BG</span>
+        </button>
+        {openMenu === "background" && (
+          <PopPanel className="absolute right-full top-0 z-50 mr-2">
+            <BackgroundPanel activeUi={activeUi} onApply={onInsert} />
+          </PopPanel>
+        )}
+      </div>
     </div>
   );
 }

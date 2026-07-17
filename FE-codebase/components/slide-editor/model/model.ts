@@ -1274,6 +1274,40 @@ export function componentBox(component: RawComponent): Box {
   };
 }
 
+const CONTENT_ELEMENT_TYPES = new Set(["text", "text-list", "table", "chart"]);
+
+function containsContentElement(elements: unknown): boolean {
+  if (!Array.isArray(elements)) return false;
+  return elements.some((raw) => {
+    const element = asRecord(raw);
+    if (!element) return false;
+    const type = readString(element.type);
+    if (type && CONTENT_ELEMENT_TYPES.has(type)) return true;
+    if (containsContentElement(element.children)) return true;
+    if (containsContentElement(element.elements)) return true;
+    const child = asRecord(element.child);
+    return child ? containsContentElement([child]) : false;
+  });
+}
+
+/**
+ * A component acts as the slide background when it covers the full stage
+ * and holds only decorative elements (rectangles/images/svg) — no text,
+ * tables, or charts. Background components are rendered but must not be
+ * selectable or draggable in the editor.
+ */
+export function isBackgroundComponent(component: RawComponent): boolean {
+  const box = componentBox(component);
+  if (box.x > 0 || box.y > 0) return false;
+  if (
+    box.x + box.width < STAGE_WIDTH ||
+    box.y + box.height < STAGE_HEIGHT
+  ) {
+    return false;
+  }
+  return !containsContentElement(component.elements);
+}
+
 export function elementBox(element: RawElement): Box {
   const box = {
     ...readPoint(element.position),

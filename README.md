@@ -157,6 +157,8 @@ NEXT_PUBLIC_API_URL=http://localhost:8081
 └── docker-compose.yml
 ```
 
+> **Legacy folders — not part of the running stack:** `editor/` (original Vue/PPTist app, port 8082) and `_reference-pptist/` are leftovers from before the editor was ported into `FE-codebase/components/slide-editor/`. Neither is started by `docker-compose.yml` or referenced by the Next.js app. Don't `cd` into them for setup — the two commands under [Quick start](#quick-start) (`docker compose up` + `bun dev` in `FE-codebase/`) are the entire stack.
+
 ## Key integration points
 - **Editor API calls**: `FE-codebase/components/editor-react-client.tsx` → `/api/v1/decks/:id` (CRUD), `/api/v1/tools/*` (streaming generation)
 - **Deck load**: editor route reads `deckId` from URL, fetches from API, seeds Redux

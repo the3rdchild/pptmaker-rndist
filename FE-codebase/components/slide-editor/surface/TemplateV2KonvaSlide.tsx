@@ -13,7 +13,7 @@ import {
 import type Konva from "konva";
 import { useDispatch } from "react-redux";
 import { Loader2 } from "lucide-react";
-import { Layer, Rect, Stage } from "react-konva";
+import { Layer, Stage } from "react-konva";
 import { notify } from "@/components/ui/sonner";
 import type { TemplateV2Layout } from "@/components/slide-editor/importing/template-v2-import";
 import {
@@ -94,6 +94,18 @@ import {
 } from "@/components/slide-editor/selection/layering";
 import { TemplateV2SelectionTransformers } from "@/components/slide-editor/selection/SelectionTransformers";
 import { useFontLoadState } from "@/components/slide-editor/surface/fontLoading";
+import { SlideBackground } from "@/components/slide-editor/surface/SlideBackground";
+import {
+  clearSnapGuides,
+  computeSnap,
+  drawSnapGuides,
+  stopsForBoxes,
+} from "@/components/slide-editor/surface/snap-guides";
+import {
+  clearSpacingBadges,
+  computeSpacingBadges,
+  drawSpacingBadges,
+} from "@/components/slide-editor/surface/spacing-badges";
 import {
   MemoizedRawComponentNode,
   MemoizedRawElementNode,
@@ -109,7 +121,6 @@ import {
   absoluteInlineEditBox,
   appendInsertedContent,
   asRecord,
-  backgroundColor,
   childArrayInfo,
   childrenBounds,
   cloneJson,
@@ -125,6 +136,7 @@ import {
   eventTargetsThisSlide,
   getElementAtSelection,
   syncComponentHeightToElement,
+  isBackgroundComponent,
   isEditableTarget,
   isManualPositioned,
   isRecord,
@@ -240,6 +252,8 @@ function TemplateV2KonvaSlideComponent({
   const [rootElement, setRootElement] = useState<HTMLDivElement | null>(null);
   const nodeRefs = useRef(new Map<string, Konva.Node>());
   const contentLayerRef = useRef<Konva.Layer | null>(null);
+  const snapGuidesLayerRef = useRef<Konva.Layer | null>(null);
+  const spacingBadgesLayerRef = useRef<Konva.Layer | null>(null);
   const imageUploadInputRef = useRef<HTMLInputElement | null>(null);
   const pendingImageUploadRef = useRef<ElementSelection | null>(null);
   const undoStackRef = useRef<RawUi[]>([]);
@@ -910,10 +924,57 @@ function TemplateV2KonvaSlideComponent({
     [],
   );
 
+  const componentBoxesExcluding = useCallback(
+    (excludeIndexes: Iterable<number>) => {
+      const excluded = new Set(excludeIndexes);
+      return readArray(currentUiRef.current.components).flatMap((raw, index) => {
+        if (excluded.has(index)) return [];
+        const component = asRecord(raw);
+        return component ? [componentBox(component)] : [];
+      });
+    },
+    [],
+  );
+
+  const getResizeSnapStops = useCallback(
+    (excludeComponentIndex: number) =>
+      stopsForBoxes(
+        componentBoxesExcluding([excludeComponentIndex]),
+        STAGE_WIDTH,
+        STAGE_HEIGHT,
+      ),
+    [componentBoxesExcluding],
+  );
+
+  const applyDragOverlay = useCallback(
+    (componentIndex: number, node: Konva.Node) => {
+      const layer = node.getLayer();
+      if (!layer) return;
+      const dragState = multiComponentDragRef.current;
+      const excluded =
+        dragState?.draggedComponentIndex === componentIndex
+          ? dragState.nodes.map((entry) => entry.componentIndex)
+          : [componentIndex];
+      const others = componentBoxesExcluding(excluded);
+      const stops = stopsForBoxes(others, STAGE_WIDTH, STAGE_HEIGHT);
+      const box = node.getClientRect({ relativeTo: layer });
+      const snap = computeSnap(box, stops);
+      if (snap.dx !== 0) node.x(node.x() + snap.dx);
+      if (snap.dy !== 0) node.y(node.y() + snap.dy);
+      drawSnapGuides(snapGuidesLayerRef.current, snap, STAGE_WIDTH, STAGE_HEIGHT);
+      const snappedBox = { ...box, x: box.x + snap.dx, y: box.y + snap.dy };
+      const badges = computeSpacingBadges(snappedBox, others);
+      drawSpacingBadges(spacingBadgesLayerRef.current, badges);
+    },
+    [componentBoxesExcluding],
+  );
+
   const handleComponentDragMove = useCallback(
     (componentIndex: number, node: Konva.Node) => {
+      applyDragOverlay(componentIndex, node);
       const dragState = multiComponentDragRef.current;
       if (!dragState || dragState.draggedComponentIndex !== componentIndex) {
+        node.getLayer()?.batchDraw();
         return;
       }
       const position = node.position();
@@ -929,11 +990,13 @@ function TemplateV2KonvaSlideComponent({
       });
       node.getLayer()?.batchDraw();
     },
-    [],
+    [applyDragOverlay],
   );
 
   const handleComponentDragEnd = useCallback(
     (componentIndex: number, node: Konva.Node) => {
+      clearSnapGuides(snapGuidesLayerRef.current);
+      clearSpacingBadges(spacingBadgesLayerRef.current);
       const dragState = multiComponentDragRef.current;
       if (!dragState || dragState.draggedComponentIndex !== componentIndex) {
         updateComponent(componentIndex, (current) => ({
@@ -1864,7 +1927,7 @@ function TemplateV2KonvaSlideComponent({
         }}
       >
         <Layer listening={false}>
-          <Rect width={STAGE_WIDTH} height={STAGE_HEIGHT} fill={backgroundColor(uiDraft)} />
+          <SlideBackground ui={uiDraft} />
         </Layer>
         <Layer ref={contentLayerRef} listening={isEditMode}>
           {rootElements.map((element, elementIndex) => (
@@ -1892,6 +1955,7 @@ function TemplateV2KonvaSlideComponent({
               key={componentKey(component, componentIndex)}
               component={component}
               componentIndex={componentIndex}
+              isBackground={isBackgroundComponent(component)}
               isEditMode={isEditMode}
               isMultiSelectedComponent={
                 selectedComponentIndexes.length > 1 &&
@@ -1925,9 +1989,13 @@ function TemplateV2KonvaSlideComponent({
                   inlineEdit ||
                   readString(selectedElement?.type) === "chart",
               )}
+              snapGuidesLayerRef={snapGuidesLayerRef}
+              getResizeSnapStops={getResizeSnapStops}
             />
           ) : null}
         </Layer>
+        <Layer ref={snapGuidesLayerRef} listening={false} />
+        <Layer ref={spacingBadgesLayerRef} listening={false} />
       </Stage>
       <TemplateV2SelectionToolbar
         anchorBox={floatingToolbarAnchorBox}

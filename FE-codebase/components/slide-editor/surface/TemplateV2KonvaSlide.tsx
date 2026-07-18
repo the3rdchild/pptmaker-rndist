@@ -15,7 +15,6 @@ import { useDispatch } from "react-redux";
 import { Loader2 } from "lucide-react";
 import { Layer, Stage } from "react-konva";
 import { notify } from "@/components/ui/sonner";
-import { mergeFont } from "@/components/slide-editor/model/element-model";
 import type { TemplateV2Layout } from "@/components/slide-editor/importing/template-v2-import";
 import {
   templateFontOptionsFromMap,
@@ -155,6 +154,8 @@ import {
   readArray,
   readPoint,
   readString,
+  recolorRawElement,
+  recolorRawElements,
   renderedLocalBoxForElementSelection,
   rootElementsComponent,
   selectionWithComponentToggle,
@@ -1928,46 +1929,47 @@ function TemplateV2KonvaSlideComponent({
   }, [isEditMode, isSurfaceActive, redo, undo]);
 
   // Lets the color-palette panel apply a swatch directly to whatever's
-  // currently selected (text font color, or a shape's fill) instead of only
-  // offering deck-wide background/text theme colors.
+  // currently selected — text font color, shape fills, line strokes, icon
+  // tints, chart/infographic accents, or a whole component's elements.
   useEffect(() => {
     if (!isEditMode || typeof window === "undefined") return;
 
     const handleApplyColor = (event: Event) => {
       const detail = (event as CustomEvent<TemplateV2ApplyColorDetail>).detail;
-      const surfaceActive = isSurfaceActive();
-      const current =
-        detail?.color && selection && selection.kind === "element"
-          ? getElementAtSelection(currentUiRef.current, selection)
-          : null;
-      if (typeof window !== "undefined") {
-        (window as unknown as { __applyColorDebug?: unknown }).__applyColorDebug = {
-          surfaceActive,
-          color: detail?.color,
-          selection,
-          elementType: current ? readString(current.type) : null,
-        };
+      const color = detail?.color;
+      if (!color || !selection) return;
+
+      if (selection.kind === "element") {
+        const current = getElementAtSelection(currentUiRef.current, selection);
+        if (!current) return;
+        const next = recolorRawElement(current, color);
+        if (next === current) return;
+        updateElement(selection, () => next);
+        return;
       }
-      if (!detail?.color || !selection || selection.kind !== "element") return;
-      if (!current) return;
-      const type = readString(current.type);
-      let next: RawElement | null = null;
-      if (type === "text" || type === "text-list") {
-        next = mergeFont(current, { color: detail.color }) as RawElement;
-      } else if (type === "rectangle" || type === "ellipse") {
-        next = {
-          ...current,
-          fill: { ...(isRecord(current.fill) ? current.fill : {}), color: detail.color },
-        };
+
+      const componentIndexes =
+        selection.kind === "component"
+          ? [selection.componentIndex]
+          : selection.componentIndexes;
+      let ui = currentUiRef.current;
+      for (const componentIndex of componentIndexes) {
+        ui = updateComponentInUi(ui, componentIndex, (component) => {
+          const elements = readArray(component.elements);
+          const recolored = recolorRawElements(elements, color);
+          return recolored === elements
+            ? component
+            : { ...component, elements: recolored };
+        });
       }
-      if (!next) return;
-      updateElement(selection, () => next as RawElement);
+      if (ui === currentUiRef.current) return;
+      commitUi(ui);
     };
 
     window.addEventListener(TEMPLATE_V2_APPLY_COLOR_EVENT, handleApplyColor);
     return () =>
       window.removeEventListener(TEMPLATE_V2_APPLY_COLOR_EVENT, handleApplyColor);
-  }, [isEditMode, isSurfaceActive, selection, updateElement]);
+  }, [commitUi, isEditMode, selection, updateElement]);
 
   if (!uiDraft) {
     return (

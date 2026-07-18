@@ -8,6 +8,7 @@ export enum MixpanelEvent {
   Editor_Element_Style_Changed = "Editor Element Style Changed",
   Editor_Element_Deleted = "Editor Element Deleted",
   Editor_Element_Duplicated = "Editor Element Duplicated",
+  Editor_Component_Grouped = "Editor Component Grouped",
   Editor_Component_Ungrouped = "Editor Component Ungrouped",
   Editor_Component_Layer_Changed = "Editor Component Layer Changed",
   Editor_Image_Replaced = "Editor Image Replaced",

@@ -16,7 +16,18 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ChevronRight, Copy, LayoutTemplate, Plus, Trash2, X } from "lucide-react";
+import {
+  ChevronRight,
+  Copy,
+  Eye,
+  EyeOff,
+  LayoutTemplate,
+  Lock,
+  Plus,
+  Trash2,
+  Unlock,
+  X,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { normalizeBackendAssetUrls } from "@/utils/api";
 
@@ -35,7 +46,11 @@ const THUMB_H = 720 * THUMB_SCALE;
 type Layout = Record<string, unknown>;
 
 export interface SlideSidebarProps {
-  slides: { ui?: Record<string, unknown> | null | undefined }[];
+  slides: {
+    ui?: Record<string, unknown> | null | undefined;
+    isLocked?: boolean;
+    isHidden?: boolean;
+  }[];
   activeIndex: number;
   onSelect: (index: number) => void;
   onAdd: (layout: Record<string, unknown>) => void;
@@ -43,6 +58,8 @@ export interface SlideSidebarProps {
   onDuplicate: (index: number) => void;
   onDelete: (index: number) => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
+  onToggleLock: (index: number) => void;
+  onToggleHide: (index: number) => void;
 }
 
 export default function SlideSidebar({
@@ -54,6 +71,8 @@ export default function SlideSidebar({
   onDuplicate,
   onDelete,
   onReorder,
+  onToggleLock,
+  onToggleHide,
 }: SlideSidebarProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const sensors = useSensors(
@@ -91,6 +110,8 @@ export default function SlideSidebar({
                     onSelect={() => onSelect(i)}
                     onDuplicate={() => onDuplicate(i)}
                     onDelete={() => onDelete(i)}
+                    onToggleLock={() => onToggleLock(i)}
+                    onToggleHide={() => onToggleHide(i)}
                   />
                   <InsertSlot onAdd={() => onAddAt(i + 1)} />
                 </div>
@@ -147,27 +168,39 @@ function SortableSlide({
   onSelect,
   onDuplicate,
   onDelete,
+  onToggleLock,
+  onToggleHide,
 }: {
   id: number;
-  slide: { ui?: Record<string, unknown> | null | undefined };
+  slide: {
+    ui?: Record<string, unknown> | null | undefined;
+    isLocked?: boolean;
+    isHidden?: boolean;
+  };
   isActive: boolean;
   canDelete: boolean;
   onSelect: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  onToggleLock: () => void;
+  onToggleHide: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id });
+    useSortable({ id, disabled: slide.isLocked });
+  const isLocked = Boolean(slide.isLocked);
+  const isHidden = Boolean(slide.isHidden);
 
   return (
     <div
       ref={setNodeRef}
       className={cn(
-        "group relative mx-auto cursor-grab overflow-hidden rounded-lg transition-shadow active:cursor-grabbing",
+        "group relative mx-auto overflow-hidden rounded-lg transition-shadow",
+        isLocked ? "cursor-default" : "cursor-grab active:cursor-grabbing",
         isActive
           ? "shadow-[var(--shadow-accent-glow)] ring-2 ring-[var(--accent)]"
           : "ring-1 ring-[var(--border-strong)] hover:ring-[var(--text-muted)]",
-        isDragging && "z-50 opacity-60"
+        isDragging && "z-50 opacity-60",
+        isHidden && "opacity-45"
       )}
       style={{
         width: THUMB_W,
@@ -177,7 +210,7 @@ function SortableSlide({
       }}
       onClick={onSelect}
       {...attributes}
-      {...listeners}
+      {...(isLocked ? {} : listeners)}
     >
       <div
         className="pointer-events-none origin-top-left bg-white"
@@ -205,7 +238,41 @@ function SortableSlide({
       >
         {id + 1}
       </span>
+      {(isLocked || isHidden) && (
+        <div className="absolute bottom-1 right-1 flex gap-0.5">
+          {isLocked && (
+            <span className="rounded bg-black/70 p-0.5 text-white/90" title="Locked">
+              <Lock size={9} />
+            </span>
+          )}
+          {isHidden && (
+            <span className="rounded bg-black/70 p-0.5 text-white/90" title="Hidden in presentation">
+              <EyeOff size={9} />
+            </span>
+          )}
+        </div>
+      )}
       <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+        <button
+          className="rounded-md bg-black/70 p-1 text-zinc-300 backdrop-blur transition-colors hover:text-white"
+          title={isHidden ? "Show in presentation" : "Hide in presentation"}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleHide();
+          }}
+        >
+          {isHidden ? <EyeOff size={10} /> : <Eye size={10} />}
+        </button>
+        <button
+          className="rounded-md bg-black/70 p-1 text-zinc-300 backdrop-blur transition-colors hover:text-white"
+          title={isLocked ? "Unlock slide" : "Lock slide"}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleLock();
+          }}
+        >
+          {isLocked ? <Unlock size={10} /> : <Lock size={10} />}
+        </button>
         <button
           className="rounded-md bg-black/70 p-1 text-zinc-300 backdrop-blur transition-colors hover:text-white"
           title="Duplicate"

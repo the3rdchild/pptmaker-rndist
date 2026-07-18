@@ -8,8 +8,10 @@ import {
   Check,
   Download,
   Loader2,
+  Lock,
   Play,
   Redo2,
+  Search,
   Sparkles,
   Undo2,
   ZoomIn,
@@ -34,6 +36,8 @@ import {
   deleteSlide,
   duplicateSlide,
   reorderSlide,
+  setSlideLocked,
+  setSlideHidden,
 } from "@/store/presentationGeneration";
 import type { PresentationData, SlideData } from "@/store/presentationGeneration";
 import { useSessionStore } from "@/store/session.store";
@@ -45,6 +49,7 @@ import InsertToolbar from "@/components/editor-react/insert-toolbar";
 import PresentMode from "@/components/editor-react/present-mode";
 import { exportToPptx } from "@/components/editor-react/export-pptx";
 import AIAssistantPanel from "@/components/editor-react/ai-assistant-panel";
+import FindReplacePanel from "@/components/editor-react/find-replace-panel";
 import {
   DeckLayoutPicker,
   mapAIPPTSlideToTemplateUi,
@@ -111,6 +116,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
     "idle" | "pending" | "saving" | "saved"
   >("idle");
   const [showAiPanel, setShowAiPanel] = useState(false);
+  const [showFindReplace, setShowFindReplace] = useState(false);
   const [presenting, setPresenting] = useState(false);
   const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false });
   const [zoom, setZoom] = useState(1);
@@ -283,6 +289,12 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
   const handleReorder = (from: number, to: number) => {
     dispatch(reorderSlide({ fromIndex: from, toIndex: to }));
     setActiveIndex(to);
+  };
+  const handleToggleLock = (i: number) => {
+    dispatch(setSlideLocked({ index: i, locked: !slides[i]?.isLocked }));
+  };
+  const handleToggleHide = (i: number) => {
+    dispatch(setSlideHidden({ index: i, hidden: !slides[i]?.isHidden }));
   };
   const handleExport = async () => {
     const blob = await exportToPptx(
@@ -577,6 +589,30 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
             <Redo2 className="h-3.5 w-3.5" />
           </ToolButton>
           <ToolDivider className="mx-1" />
+          <div className="relative">
+            <ToolButton
+              size="sm"
+              active={showFindReplace}
+              onClick={() => setShowFindReplace((v) => !v)}
+              title="Find & Replace"
+            >
+              <Search className="h-3.5 w-3.5" />
+            </ToolButton>
+            {showFindReplace && (
+              <div className="absolute left-0 top-[calc(100%+6px)] z-50">
+                <FindReplacePanel
+                  slides={slides}
+                  onReplaceAll={(nextSlides) => {
+                    if (presentationData) {
+                      dispatch(setPresentationData({ ...presentationData, slides: nextSlides }));
+                    }
+                  }}
+                  onClose={() => setShowFindReplace(false)}
+                />
+              </div>
+            )}
+          </div>
+          <ToolDivider className="mx-1" />
           <ToolButton
             variant="solid"
             active={showAiPanel}
@@ -617,6 +653,8 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
           onDuplicate={handleDuplicate}
           onDelete={handleDelete}
           onReorder={handleReorder}
+          onToggleLock={handleToggleLock}
+          onToggleHide={handleToggleHide}
         />
         <div
           ref={canvasAreaRef}
@@ -627,6 +665,12 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
           onMouseLeave={onCanvasMouseUp}
           style={{ cursor: isPanning ? "grabbing" : zoom > 1 ? "grab" : "default" }}
         >
+          {slides[safeActive]?.isLocked && (
+            <div className="absolute top-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-[var(--border-strong)] bg-[var(--bg-surface)]/95 px-3 py-1 text-xs text-[var(--text-secondary)] shadow-[var(--shadow-panel)] backdrop-blur">
+              <Lock size={12} />
+              This slide is locked
+            </div>
+          )}
           {activeUi ? (
             <div
               className="editor-slide-frame"
@@ -638,7 +682,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
               <TemplateV2KonvaSlide
                 key={safeActive}
                 layout={activeUi as never}
-                isEditMode
+                isEditMode={!slides[safeActive]?.isLocked}
                 slideId={null}
                 presentationId={deckId}
                 slideIndex={safeActive}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 
@@ -20,22 +20,47 @@ export default function PresentMode({
   startIndex,
   onClose,
 }: {
-  slides: { ui?: Record<string, unknown> | null | undefined }[];
+  slides: {
+    ui?: Record<string, unknown> | null | undefined;
+    isHidden?: boolean;
+  }[];
   startIndex: number;
   onClose: () => void;
 }) {
-  const [index, setIndex] = useState(startIndex);
+  // Hidden slides (#24) are skipped during presentation but stay in the
+  // deck — Next/Prev walk this visible-only index list instead of ±1.
+  const visibleIndexes = useMemo(() => {
+    const indexes = slides
+      .map((_, i) => i)
+      .filter((i) => !slides[i]?.isHidden);
+    return indexes.length > 0 ? indexes : slides.map((_, i) => i);
+  }, [slides]);
+
+  const resolveStart = () => {
+    if (visibleIndexes.includes(startIndex)) return startIndex;
+    return visibleIndexes.find((i) => i >= startIndex) ?? visibleIndexes[0] ?? startIndex;
+  };
+  const [index, setIndex] = useState(resolveStart);
   const containerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
 
-  const total = slides.length;
+  const position = Math.max(0, visibleIndexes.indexOf(index));
+  const total = visibleIndexes.length;
 
   const next = useCallback(() => {
-    setIndex((i) => Math.min(i + 1, total - 1));
-  }, [total]);
+    setIndex((i) => {
+      const pos = visibleIndexes.indexOf(i);
+      const nextPos = Math.min((pos === -1 ? 0 : pos) + 1, visibleIndexes.length - 1);
+      return visibleIndexes[nextPos] ?? i;
+    });
+  }, [visibleIndexes]);
   const prev = useCallback(() => {
-    setIndex((i) => Math.max(i - 1, 0));
-  }, []);
+    setIndex((i) => {
+      const pos = visibleIndexes.indexOf(i);
+      const prevPos = Math.max((pos === -1 ? 0 : pos) - 1, 0);
+      return visibleIndexes[prevPos] ?? i;
+    });
+  }, [visibleIndexes]);
 
   // Compute fit scale based on viewport
   useEffect(() => {
@@ -107,18 +132,18 @@ export default function PresentMode({
         <button
           className="rounded-full p-1 transition-colors hover:bg-white/15 disabled:opacity-30 disabled:hover:bg-transparent"
           onClick={prev}
-          disabled={index === 0}
+          disabled={position === 0}
           title="Previous (←)"
         >
           <ChevronLeft size={20} />
         </button>
         <span className="min-w-[56px] text-center text-sm tabular-nums text-white/90">
-          {index + 1} / {total}
+          {position + 1} / {total}
         </span>
         <button
           className="rounded-full p-1 transition-colors hover:bg-white/15 disabled:opacity-30 disabled:hover:bg-transparent"
           onClick={next}
-          disabled={index === total - 1}
+          disabled={position === total - 1}
           title="Next (→)"
         >
           <ChevronRight size={20} />
@@ -129,7 +154,7 @@ export default function PresentMode({
       <div className="absolute inset-x-0 bottom-0 h-0.5 bg-white/10">
         <div
           className="h-full bg-[var(--accent)] transition-[width] duration-300"
-          style={{ width: `${((index + 1) / Math.max(1, total)) * 100}%` }}
+          style={{ width: `${((position + 1) / Math.max(1, total)) * 100}%` }}
         />
       </div>
     </div>

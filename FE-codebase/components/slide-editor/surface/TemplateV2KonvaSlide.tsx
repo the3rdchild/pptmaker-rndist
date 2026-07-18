@@ -92,6 +92,7 @@ import {
   reorderComponentLayer,
   type ComponentLayerAction,
 } from "@/components/slide-editor/selection/layering";
+import { AlignDistributeToolbar } from "@/components/slide-editor/selection/AlignDistributeToolbar";
 import { TemplateV2SelectionTransformers } from "@/components/slide-editor/selection/SelectionTransformers";
 import { useFontLoadState } from "@/components/slide-editor/surface/fontLoading";
 import { SlideBackground } from "@/components/slide-editor/surface/SlideBackground";
@@ -106,6 +107,12 @@ import {
   computeSpacingBadges,
   drawSpacingBadges,
 } from "@/components/slide-editor/surface/spacing-badges";
+import {
+  MARQUEE_DRAG_THRESHOLD,
+  boxFromPoints,
+  clearMarqueeRect,
+  drawMarqueeRect,
+} from "@/components/slide-editor/surface/marquee-select";
 import {
   MemoizedRawComponentNode,
   MemoizedRawElementNode,
@@ -124,10 +131,14 @@ import {
   childArrayInfo,
   childrenBounds,
   cloneJson,
+  alignComponentsInUi,
   componentBox,
   componentForClipboardSelection,
   componentIndexesForSelection,
+  componentIndexesIntersectingBox,
   deleteSelectionFromUi,
+  distributeComponentsInUi,
+  groupComponentsInUi,
   editorChartToRawChart,
   elementBox,
   elementSize,
@@ -164,7 +175,9 @@ import {
   unclampedPositionFromNodeInParent,
   updateComponentInUi,
   updateElementInUi,
+  type AlignAction,
   type ComponentSelection,
+  type DistributeAxis,
   type ElementSelection,
   type MultiComponentDragState,
   type Point,
@@ -262,6 +275,8 @@ function TemplateV2KonvaSlideComponent({
   const contentLayerRef = useRef<Konva.Layer | null>(null);
   const snapGuidesLayerRef = useRef<Konva.Layer | null>(null);
   const spacingBadgesLayerRef = useRef<Konva.Layer | null>(null);
+  const marqueeLayerRef = useRef<Konva.Layer | null>(null);
+  const marqueeDragRef = useRef<{ start: Point; dragging: boolean } | null>(null);
   const imageUploadInputRef = useRef<HTMLInputElement | null>(null);
   const pendingImageUploadRef = useRef<ElementSelection | null>(null);
   const undoStackRef = useRef<RawUi[]>([]);
@@ -513,6 +528,17 @@ function TemplateV2KonvaSlideComponent({
   });
   const selectionToolbarBounds =
     getTemplateV2SelectionToolbarBounds(rootElement);
+  // Multi-component selections get their own compact toolbar (align/
+  // distribute) rather than routing through TemplateV2SelectionToolbar,
+  // which only ever anchors single-component/element/chart/table targets.
+  const alignDistributePosition =
+    selection?.kind === "multi-component" && selectedBox
+      ? getTemplateV2SelectionToolbarPosition({
+          anchorBox: selectedBox,
+          layoutTarget: null,
+          root: rootElement,
+        })
+      : null;
   const inlineEditBox = inlineEdit
     ? absoluteInlineEditBox(uiDraft, inlineEdit.selection, inlineEdit.frame)
     : null;
@@ -866,6 +892,80 @@ function TemplateV2KonvaSlideComponent({
       activateSurface(resolvedSelection);
     },
     [activateSurface, clearTableCellSelection],
+  );
+
+  // Drag-to-select: mousedown on empty canvas starts tracking a start point.
+  // If the pointer moves past the threshold before mouseup, it's a marquee
+  // drag — components overlapping the dragged rect become the selection.
+  // If it never moves, mouseup falls back to the plain "click empty space
+  // to deselect" behavior.
+  const handleStageMouseDown = useCallback(
+    (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+      if (event.target !== event.target.getStage()) {
+        activateSurface();
+        return;
+      }
+      const pointer = event.target.getStage()?.getPointerPosition();
+      if (!pointer) {
+        activateSurface(null);
+        clearEditorUiState();
+        return;
+      }
+      marqueeDragRef.current = { start: pointer, dragging: false };
+    },
+    [activateSurface, clearEditorUiState],
+  );
+
+  const handleStageMouseMove = useCallback(
+    (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+      const dragState = marqueeDragRef.current;
+      if (!dragState) return;
+      const pointer = event.target.getStage()?.getPointerPosition();
+      if (!pointer) return;
+      if (!dragState.dragging) {
+        const dx = pointer.x - dragState.start.x;
+        const dy = pointer.y - dragState.start.y;
+        if (Math.hypot(dx, dy) < MARQUEE_DRAG_THRESHOLD) return;
+        dragState.dragging = true;
+      }
+      drawMarqueeRect(marqueeLayerRef.current, boxFromPoints(dragState.start, pointer));
+    },
+    [],
+  );
+
+  const handleStageMouseUp = useCallback(
+    (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+      const dragState = marqueeDragRef.current;
+      marqueeDragRef.current = null;
+      clearMarqueeRect(marqueeLayerRef.current);
+      if (!dragState) return;
+      if (!dragState.dragging) {
+        activateSurface(null);
+        clearEditorUiState();
+        return;
+      }
+      const pointer =
+        event.target.getStage()?.getPointerPosition() ?? dragState.start;
+      const box = boxFromPoints(dragState.start, pointer);
+      const indexes = componentIndexesIntersectingBox(currentUiRef.current, box);
+      if (indexes.length === 0) {
+        activateSurface(null);
+        clearEditorUiState();
+        return;
+      }
+      clearTableCellSelection();
+      clearInlineEdit();
+      setIconEditorSelection(null);
+      setChartEditorSelection(null);
+      const nextSelection: Selection =
+        indexes.length === 1
+          ? { kind: "component", componentIndex: indexes[0] }
+          : { kind: "multi-component", componentIndexes: indexes };
+      selectionRef.current = nextSelection;
+      setSelection(nextSelection);
+      activateSurface(nextSelection);
+    },
+    [activateSurface, clearEditorUiState, clearInlineEdit, clearTableCellSelection],
   );
 
   const selectTableCell = useCallback(
@@ -1559,6 +1659,58 @@ function TemplateV2KonvaSlideComponent({
     ungroupComponentAtIndex(componentIndex);
   }, [layoutToolbarTarget, ungroupComponentAtIndex]);
 
+  // Merges the current multi-component selection into one component (the
+  // inverse of Ungroup). Triggered via Ctrl/Cmd+G.
+  const groupSelectedComponents = useCallback(() => {
+    if (selection?.kind !== "multi-component") return;
+    const result = groupComponentsInUi(
+      currentUiRef.current,
+      selection.componentIndexes,
+    );
+    if (!result) return;
+    commitUi(result.ui);
+    trackEvent(MixpanelEvent.Editor_Component_Grouped, {
+      ...editorAnalyticsProps(),
+    });
+    setSelection(result.selection);
+    selectionRef.current = result.selection;
+    clearInlineEdit();
+    clearTableCellSelection();
+    setIconEditorSelection(null);
+  }, [
+    clearInlineEdit,
+    clearTableCellSelection,
+    commitUi,
+    editorAnalyticsProps,
+    selection,
+  ]);
+
+  const alignSelectedComponents = useCallback(
+    (action: AlignAction) => {
+      if (selection?.kind !== "multi-component") return;
+      const next = alignComponentsInUi(
+        currentUiRef.current,
+        selection.componentIndexes,
+        action,
+      );
+      commitUi(next);
+    },
+    [commitUi, selection],
+  );
+
+  const distributeSelectedComponents = useCallback(
+    (axis: DistributeAxis) => {
+      if (selection?.kind !== "multi-component") return;
+      const next = distributeComponentsInUi(
+        currentUiRef.current,
+        selection.componentIndexes,
+        axis,
+      );
+      commitUi(next);
+    },
+    [commitUi, selection],
+  );
+
   const reorderComponentLayerAtIndex = useCallback(
     (componentIndex: number, action: ComponentLayerAction) => {
       const result = reorderComponentLayer(
@@ -1906,6 +2058,33 @@ function TemplateV2KonvaSlideComponent({
       document.removeEventListener("keydown", handleUndoRedoShortcut, true);
   }, [isEditMode, isSurfaceActive, redo, undo]);
 
+  // Ctrl/Cmd+G groups the current multi-component selection into one.
+  useEffect(() => {
+    if (!isEditMode || typeof document === "undefined") return;
+
+    const handleGroupShortcut = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        !isSurfaceActive() ||
+        isEditableTarget(event.target) ||
+        !(event.metaKey || event.ctrlKey) ||
+        event.altKey ||
+        event.shiftKey ||
+        event.key.toLowerCase() !== "g"
+      ) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      groupSelectedComponents();
+    };
+
+    document.addEventListener("keydown", handleGroupShortcut, true);
+    return () =>
+      document.removeEventListener("keydown", handleGroupShortcut, true);
+  }, [groupSelectedComponents, isEditMode, isSurfaceActive]);
+
   // Lets the header's Undo/Redo buttons trigger the same history stack as
   // Ctrl/Cmd+Z / Ctrl/Cmd+Y — only the currently active surface responds.
   useEffect(() => {
@@ -2000,14 +2179,9 @@ function TemplateV2KonvaSlideComponent({
       <Stage
         width={STAGE_WIDTH}
         height={STAGE_HEIGHT}
-        onMouseDown={(event) => {
-          if (event.target === event.target.getStage()) {
-            activateSurface(null);
-            clearEditorUiState();
-            return;
-          }
-          activateSurface();
-        }}
+        onMouseDown={handleStageMouseDown}
+        onMouseMove={handleStageMouseMove}
+        onMouseUp={handleStageMouseUp}
         onTouchStart={(event) => {
           if (event.target === event.target.getStage()) {
             activateSurface(null);
@@ -2087,6 +2261,7 @@ function TemplateV2KonvaSlideComponent({
         </Layer>
         <Layer ref={snapGuidesLayerRef} listening={false} />
         <Layer ref={spacingBadgesLayerRef} listening={false} />
+        <Layer ref={marqueeLayerRef} listening={false} />
       </Stage>
       <TemplateV2SelectionToolbar
         anchorBox={floatingToolbarAnchorBox}
@@ -2120,6 +2295,14 @@ function TemplateV2KonvaSlideComponent({
         onUngroupComponent={ungroupSelectedComponent}
         onUngroupLayoutTarget={ungroupLayoutTargetComponent}
       />
+      {isEditMode && selection?.kind === "multi-component" ? (
+        <AlignDistributeToolbar
+          position={alignDistributePosition}
+          canDistribute={selection.componentIndexes.length >= 3}
+          onAlign={alignSelectedComponents}
+          onDistribute={distributeSelectedComponents}
+        />
+      ) : null}
       {isEditMode &&
         selection?.kind === "element" &&
         selectedElement &&

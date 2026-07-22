@@ -219,7 +219,13 @@ function IconsSection({
               className="flex h-9 w-9 items-center justify-center rounded-md p-1.5 transition-colors hover:bg-[var(--bg-elevated)]"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={iconSrc} alt="" draggable={false} className="h-full w-full object-contain" />
+              <img
+                src={iconSrc}
+                alt=""
+                draggable={false}
+                className="h-full w-full object-contain"
+                style={{ filter: "brightness(0) invert(1)" }}
+              />
             </button>
           ))}
         </div>

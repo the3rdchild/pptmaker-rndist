@@ -24,7 +24,11 @@ import { cn } from "@/lib/utils";
 import type { RootState } from "@/store/store";
 import { setPresentationData } from "@/store/slices/presentationGeneration";
 import { useDispatch, useSelector } from "react-redux";
-import { PresentationGenerationApi } from "@/app/(presentation-generator)/services/api/presentation-generation";
+import {
+  loadIconCategories,
+  PresentationGenerationApi,
+  type IconCategory,
+} from "@/app/(presentation-generator)/services/api/presentation-generation";
 import { notify } from "@/components/ui/sonner";
 
 const ICON_WEIGHTS = [
@@ -148,6 +152,8 @@ const IconsEditor = ({
   const closeTimeoutRef = useRef<number | null>(null);
 
   const [icons, setIcons] = useState<string[]>([]);
+  const [categories, setCategories] = useState<IconCategory[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>(
     icon_prompt?.[0] || ""
   );
@@ -192,6 +198,10 @@ const IconsEditor = ({
     };
   }, []);
 
+  useEffect(() => {
+    void loadIconCategories().then(setCategories);
+  }, []);
+
   const handleClose = useCallback(() => {
     setIsOpen(false);
 
@@ -205,14 +215,15 @@ const IconsEditor = ({
   }, [onClose]);
 
   const handleIconSearch = useCallback(
-    async (weightOverride?: IconWeight, queryOverride?: string) => {
+    async (weightOverride?: IconWeight, queryOverride?: string, categoryOverride?: string | null) => {
       const query = (queryOverride || "").trim();
+      const category = categoryOverride !== undefined ? categoryOverride : selectedCategory;
       const weight = normalizeIconWeight(weightOverride || selectedWeight);
       const requestId = requestIdRef.current + 1;
 
       requestIdRef.current = requestId;
 
-      if (!query) {
+      if (!query && !category) {
         setIcons([]);
         setLoading(false);
         return;
@@ -225,6 +236,7 @@ const IconsEditor = ({
           query,
           limit: 40,
           icon_weight: weight,
+          category,
         });
 
         if (requestIdRef.current === requestId) {
@@ -245,12 +257,16 @@ const IconsEditor = ({
         }
       }
     },
-    [selectedWeight]
+    [selectedCategory, selectedWeight]
   );
 
   useEffect(() => {
-    handleIconSearch(selectedWeight, debouncedActiveQuery);
-  }, [debouncedActiveQuery, handleIconSearch, selectedWeight]);
+    handleIconSearch(selectedWeight, debouncedActiveQuery, selectedCategory);
+  }, [debouncedActiveQuery, handleIconSearch, selectedCategory, selectedWeight]);
+
+  const handleCategorySelect = (categoryId: string) => {
+    setSelectedCategory((current) => (current === categoryId ? null : categoryId));
+  };
 
   const handleWeightSelect = (weight: IconWeight) => {
     setSelectedWeight(weight);
@@ -388,7 +404,7 @@ const IconsEditor = ({
                 onSubmit={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  handleIconSearch(selectedWeight, activeQuery);
+                  handleIconSearch(selectedWeight, activeQuery, selectedCategory);
                 }}
               >
                 <div className="relative">
@@ -402,6 +418,32 @@ const IconsEditor = ({
                   />
                 </div>
               </form>
+
+              {categories.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-3">
+                  {categories.map((category) => {
+                    const isSelected = selectedCategory === category.id;
+                    return (
+                      <button
+                        key={category.id}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCategorySelect(category.id);
+                        }}
+                        className={cn(
+                          "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                          isSelected
+                            ? "border-[#D9D6FE] bg-[#F4F3FF] text-[#7A5AF8]"
+                            : "border-[#E4E5E8] bg-white text-[#666666] hover:bg-[#F7F7FA]"
+                        )}
+                      >
+                        {category.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">

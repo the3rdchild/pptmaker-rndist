@@ -1,0 +1,748 @@
+{
+  "categories": [
+    {
+      "id": "business",
+      "label": "Business & Finance"
+    },
+    {
+      "id": "communication",
+      "label": "Communication"
+    },
+    {
+      "id": "people",
+      "label": "People & Team"
+    },
+    {
+      "id": "technology",
+      "label": "Technology"
+    },
+    {
+      "id": "files",
+      "label": "Files & Documents"
+    },
+    {
+      "id": "arrows",
+      "label": "Arrows & Navigation"
+    },
+    {
+      "id": "data",
+      "label": "Charts & Data"
+    },
+    {
+      "id": "media",
+      "label": "Media"
+    },
+    {
+      "id": "time",
+      "label": "Time & Planning"
+    },
+    {
+      "id": "symbols",
+      "label": "Symbols & Status"
+    }
+  ],
+  "icons": [
+    {
+      "name": "briefcase",
+      "category": "business",
+      "outline": "/static/icons/outline/briefcase.svg",
+      "filled": "/static/icons/filled/briefcase.svg"
+    },
+    {
+      "name": "chart-bar",
+      "category": "business",
+      "outline": "/static/icons/outline/chart-bar.svg",
+      "filled": null
+    },
+    {
+      "name": "chart-line",
+      "category": "business",
+      "outline": "/static/icons/outline/chart-line.svg",
+      "filled": null
+    },
+    {
+      "name": "chart-pie",
+      "category": "business",
+      "outline": "/static/icons/outline/chart-pie.svg",
+      "filled": "/static/icons/filled/chart-pie.svg"
+    },
+    {
+      "name": "coin",
+      "category": "business",
+      "outline": "/static/icons/outline/coin.svg",
+      "filled": "/static/icons/filled/coin.svg"
+    },
+    {
+      "name": "credit-card",
+      "category": "business",
+      "outline": "/static/icons/outline/credit-card.svg",
+      "filled": "/static/icons/filled/credit-card.svg"
+    },
+    {
+      "name": "trending-up",
+      "category": "business",
+      "outline": "/static/icons/outline/trending-up.svg",
+      "filled": null
+    },
+    {
+      "name": "trending-down",
+      "category": "business",
+      "outline": "/static/icons/outline/trending-down.svg",
+      "filled": null
+    },
+    {
+      "name": "building-bank",
+      "category": "business",
+      "outline": "/static/icons/outline/building-bank.svg",
+      "filled": null
+    },
+    {
+      "name": "building-skyscraper",
+      "category": "business",
+      "outline": "/static/icons/outline/building-skyscraper.svg",
+      "filled": null
+    },
+    {
+      "name": "receipt",
+      "category": "business",
+      "outline": "/static/icons/outline/receipt.svg",
+      "filled": "/static/icons/filled/receipt.svg"
+    },
+    {
+      "name": "target",
+      "category": "business",
+      "outline": "/static/icons/outline/target.svg",
+      "filled": null
+    },
+    {
+      "name": "presentation",
+      "category": "business",
+      "outline": "/static/icons/outline/presentation.svg",
+      "filled": "/static/icons/filled/presentation.svg"
+    },
+    {
+      "name": "report-money",
+      "category": "business",
+      "outline": "/static/icons/outline/report-money.svg",
+      "filled": "/static/icons/filled/report-money.svg"
+    },
+    {
+      "name": "wallet",
+      "category": "business",
+      "outline": "/static/icons/outline/wallet.svg",
+      "filled": null
+    },
+    {
+      "name": "shopping-cart",
+      "category": "business",
+      "outline": "/static/icons/outline/shopping-cart.svg",
+      "filled": "/static/icons/filled/shopping-cart.svg"
+    },
+    {
+      "name": "gift",
+      "category": "business",
+      "outline": "/static/icons/outline/gift.svg",
+      "filled": "/static/icons/filled/gift.svg"
+    },
+    {
+      "name": "scale",
+      "category": "business",
+      "outline": "/static/icons/outline/scale.svg",
+      "filled": "/static/icons/filled/scale.svg"
+    },
+    {
+      "name": "mail",
+      "category": "communication",
+      "outline": "/static/icons/outline/mail.svg",
+      "filled": "/static/icons/filled/mail.svg"
+    },
+    {
+      "name": "phone",
+      "category": "communication",
+      "outline": "/static/icons/outline/phone.svg",
+      "filled": "/static/icons/filled/phone.svg"
+    },
+    {
+      "name": "message",
+      "category": "communication",
+      "outline": "/static/icons/outline/message.svg",
+      "filled": "/static/icons/filled/message.svg"
+    },
+    {
+      "name": "message-circle",
+      "category": "communication",
+      "outline": "/static/icons/outline/message-circle.svg",
+      "filled": "/static/icons/filled/message-circle.svg"
+    },
+    {
+      "name": "send",
+      "category": "communication",
+      "outline": "/static/icons/outline/send.svg",
+      "filled": "/static/icons/filled/send.svg"
+    },
+    {
+      "name": "at",
+      "category": "communication",
+      "outline": "/static/icons/outline/at.svg",
+      "filled": null
+    },
+    {
+      "name": "bell-ringing",
+      "category": "communication",
+      "outline": "/static/icons/outline/bell-ringing.svg",
+      "filled": "/static/icons/filled/bell-ringing.svg"
+    },
+    {
+      "name": "microphone",
+      "category": "communication",
+      "outline": "/static/icons/outline/microphone.svg",
+      "filled": "/static/icons/filled/microphone.svg"
+    },
+    {
+      "name": "video",
+      "category": "communication",
+      "outline": "/static/icons/outline/video.svg",
+      "filled": "/static/icons/filled/video.svg"
+    },
+    {
+      "name": "headset",
+      "category": "communication",
+      "outline": "/static/icons/outline/headset.svg",
+      "filled": "/static/icons/filled/headset.svg"
+    },
+    {
+      "name": "speakerphone",
+      "category": "communication",
+      "outline": "/static/icons/outline/speakerphone.svg",
+      "filled": null
+    },
+    {
+      "name": "share",
+      "category": "communication",
+      "outline": "/static/icons/outline/share.svg",
+      "filled": null
+    },
+    {
+      "name": "world",
+      "category": "communication",
+      "outline": "/static/icons/outline/world.svg",
+      "filled": "/static/icons/filled/world.svg"
+    },
+    {
+      "name": "user",
+      "category": "people",
+      "outline": "/static/icons/outline/user.svg",
+      "filled": "/static/icons/filled/user.svg"
+    },
+    {
+      "name": "users",
+      "category": "people",
+      "outline": "/static/icons/outline/users.svg",
+      "filled": null
+    },
+    {
+      "name": "user-plus",
+      "category": "people",
+      "outline": "/static/icons/outline/user-plus.svg",
+      "filled": null
+    },
+    {
+      "name": "user-circle",
+      "category": "people",
+      "outline": "/static/icons/outline/user-circle.svg",
+      "filled": null
+    },
+    {
+      "name": "users-group",
+      "category": "people",
+      "outline": "/static/icons/outline/users-group.svg",
+      "filled": null
+    },
+    {
+      "name": "user-check",
+      "category": "people",
+      "outline": "/static/icons/outline/user-check.svg",
+      "filled": null
+    },
+    {
+      "name": "crown",
+      "category": "people",
+      "outline": "/static/icons/outline/crown.svg",
+      "filled": "/static/icons/filled/crown.svg"
+    },
+    {
+      "name": "id-badge2",
+      "category": "people",
+      "outline": "/static/icons/outline/id-badge2.svg",
+      "filled": null
+    },
+    {
+      "name": "device-laptop",
+      "category": "technology",
+      "outline": "/static/icons/outline/device-laptop.svg",
+      "filled": null
+    },
+    {
+      "name": "device-mobile",
+      "category": "technology",
+      "outline": "/static/icons/outline/device-mobile.svg",
+      "filled": "/static/icons/filled/device-mobile.svg"
+    },
+    {
+      "name": "cloud",
+      "category": "technology",
+      "outline": "/static/icons/outline/cloud.svg",
+      "filled": "/static/icons/filled/cloud.svg"
+    },
+    {
+      "name": "database",
+      "category": "technology",
+      "outline": "/static/icons/outline/database.svg",
+      "filled": "/static/icons/filled/database.svg"
+    },
+    {
+      "name": "server",
+      "category": "technology",
+      "outline": "/static/icons/outline/server.svg",
+      "filled": null
+    },
+    {
+      "name": "code",
+      "category": "technology",
+      "outline": "/static/icons/outline/code.svg",
+      "filled": null
+    },
+    {
+      "name": "wifi",
+      "category": "technology",
+      "outline": "/static/icons/outline/wifi.svg",
+      "filled": null
+    },
+    {
+      "name": "robot",
+      "category": "technology",
+      "outline": "/static/icons/outline/robot.svg",
+      "filled": null
+    },
+    {
+      "name": "cpu",
+      "category": "technology",
+      "outline": "/static/icons/outline/cpu.svg",
+      "filled": null
+    },
+    {
+      "name": "bug",
+      "category": "technology",
+      "outline": "/static/icons/outline/bug.svg",
+      "filled": "/static/icons/filled/bug.svg"
+    },
+    {
+      "name": "shield-lock",
+      "category": "technology",
+      "outline": "/static/icons/outline/shield-lock.svg",
+      "filled": "/static/icons/filled/shield-lock.svg"
+    },
+    {
+      "name": "plug",
+      "category": "technology",
+      "outline": "/static/icons/outline/plug.svg",
+      "filled": null
+    },
+    {
+      "name": "settings",
+      "category": "technology",
+      "outline": "/static/icons/outline/settings.svg",
+      "filled": "/static/icons/filled/settings.svg"
+    },
+    {
+      "name": "bolt",
+      "category": "technology",
+      "outline": "/static/icons/outline/bolt.svg",
+      "filled": "/static/icons/filled/bolt.svg"
+    },
+    {
+      "name": "file",
+      "category": "files",
+      "outline": "/static/icons/outline/file.svg",
+      "filled": "/static/icons/filled/file.svg"
+    },
+    {
+      "name": "file-text",
+      "category": "files",
+      "outline": "/static/icons/outline/file-text.svg",
+      "filled": "/static/icons/filled/file-text.svg"
+    },
+    {
+      "name": "folder",
+      "category": "files",
+      "outline": "/static/icons/outline/folder.svg",
+      "filled": "/static/icons/filled/folder.svg"
+    },
+    {
+      "name": "clipboard",
+      "category": "files",
+      "outline": "/static/icons/outline/clipboard.svg",
+      "filled": "/static/icons/filled/clipboard.svg"
+    },
+    {
+      "name": "clipboard-check",
+      "category": "files",
+      "outline": "/static/icons/outline/clipboard-check.svg",
+      "filled": "/static/icons/filled/clipboard-check.svg"
+    },
+    {
+      "name": "printer",
+      "category": "files",
+      "outline": "/static/icons/outline/printer.svg",
+      "filled": null
+    },
+    {
+      "name": "download",
+      "category": "files",
+      "outline": "/static/icons/outline/download.svg",
+      "filled": "/static/icons/filled/download.svg"
+    },
+    {
+      "name": "upload",
+      "category": "files",
+      "outline": "/static/icons/outline/upload.svg",
+      "filled": null
+    },
+    {
+      "name": "paperclip",
+      "category": "files",
+      "outline": "/static/icons/outline/paperclip.svg",
+      "filled": null
+    },
+    {
+      "name": "book",
+      "category": "files",
+      "outline": "/static/icons/outline/book.svg",
+      "filled": "/static/icons/filled/book.svg"
+    },
+    {
+      "name": "notebook",
+      "category": "files",
+      "outline": "/static/icons/outline/notebook.svg",
+      "filled": null
+    },
+    {
+      "name": "file-spreadsheet",
+      "category": "files",
+      "outline": "/static/icons/outline/file-spreadsheet.svg",
+      "filled": null
+    },
+    {
+      "name": "arrow-right",
+      "category": "arrows",
+      "outline": "/static/icons/outline/arrow-right.svg",
+      "filled": null
+    },
+    {
+      "name": "arrow-left",
+      "category": "arrows",
+      "outline": "/static/icons/outline/arrow-left.svg",
+      "filled": null
+    },
+    {
+      "name": "arrow-up",
+      "category": "arrows",
+      "outline": "/static/icons/outline/arrow-up.svg",
+      "filled": null
+    },
+    {
+      "name": "arrow-down",
+      "category": "arrows",
+      "outline": "/static/icons/outline/arrow-down.svg",
+      "filled": null
+    },
+    {
+      "name": "arrow-narrow-right",
+      "category": "arrows",
+      "outline": "/static/icons/outline/arrow-narrow-right.svg",
+      "filled": null
+    },
+    {
+      "name": "chevron-right",
+      "category": "arrows",
+      "outline": "/static/icons/outline/chevron-right.svg",
+      "filled": "/static/icons/filled/chevron-right.svg"
+    },
+    {
+      "name": "refresh",
+      "category": "arrows",
+      "outline": "/static/icons/outline/refresh.svg",
+      "filled": null
+    },
+    {
+      "name": "arrows-exchange",
+      "category": "arrows",
+      "outline": "/static/icons/outline/arrows-exchange.svg",
+      "filled": null
+    },
+    {
+      "name": "corner-down-right",
+      "category": "arrows",
+      "outline": "/static/icons/outline/corner-down-right.svg",
+      "filled": null
+    },
+    {
+      "name": "arrow-big-right",
+      "category": "arrows",
+      "outline": "/static/icons/outline/arrow-big-right.svg",
+      "filled": "/static/icons/filled/arrow-big-right.svg"
+    },
+    {
+      "name": "route",
+      "category": "arrows",
+      "outline": "/static/icons/outline/route.svg",
+      "filled": null
+    },
+    {
+      "name": "chart-area",
+      "category": "data",
+      "outline": "/static/icons/outline/chart-area.svg",
+      "filled": "/static/icons/filled/chart-area.svg"
+    },
+    {
+      "name": "chart-dots",
+      "category": "data",
+      "outline": "/static/icons/outline/chart-dots.svg",
+      "filled": "/static/icons/filled/chart-dots.svg"
+    },
+    {
+      "name": "chart-donut",
+      "category": "data",
+      "outline": "/static/icons/outline/chart-donut.svg",
+      "filled": "/static/icons/filled/chart-donut.svg"
+    },
+    {
+      "name": "table",
+      "category": "data",
+      "outline": "/static/icons/outline/table.svg",
+      "filled": "/static/icons/filled/table.svg"
+    },
+    {
+      "name": "list-details",
+      "category": "data",
+      "outline": "/static/icons/outline/list-details.svg",
+      "filled": "/static/icons/filled/list-details.svg"
+    },
+    {
+      "name": "gauge",
+      "category": "data",
+      "outline": "/static/icons/outline/gauge.svg",
+      "filled": "/static/icons/filled/gauge.svg"
+    },
+    {
+      "name": "percentage",
+      "category": "data",
+      "outline": "/static/icons/outline/percentage.svg",
+      "filled": null
+    },
+    {
+      "name": "stack-2",
+      "category": "data",
+      "outline": "/static/icons/outline/stack-2.svg",
+      "filled": "/static/icons/filled/stack-2.svg"
+    },
+    {
+      "name": "photo",
+      "category": "media",
+      "outline": "/static/icons/outline/photo.svg",
+      "filled": "/static/icons/filled/photo.svg"
+    },
+    {
+      "name": "camera",
+      "category": "media",
+      "outline": "/static/icons/outline/camera.svg",
+      "filled": "/static/icons/filled/camera.svg"
+    },
+    {
+      "name": "movie",
+      "category": "media",
+      "outline": "/static/icons/outline/movie.svg",
+      "filled": null
+    },
+    {
+      "name": "music",
+      "category": "media",
+      "outline": "/static/icons/outline/music.svg",
+      "filled": null
+    },
+    {
+      "name": "player-play",
+      "category": "media",
+      "outline": "/static/icons/outline/player-play.svg",
+      "filled": "/static/icons/filled/player-play.svg"
+    },
+    {
+      "name": "volume",
+      "category": "media",
+      "outline": "/static/icons/outline/volume.svg",
+      "filled": null
+    },
+    {
+      "name": "mic-2",
+      "category": "media",
+      "outline": "/static/icons/outline/mic-2.svg",
+      "filled": null
+    },
+    {
+      "name": "palette",
+      "category": "media",
+      "outline": "/static/icons/outline/palette.svg",
+      "filled": "/static/icons/filled/palette.svg"
+    },
+    {
+      "name": "brush",
+      "category": "media",
+      "outline": "/static/icons/outline/brush.svg",
+      "filled": null
+    },
+    {
+      "name": "calendar",
+      "category": "time",
+      "outline": "/static/icons/outline/calendar.svg",
+      "filled": "/static/icons/filled/calendar.svg"
+    },
+    {
+      "name": "clock",
+      "category": "time",
+      "outline": "/static/icons/outline/clock.svg",
+      "filled": "/static/icons/filled/clock.svg"
+    },
+    {
+      "name": "hourglass",
+      "category": "time",
+      "outline": "/static/icons/outline/hourglass.svg",
+      "filled": "/static/icons/filled/hourglass.svg"
+    },
+    {
+      "name": "alarm",
+      "category": "time",
+      "outline": "/static/icons/outline/alarm.svg",
+      "filled": "/static/icons/filled/alarm.svg"
+    },
+    {
+      "name": "calendar-event",
+      "category": "time",
+      "outline": "/static/icons/outline/calendar-event.svg",
+      "filled": "/static/icons/filled/calendar-event.svg"
+    },
+    {
+      "name": "checklist",
+      "category": "time",
+      "outline": "/static/icons/outline/checklist.svg",
+      "filled": null
+    },
+    {
+      "name": "flag",
+      "category": "time",
+      "outline": "/static/icons/outline/flag.svg",
+      "filled": "/static/icons/filled/flag.svg"
+    },
+    {
+      "name": "map-pin",
+      "category": "time",
+      "outline": "/static/icons/outline/map-pin.svg",
+      "filled": "/static/icons/filled/map-pin.svg"
+    },
+    {
+      "name": "check",
+      "category": "symbols",
+      "outline": "/static/icons/outline/check.svg",
+      "filled": "/static/icons/filled/check.svg"
+    },
+    {
+      "name": "x",
+      "category": "symbols",
+      "outline": "/static/icons/outline/x.svg",
+      "filled": "/static/icons/filled/x.svg"
+    },
+    {
+      "name": "alert-triangle",
+      "category": "symbols",
+      "outline": "/static/icons/outline/alert-triangle.svg",
+      "filled": "/static/icons/filled/alert-triangle.svg"
+    },
+    {
+      "name": "info-circle",
+      "category": "symbols",
+      "outline": "/static/icons/outline/info-circle.svg",
+      "filled": "/static/icons/filled/info-circle.svg"
+    },
+    {
+      "name": "star",
+      "category": "symbols",
+      "outline": "/static/icons/outline/star.svg",
+      "filled": "/static/icons/filled/star.svg"
+    },
+    {
+      "name": "heart",
+      "category": "symbols",
+      "outline": "/static/icons/outline/heart.svg",
+      "filled": "/static/icons/filled/heart.svg"
+    },
+    {
+      "name": "thumb-up",
+      "category": "symbols",
+      "outline": "/static/icons/outline/thumb-up.svg",
+      "filled": "/static/icons/filled/thumb-up.svg"
+    },
+    {
+      "name": "bulb",
+      "category": "symbols",
+      "outline": "/static/icons/outline/bulb.svg",
+      "filled": "/static/icons/filled/bulb.svg"
+    },
+    {
+      "name": "award",
+      "category": "symbols",
+      "outline": "/static/icons/outline/award.svg",
+      "filled": "/static/icons/filled/award.svg"
+    },
+    {
+      "name": "shield-check",
+      "category": "symbols",
+      "outline": "/static/icons/outline/shield-check.svg",
+      "filled": "/static/icons/filled/shield-check.svg"
+    },
+    {
+      "name": "lock",
+      "category": "symbols",
+      "outline": "/static/icons/outline/lock.svg",
+      "filled": "/static/icons/filled/lock.svg"
+    },
+    {
+      "name": "puzzle",
+      "category": "symbols",
+      "outline": "/static/icons/outline/puzzle.svg",
+      "filled": "/static/icons/filled/puzzle.svg"
+    },
+    {
+      "name": "rocket",
+      "category": "symbols",
+      "outline": "/static/icons/outline/rocket.svg",
+      "filled": null
+    },
+    {
+      "name": "leaf",
+      "category": "symbols",
+      "outline": "/static/icons/outline/leaf.svg",
+      "filled": "/static/icons/filled/leaf.svg"
+    },
+    {
+      "name": "sun",
+      "category": "symbols",
+      "outline": "/static/icons/outline/sun.svg",
+      "filled": "/static/icons/filled/sun.svg"
+    },
+    {
+      "name": "moon",
+      "category": "symbols",
+      "outline": "/static/icons/outline/moon.svg",
+      "filled": "/static/icons/filled/moon.svg"
+    }
+  ]
+}

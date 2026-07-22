@@ -120,6 +120,12 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
   >("idle");
   const [showAiPanel, setShowAiPanel] = useState(false);
   const [showFindReplace, setShowFindReplace] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationError, setGenerationError] = useState<{
+    message: string;
+    topic: string;
+    language?: string;
+  } | null>(null);
   const [presenting, setPresenting] = useState(false);
   const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false });
   const [zoom, setZoom] = useState(1);
@@ -350,11 +356,19 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
 
   // Streams AIPPTSlide JSONL for a topic and appends each mapped slide.
   // Shared by the AI Assistant's create_deck tool and the one-time
-  // auto-generate-on-open flow (?prompt= from the homepage).
+  // auto-generate-on-open flow (?prompt= from the homepage). Throws on real
+  // failure (bad response, dead stream) so callers can show a graceful
+  // error + retry (PRD #19) instead of silently ending up with 0 slides.
   const generateDeckFromTopic = async (topic: string, language?: string): Promise<number> => {
     if (!token) return 0;
     const res = await streamAipptDeck(token, { content: topic, language });
-    if (!(res instanceof Response) || !res.body) return 0;
+    if (!(res instanceof Response) || !res.body) {
+      const message =
+        res && typeof res === "object" && "message" in res
+          ? String((res as { message?: unknown }).message)
+          : "Couldn't start generation.";
+      throw new Error(message);
+    }
 
     if (presentationData) {
       dispatch(setPresentationData({ ...presentationData, slides: [] }));
@@ -401,8 +415,17 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
       }
     };
 
+    const READ_IDLE_TIMEOUT_MS = 60000;
+    const readWithTimeout = () =>
+      Promise.race([
+        reader.read(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Generation timed out. Please try again.")), READ_IDLE_TIMEOUT_MS),
+        ),
+      ]);
+
     for (;;) {
-      const { done, value } = await reader.read();
+      const { done, value } = await readWithTimeout();
       if (done) {
         if (buf.trim()) {
           const filled = await mapLine(buf.trim());
@@ -443,8 +466,31 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
     if (!prompt) return;
     autoGenerateRan.current = true;
     const language = searchParams.get("lang") ?? undefined;
-    void generateDeckFromTopic(prompt, language);
+    runGeneration(prompt, language);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, token, searchParams]);
+
+  // Shared by the auto-generate effect and the "Try Again" button — keeps
+  // the original prompt text around on failure so retrying doesn't require
+  // retyping it (PRD #19).
+  const runGeneration = (topic: string, language?: string) => {
+    setGenerationError(null);
+    setIsGenerating(true);
+    generateDeckFromTopic(topic, language)
+      .catch((e) => {
+        setGenerationError({
+          message: e instanceof Error ? e.message : "Something went wrong while generating your deck.",
+          topic,
+          language,
+        });
+      })
+      .finally(() => setIsGenerating(false));
+  };
+
+  const retryGeneration = () => {
+    if (!generationError) return;
+    runGeneration(generationError.topic, generationError.language);
+  };
 
   // Every branch calls an EXISTING function (Redux action or an
   // agent-dispatch.ts transform) — the agent only decides + supplies text
@@ -513,10 +559,15 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
         if (!topic) return "Please specify a topic to generate a deck about.";
         if (!token) return "Session not ready — try again in a moment.";
 
-        const count = await generateDeckFromTopic(topic, language);
-        return count > 0
-          ? `Generated ${count} slides about "${topic}".`
-          : `No slides generated for "${topic}". Try a different prompt.`;
+        try {
+          const count = await generateDeckFromTopic(topic, language);
+          return count > 0
+            ? `Generated ${count} slides about "${topic}".`
+            : `No slides generated for "${topic}". Try a different prompt.`;
+        } catch (e) {
+          const message = e instanceof Error ? e.message : "Generation failed.";
+          return `Couldn't generate a deck about "${topic}": ${message}`;
+        }
       }
       case "regenerate_slide": {
         const slideIndex = Number(action.args.slide_index);
@@ -724,6 +775,23 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
                 presentationId={deckId}
                 slideIndex={safeActive}
               />
+            </div>
+          ) : generationError ? (
+            <div className="flex max-w-[320px] flex-col items-center gap-3 rounded-xl border border-red-500/20 bg-red-500/5 px-6 py-5 text-center">
+              <p className="text-sm font-medium text-[var(--text-primary)]">
+                Generation failed
+              </p>
+              <p className="text-xs text-[var(--text-secondary)]">{generationError.message}</p>
+              <ToolButton variant="accent" onClick={retryGeneration} className="px-4">
+                Try Again
+              </ToolButton>
+            </div>
+          ) : isGenerating ? (
+            <div className="flex flex-col items-center gap-2 text-center">
+              <Loader2 className="h-5 w-5 animate-spin text-[var(--accent-light)]" />
+              <p className="text-sm text-[var(--text-secondary)]">
+                Generating your presentation…
+              </p>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-2 text-center">

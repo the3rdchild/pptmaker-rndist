@@ -7,6 +7,7 @@ import { useDispatch, useSelector } from "react-redux";
 import {
   Check,
   Download,
+  LayoutGrid,
   Loader2,
   Lock,
   Play,
@@ -52,6 +53,7 @@ import PresentMode from "@/components/editor-react/present-mode";
 import { exportToPptx } from "@/components/editor-react/export-pptx";
 import AIAssistantPanel from "@/components/editor-react/ai-assistant-panel";
 import FindReplacePanel from "@/components/editor-react/find-replace-panel";
+import SlideSorter from "@/components/editor-react/slide-sorter";
 import type { FindMatchLocation } from "@/components/editor-react/find-replace";
 import {
   DeckLayoutPicker,
@@ -120,6 +122,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
   >("idle");
   const [showAiPanel, setShowAiPanel] = useState(false);
   const [showFindReplace, setShowFindReplace] = useState(false);
+  const [showSlideSorter, setShowSlideSorter] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationError, setGenerationError] = useState<{
     message: string;
@@ -711,6 +714,13 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
             AI Assistant
           </ToolButton>
           <ToolButton
+            size="sm"
+            onClick={() => setShowSlideSorter(true)}
+            title="Slide Sorter"
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+          </ToolButton>
+          <ToolButton
             variant="solid"
             onClick={() => setPresenting(true)}
             title="Present"
@@ -854,6 +864,19 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
           slides={slides}
           startIndex={safeActive}
           onClose={() => setPresenting(false)}
+        />
+      )}
+      {showSlideSorter && (
+        <SlideSorter
+          slides={slides}
+          activeIndex={safeActive}
+          onSelect={setActiveIndex}
+          onDuplicate={handleDuplicate}
+          onDelete={handleDelete}
+          onReorder={handleReorder}
+          onToggleLock={handleToggleLock}
+          onToggleHide={handleToggleHide}
+          onClose={() => setShowSlideSorter(false)}
         />
       )}
     </div>

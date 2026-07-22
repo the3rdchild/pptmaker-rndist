@@ -243,7 +243,10 @@ export default function InsertToolbar({
         </div>
       )}
 
-      <div className="flex h-full w-[68px] shrink-0 flex-col gap-0.5 overflow-y-auto border-l border-[var(--border)] bg-[var(--bg-panel)] p-1.5">
+      <div
+        id="onboarding-insert-rail"
+        className="flex h-full w-[68px] shrink-0 flex-col gap-0.5 overflow-y-auto border-l border-[var(--border)] bg-[var(--bg-panel)] p-1.5"
+      >
         {TABS.map((tab) => (
           <RailTabButton
             key={tab.id}

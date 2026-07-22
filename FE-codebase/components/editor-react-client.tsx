@@ -54,6 +54,7 @@ import { exportToPptx } from "@/components/editor-react/export-pptx";
 import AIAssistantPanel from "@/components/editor-react/ai-assistant-panel";
 import FindReplacePanel from "@/components/editor-react/find-replace-panel";
 import SlideSorter from "@/components/editor-react/slide-sorter";
+import OnboardingTour from "@/components/editor-react/onboarding-tour";
 import type { FindMatchLocation } from "@/components/editor-react/find-replace";
 import {
   DeckLayoutPicker,
@@ -705,6 +706,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
           </div>
           <ToolDivider className="mx-1" />
           <ToolButton
+            id="onboarding-ai-assistant"
             variant="solid"
             active={showAiPanel}
             onClick={() => setShowAiPanel((v) => !v)}
@@ -714,6 +716,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
             AI Assistant
           </ToolButton>
           <ToolButton
+            id="onboarding-slide-sorter"
             size="sm"
             onClick={() => setShowSlideSorter(true)}
             title="Slide Sorter"
@@ -721,6 +724,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
             <LayoutGrid className="h-3.5 w-3.5" />
           </ToolButton>
           <ToolButton
+            id="onboarding-present"
             variant="solid"
             onClick={() => setPresenting(true)}
             title="Present"
@@ -731,6 +735,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
           </ToolButton>
           <ToolDivider className="mx-1" />
           <ToolButton
+            id="onboarding-export"
             variant="accent"
             onClick={handleExport}
             title="Export to PPTX"
@@ -742,20 +747,23 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
         </div>
       </header>
       <div className="flex flex-1 overflow-hidden">
-        <SlideSidebar
-          slides={slides}
-          activeIndex={safeActive}
-          onSelect={setActiveIndex}
-          onAdd={handleAdd}
-          onAddAt={handleAddAt}
-          onDuplicate={handleDuplicate}
-          onDelete={handleDelete}
-          onReorder={handleReorder}
-          onToggleLock={handleToggleLock}
-          onToggleHide={handleToggleHide}
-        />
+        <div id="onboarding-sidebar" className="flex h-full shrink-0">
+          <SlideSidebar
+            slides={slides}
+            activeIndex={safeActive}
+            onSelect={setActiveIndex}
+            onAdd={handleAdd}
+            onAddAt={handleAddAt}
+            onDuplicate={handleDuplicate}
+            onDelete={handleDelete}
+            onReorder={handleReorder}
+            onToggleLock={handleToggleLock}
+            onToggleHide={handleToggleHide}
+          />
+        </div>
         <div
           ref={canvasAreaRef}
+          id="onboarding-canvas"
           className="editor-canvas-grid relative flex flex-1 items-center justify-center overflow-hidden"
           onMouseDown={onCanvasMouseDown}
           onMouseMove={onCanvasMouseMove}
@@ -879,6 +887,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
           onClose={() => setShowSlideSorter(false)}
         />
       )}
+      <OnboardingTour ready={Boolean(activeUi) && !presenting && !showSlideSorter} />
     </div>
   );
 }

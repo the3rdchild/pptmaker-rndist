@@ -116,6 +116,10 @@ import {
   drawMarqueeRect,
 } from "@/components/slide-editor/surface/marquee-select";
 import {
+  clearFindHighlight,
+  drawFindHighlight,
+} from "@/components/slide-editor/surface/find-highlight";
+import {
   MemoizedRawComponentNode,
   MemoizedRawElementNode,
 } from "@/components/slide-editor/surface/nodes";
@@ -285,6 +289,7 @@ function TemplateV2KonvaSlideComponent({
   const spacingBadgesLayerRef = useRef<Konva.Layer | null>(null);
   const marqueeLayerRef = useRef<Konva.Layer | null>(null);
   const marqueeDragRef = useRef<{ start: Point; dragging: boolean } | null>(null);
+  const findHighlightTargetRef = useRef<ElementSelection | null>(null);
   const imageUploadInputRef = useRef<HTMLInputElement | null>(null);
   const pendingImageUploadRef = useRef<ElementSelection | null>(null);
   const undoStackRef = useRef<RawUi[]>([]);
@@ -2299,17 +2304,38 @@ function TemplateV2KonvaSlideComponent({
       if (!detail || !eventTargetsThisSlide(detail, slideId, surfaceSlideIndex, () => false)) {
         return;
       }
-      select({
+      const target: ElementSelection = {
         kind: "element",
         componentIndex: detail.componentIndex,
         elementPath: detail.elementPath,
-      });
+      };
+      select(target);
+      findHighlightTargetRef.current = target;
+      const box = absoluteBoxForSelection(currentUiRef.current, target);
+      if (box) drawFindHighlight(marqueeLayerRef.current, box);
     };
 
     window.addEventListener(TEMPLATE_V2_SELECT_ELEMENT_EVENT, handleSelectElement);
     return () =>
       window.removeEventListener(TEMPLATE_V2_SELECT_ELEMENT_EVENT, handleSelectElement);
   }, [isEditMode, select, slideId, surfaceSlideIndex]);
+
+  // The find-match highlight (above) should disappear as soon as selection
+  // moves away from it for any other reason (manual click, undo, etc.) —
+  // not just when the next match is highlighted.
+  useEffect(() => {
+    const target = findHighlightTargetRef.current;
+    if (!target) return;
+    const stillTargeted =
+      selection?.kind === "element" &&
+      selection.componentIndex === target.componentIndex &&
+      selection.elementPath.length === target.elementPath.length &&
+      selection.elementPath.every((value, i) => value === target.elementPath[i]);
+    if (!stillTargeted) {
+      findHighlightTargetRef.current = null;
+      clearFindHighlight(marqueeLayerRef.current);
+    }
+  }, [selection]);
 
   if (!uiDraft) {
     return (

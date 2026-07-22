@@ -70,6 +70,14 @@ export function shadowProps(element: RawElement) {
     shadowBlur: blur,
     shadowOffsetX: offsetX,
     shadowOffsetY: offsetY,
+    // Without these, Konva routes every redraw of a filled+stroked shadowed
+    // shape through an offscreen buffer canvas (perfect-draw compositing)
+    // and doubles the shadow draw for the stroke pass. Shadowed shapes
+    // redraw on every drag-move frame (whole layer repaints), so this is a
+    // large multiplier on drag cost — same flags already used elsewhere in
+    // this file tree (nodes.tsx:894-895, charts, selection transformers).
+    perfectDrawEnabled: false,
+    shadowForStrokeEnabled: false,
   };
 }
 

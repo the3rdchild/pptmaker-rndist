@@ -102,6 +102,7 @@ import {
   computeSnap,
   drawSnapGuides,
   stopsForBoxes,
+  type SnapStops,
 } from "@/components/slide-editor/surface/snap-guides";
 import {
   clearSpacingBadges,
@@ -177,6 +178,7 @@ import {
   updateComponentInUi,
   updateElementInUi,
   type AlignAction,
+  type Box,
   type ComponentSelection,
   type DistributeAxis,
   type ElementSelection,
@@ -288,6 +290,19 @@ function TemplateV2KonvaSlideComponent({
   const undoStackRef = useRef<RawUi[]>([]);
   const redoStackRef = useRef<RawUi[]>([]);
   const multiComponentDragRef = useRef<MultiComponentDragState | null>(null);
+  // Per-gesture cache for applyDragOverlay: snap stops and the dragged
+  // node's client rect only need computing once per drag (translation
+  // doesn't change a subtree's local bounds), not on every dragmove frame.
+  // Nodes here are also Konva-cached for the gesture so a heavy subtree
+  // (shadows, many children, images) redraws as one bitmap blit instead of
+  // walking+repainting every child on every frame.
+  const dragOverlayCacheRef = useRef<{
+    others: Box[];
+    stops: SnapStops;
+    startPos: Point;
+    startBox: Box;
+    cachedNodes: Konva.Node[];
+  } | null>(null);
   const [uiDraft, setUiDraft] = useState<RawUi>(() =>
     normalizeMarkdownTextInUi(cloneJson(layout as RawUi)),
   );
@@ -743,6 +758,11 @@ function TemplateV2KonvaSlideComponent({
   const clearEditorUiState = useCallback(
     (options?: { clearActiveSurface?: boolean }) => {
       multiComponentDragRef.current = null;
+      const dragCache = dragOverlayCacheRef.current;
+      if (dragCache) {
+        for (const target of dragCache.cachedNodes) target.clearCache();
+        dragOverlayCacheRef.current = null;
+      }
       setSelection(null);
       clearTableCellSelection();
       clearTableCellEditing();
@@ -1032,6 +1052,66 @@ function TemplateV2KonvaSlideComponent({
     [commitUi],
   );
 
+  const componentBoxesExcluding = useCallback(
+    (excludeIndexes: Iterable<number>) => {
+      const excluded = new Set(excludeIndexes);
+      return readArray(currentUiRef.current.components).flatMap((raw, index) => {
+        if (excluded.has(index)) return [];
+        const component = asRecord(raw);
+        return component ? [componentBox(component)] : [];
+      });
+    },
+    [],
+  );
+
+  const getResizeSnapStops = useCallback(
+    (excludeComponentIndex: number) =>
+      stopsForBoxes(
+        componentBoxesExcluding([excludeComponentIndex]),
+        STAGE_WIDTH,
+        STAGE_HEIGHT,
+      ),
+    [componentBoxesExcluding],
+  );
+
+  // Snap stops and the dragged node's client rect only depend on the
+  // gesture's starting state (a plain drag only translates, it doesn't
+  // resize/rotate the subtree), so they're computed once here instead of
+  // on every dragmove frame. The dragged node(s) are also Konva-cached for
+  // the gesture: with many components sharing one Layer, batchDraw()
+  // repaints the whole layer every frame regardless of which node moved,
+  // so turning a heavy subtree (shadows, many children, images) into one
+  // pre-rendered bitmap is what actually keeps that per-frame repaint cheap.
+  const primeDragOverlayCache = useCallback(
+    (node: Konva.Node, excludedIndexes: number[], passengerNodes: Konva.Node[]) => {
+      const layer = node.getLayer();
+      if (!layer) {
+        dragOverlayCacheRef.current = null;
+        return;
+      }
+      const others = componentBoxesExcluding(excludedIndexes);
+      const stops = stopsForBoxes(others, STAGE_WIDTH, STAGE_HEIGHT);
+      const startBox = node.getClientRect({ relativeTo: layer });
+      const cachedNodes = [node, ...passengerNodes];
+      for (const target of cachedNodes) target.cache();
+      dragOverlayCacheRef.current = {
+        others,
+        stops,
+        startPos: { x: node.x(), y: node.y() },
+        startBox,
+        cachedNodes,
+      };
+    },
+    [componentBoxesExcluding],
+  );
+
+  const clearDragOverlayCache = useCallback(() => {
+    const cache = dragOverlayCacheRef.current;
+    if (!cache) return;
+    for (const target of cache.cachedNodes) target.clearCache();
+    dragOverlayCacheRef.current = null;
+  }, []);
+
   const handleComponentDragStart = useCallback(
     (componentIndex: number, node: Konva.Node) => {
       const selectedIndexes = selectedComponentIndexesRef.current;
@@ -1040,6 +1120,7 @@ function TemplateV2KonvaSlideComponent({
         !selectedIndexes.includes(componentIndex)
       ) {
         multiComponentDragRef.current = null;
+        primeDragOverlayCache(node, [componentIndex], []);
         return;
       }
 
@@ -1069,44 +1150,44 @@ function TemplateV2KonvaSlideComponent({
         draggedNodeStart: { x: draggedNodeStart.x, y: draggedNodeStart.y },
         nodes,
       };
+      primeDragOverlayCache(
+        node,
+        nodes.map((entry) => entry.componentIndex),
+        nodes
+          .filter((entry) => entry.componentIndex !== componentIndex)
+          .map((entry) => entry.node),
+      );
     },
-    [],
-  );
-
-  const componentBoxesExcluding = useCallback(
-    (excludeIndexes: Iterable<number>) => {
-      const excluded = new Set(excludeIndexes);
-      return readArray(currentUiRef.current.components).flatMap((raw, index) => {
-        if (excluded.has(index)) return [];
-        const component = asRecord(raw);
-        return component ? [componentBox(component)] : [];
-      });
-    },
-    [],
-  );
-
-  const getResizeSnapStops = useCallback(
-    (excludeComponentIndex: number) =>
-      stopsForBoxes(
-        componentBoxesExcluding([excludeComponentIndex]),
-        STAGE_WIDTH,
-        STAGE_HEIGHT,
-      ),
-    [componentBoxesExcluding],
+    [primeDragOverlayCache],
   );
 
   const applyDragOverlay = useCallback(
     (componentIndex: number, node: Konva.Node) => {
       const layer = node.getLayer();
       if (!layer) return;
-      const dragState = multiComponentDragRef.current;
-      const excluded =
-        dragState?.draggedComponentIndex === componentIndex
-          ? dragState.nodes.map((entry) => entry.componentIndex)
-          : [componentIndex];
-      const others = componentBoxesExcluding(excluded);
-      const stops = stopsForBoxes(others, STAGE_WIDTH, STAGE_HEIGHT);
-      const box = node.getClientRect({ relativeTo: layer });
+      const cache = dragOverlayCacheRef.current;
+      let others: Box[];
+      let stops: SnapStops;
+      let box: Box;
+      if (cache) {
+        others = cache.others;
+        stops = cache.stops;
+        const position = node.position();
+        box = {
+          ...cache.startBox,
+          x: cache.startBox.x + (position.x - cache.startPos.x),
+          y: cache.startBox.y + (position.y - cache.startPos.y),
+        };
+      } else {
+        const dragState = multiComponentDragRef.current;
+        const excluded =
+          dragState?.draggedComponentIndex === componentIndex
+            ? dragState.nodes.map((entry) => entry.componentIndex)
+            : [componentIndex];
+        others = componentBoxesExcluding(excluded);
+        stops = stopsForBoxes(others, STAGE_WIDTH, STAGE_HEIGHT);
+        box = node.getClientRect({ relativeTo: layer });
+      }
       const snap = computeSnap(box, stops);
       if (snap.dx !== 0) node.x(node.x() + snap.dx);
       if (snap.dy !== 0) node.y(node.y() + snap.dy);
@@ -1146,6 +1227,7 @@ function TemplateV2KonvaSlideComponent({
     (componentIndex: number, node: Konva.Node) => {
       clearSnapGuides(snapGuidesLayerRef.current);
       clearSpacingBadges(spacingBadgesLayerRef.current);
+      clearDragOverlayCache();
       const dragState = multiComponentDragRef.current;
       if (!dragState || dragState.draggedComponentIndex !== componentIndex) {
         updateComponent(componentIndex, (current) => ({
@@ -1181,7 +1263,7 @@ function TemplateV2KonvaSlideComponent({
         ),
       );
     },
-    [commitUi, updateComponent],
+    [clearDragOverlayCache, commitUi, updateComponent],
   );
 
   const updateElement = useCallback(

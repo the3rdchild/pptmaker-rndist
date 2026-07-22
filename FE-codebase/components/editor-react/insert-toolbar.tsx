@@ -150,6 +150,12 @@ export default function InsertToolbar({
     onInsert(ui);
   };
 
+  const handleApplyColorToBackground = (color: string) => {
+    handleBackgroundApply(
+      applyBackgroundStyle(activeUi as RawUi, { type: "solid", from: color, to: color }),
+    );
+  };
+
   const activeTab = TABS.find((t) => t.id === openTab) ?? null;
 
   return (
@@ -192,6 +198,7 @@ export default function InsertToolbar({
             {openTab === "palette" && (
               <ColorPalettePanel
                 onApplyColorToSelection={onApplyColorToSelection}
+                onApplyColorToBackground={handleApplyColorToBackground}
               />
             )}
             {openTab === "uploads" && (

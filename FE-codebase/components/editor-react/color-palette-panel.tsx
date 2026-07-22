@@ -1,11 +1,36 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { Check, Copy, Dices } from "lucide-react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
+import {
+  BookmarkPlus,
+  Check,
+  Copy,
+  Dices,
+  Loader2,
+  PaintBucket,
+  Pin,
+  Pipette,
+  Trash2,
+  X,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { notify } from "@/components/ui/sonner";
 import { PanelLabel } from "@/components/editor-react/ui";
 import { generateManualPalette, hexToHsl } from "@/lib/palette";
+import {
+  TEMPLATE_V2_EXTRACT_IMAGE_COLORS_EVENT,
+  TEMPLATE_V2_IMAGE_COLORS_RESULT_EVENT,
+  TEMPLATE_V2_SURFACE_SELECTED_EVENT,
+  type TemplateV2ImageColorsResultDetail,
+  type TemplateV2SurfaceSelectedDetail,
+} from "@/components/slide-editor/events/events";
 
 /* ------------------------------ Color math -------------------------------- */
 
@@ -218,14 +243,79 @@ function generateQuickPalette(hue: number, saturation: number, value: number, sc
   return rows.flatMap((r) => r.swatches);
 }
 
+/* ------------------------------ Saved palettes ------------------------------ */
+// "Brand Kit lite" (PRD #34): saved swatches, optionally pinned so they read
+// as the account's brand colors rather than a one-off scratch palette.
+// Persisted to localStorage — origin-scoped, so it already shows up across
+// every deck without any deck-specific wiring. No cross-device sync yet;
+// that would need a real backend endpoint.
+
+type SavedPalette = { id: string; name: string; colors: string[]; pinned: boolean };
+const SAVED_PALETTES_KEY = "ppt-maker:saved-palettes";
+
+function loadSavedPalettes(): SavedPalette[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(SAVED_PALETTES_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistSavedPalettes(palettes: SavedPalette[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(SAVED_PALETTES_KEY, JSON.stringify(palettes));
+  } catch {
+    // Storage full/unavailable — saved palettes just won't persist.
+  }
+}
+
+/* ------------------------------ Swatch button -------------------------------- */
+
+function PaletteSwatchButton({
+  color,
+  copied,
+  onApply,
+  onContextMenu,
+}: {
+  color: string;
+  copied: boolean;
+  onApply: () => void;
+  onContextMenu: (e: ReactMouseEvent<HTMLButtonElement>) => void;
+}) {
+  const { h, s, l } = hexToHsl(color);
+  const name = colorName(h, s, l);
+  const isLight = l > 60;
+  return (
+    <button
+      onClick={onApply}
+      onContextMenu={onContextMenu}
+      title={`${color} — click to apply & copy, right-click for more options`}
+      className="flex h-9 w-full items-center justify-between rounded-md px-2.5 transition-transform hover:scale-[1.01]"
+      style={{ backgroundColor: color, color: isLight ? "#111827" : "#F9FAFB" }}
+    >
+      <span className="text-[11px] font-medium">{color.toUpperCase()}</span>
+      <span className="flex items-center gap-1.5 text-[11px]">
+        {copied && <Check size={12} />}
+        {name}
+      </span>
+    </button>
+  );
+}
+
 /* ---------------------------------- Panel ----------------------------------- */
 
 export interface ColorPalettePanelProps {
   onApplyColorToSelection: (color: string) => void;
+  onApplyColorToBackground: (color: string) => void;
 }
 
 export default function ColorPalettePanel({
   onApplyColorToSelection,
+  onApplyColorToBackground,
 }: ColorPalettePanelProps) {
   const [hue, setHue] = useState(272);
   const [saturation, setSaturation] = useState(100);
@@ -233,6 +323,56 @@ export default function ColorPalettePanel({
   const [scheme, setScheme] = useState<Scheme>("monochrome");
   const [rerollNonce, setRerollNonce] = useState(0);
   const [copied, setCopied] = useState<string | null>(null);
+  const [selectedElementType, setSelectedElementType] = useState<string | null>(null);
+  const [extracting, setExtracting] = useState(false);
+  const [extractedColors, setExtractedColors] = useState<string[] | null>(null);
+  const [savedPalettes, setSavedPalettes] = useState<SavedPalette[]>([]);
+  const [savingName, setSavingName] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ color: string; x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    setSavedPalettes(loadSavedPalettes());
+  }, []);
+
+  // Tracks whether an image element is selected on canvas, to show/hide the
+  // "Extract colors from this image" action.
+  useEffect(() => {
+    const handleSelected = (event: Event) => {
+      const detail = (event as CustomEvent<TemplateV2SurfaceSelectedDetail>).detail;
+      const selection = detail?.selection;
+      setSelectedElementType(
+        selection && selection.kind === "element" ? (selection.elementType ?? null) : null,
+      );
+    };
+    window.addEventListener(TEMPLATE_V2_SURFACE_SELECTED_EVENT, handleSelected);
+    return () => window.removeEventListener(TEMPLATE_V2_SURFACE_SELECTED_EVENT, handleSelected);
+  }, []);
+
+  useEffect(() => {
+    const handleResult = (event: Event) => {
+      const detail = (event as CustomEvent<TemplateV2ImageColorsResultDetail>).detail;
+      setExtracting(false);
+      if (!detail) return;
+      if (detail.error || detail.colors.length === 0) {
+        notify.error("Couldn't extract colors", detail.error ?? "No colors found in this image.");
+        return;
+      }
+      setExtractedColors(detail.colors);
+    };
+    window.addEventListener(TEMPLATE_V2_IMAGE_COLORS_RESULT_EVENT, handleResult);
+    return () => window.removeEventListener(TEMPLATE_V2_IMAGE_COLORS_RESULT_EVENT, handleResult);
+  }, []);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [contextMenu]);
 
   const rgb = useMemo(() => hsvToRgb(hue, saturation, value), [hue, saturation, value]);
   const hex = useMemo(() => rgbToHex(...rgb), [rgb]);
@@ -286,6 +426,62 @@ export default function ColorPalettePanel({
       notify.error("Copy failed", "Clipboard isn't available.");
     }
   };
+
+  const handleExtractFromImage = () => {
+    setExtracting(true);
+    setExtractedColors(null);
+    window.dispatchEvent(new CustomEvent(TEMPLATE_V2_EXTRACT_IMAGE_COLORS_EVENT));
+  };
+
+  const handleSwatchContextMenu = (color: string) => (e: ReactMouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    setContextMenu({ color, x: e.clientX, y: e.clientY });
+  };
+
+  const handleImplementToBackground = (color: string) => {
+    onApplyColorToBackground(color);
+    notify.success("Background updated", color);
+    setContextMenu(null);
+  };
+
+  const handleSavePalette = (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const next: SavedPalette = {
+      id: crypto.randomUUID(),
+      name: trimmed,
+      colors: palette,
+      pinned: false,
+    };
+    setSavedPalettes((prev) => {
+      const updated = [next, ...prev].slice(0, 24);
+      persistSavedPalettes(updated);
+      return updated;
+    });
+    setSavingName(null);
+    notify.success("Palette saved", trimmed);
+  };
+
+  const handleTogglePin = (id: string) => {
+    setSavedPalettes((prev) => {
+      const updated = prev.map((p) => (p.id === id ? { ...p, pinned: !p.pinned } : p));
+      persistSavedPalettes(updated);
+      return updated;
+    });
+  };
+
+  const handleDeleteSavedPalette = (id: string) => {
+    setSavedPalettes((prev) => {
+      const updated = prev.filter((p) => p.id !== id);
+      persistSavedPalettes(updated);
+      return updated;
+    });
+  };
+
+  const sortedSavedPalettes = useMemo(
+    () => [...savedPalettes].sort((a, b) => Number(b.pinned) - Number(a.pinned)),
+    [savedPalettes],
+  );
 
   return (
     <div className="w-full pb-2">
@@ -389,6 +585,40 @@ export default function ColorPalettePanel({
         <Dices size={13} /> Random
       </button>
 
+      {selectedElementType === "image" && (
+        <>
+          <PanelLabel>From selected image</PanelLabel>
+          <button
+            onClick={handleExtractFromImage}
+            disabled={extracting}
+            className="mx-2.5 mb-1.5 flex h-9 w-[calc(100%-20px)] items-center justify-center gap-1.5 rounded-lg bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)] disabled:opacity-50"
+          >
+            {extracting ? (
+              <Loader2 size={13} className="animate-spin" />
+            ) : (
+              <Pipette size={13} />
+            )}
+            {extracting ? "Extracting…" : "Extract colors from this image"}
+          </button>
+          {extractedColors && (
+            <div className="flex flex-col gap-1 px-2.5 pb-1.5">
+              {extractedColors.map((color, i) => (
+                <PaletteSwatchButton
+                  key={`extracted-${color}-${i}`}
+                  color={color}
+                  copied={copied === color}
+                  onApply={() => {
+                    onApplyColorToSelection(color);
+                    copyHex(color);
+                  }}
+                  onContextMenu={handleSwatchContextMenu(color)}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
       <PanelLabel>Scheme</PanelLabel>
       <div className="grid grid-cols-2 gap-1.5 px-2.5">
         {SCHEMES.map((s) => (
@@ -416,35 +646,25 @@ export default function ColorPalettePanel({
       <PanelLabel>Palette</PanelLabel>
       <p className="mx-2.5 mb-1.5 rounded-md bg-[var(--accent-soft)] px-2 py-1 text-[10px] text-[var(--accent-light)]">
         Click a color to apply it to the current selection (if any) and copy its hex.
+        Right-click for more options.
       </p>
       <div className="flex flex-col gap-1 px-2.5 py-1">
-        {palette.map((color, i) => {
-          const { h, s, l } = hexToHsl(color);
-          const name = colorName(h, s, l);
-          const isLight = l > 60;
-          return (
-            <button
-              key={`${color}-${i}`}
-              onClick={() => {
-                // Always try both — don't gate on a mirrored "is something
-                // selected" flag that can desync from the canvas's own
-                // selection state. Applying is a no-op on the canvas side
-                // when nothing valid is selected, so this is always safe.
-                onApplyColorToSelection(color);
-                copyHex(color);
-              }}
-              title={`Apply ${color} to selection & copy`}
-              className="flex h-9 w-full items-center justify-between rounded-md px-2.5 transition-transform hover:scale-[1.01]"
-              style={{ backgroundColor: color, color: isLight ? "#111827" : "#F9FAFB" }}
-            >
-              <span className="text-[11px] font-medium">{color.toUpperCase()}</span>
-              <span className="flex items-center gap-1.5 text-[11px]">
-                {copied === color && <Check size={12} />}
-                {name}
-              </span>
-            </button>
-          );
-        })}
+        {palette.map((color, i) => (
+          <PaletteSwatchButton
+            key={`${color}-${i}`}
+            color={color}
+            copied={copied === color}
+            onApply={() => {
+              // Always try both — don't gate on a mirrored "is something
+              // selected" flag that can desync from the canvas's own
+              // selection state. Applying is a no-op on the canvas side
+              // when nothing valid is selected, so this is always safe.
+              onApplyColorToSelection(color);
+              copyHex(color);
+            }}
+            onContextMenu={handleSwatchContextMenu(color)}
+          />
+        ))}
       </div>
 
       <button
@@ -453,6 +673,109 @@ export default function ColorPalettePanel({
       >
         <Copy size={12} /> Copy palette
       </button>
+
+      <PanelLabel>Saved palettes</PanelLabel>
+      {savingName !== null ? (
+        <div className="mx-2.5 mb-1.5 flex items-center gap-1.5">
+          <input
+            autoFocus
+            type="text"
+            value={savingName}
+            onChange={(e) => setSavingName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleSavePalette(savingName);
+              if (e.key === "Escape") setSavingName(null);
+            }}
+            placeholder="Palette name…"
+            className="h-8 flex-1 rounded-md border border-[var(--border-strong)] bg-[var(--bg-surface)] px-2 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+          />
+          <button
+            onClick={() => handleSavePalette(savingName)}
+            className="h-8 shrink-0 rounded-md bg-[var(--accent)] px-2.5 text-xs font-medium text-white hover:bg-[var(--accent-hover)]"
+          >
+            Save
+          </button>
+          <button
+            onClick={() => setSavingName(null)}
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
+          >
+            <X size={13} />
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={() => setSavingName("")}
+          className="mx-2.5 mb-1.5 flex h-8 w-[calc(100%-20px)] items-center justify-center gap-1.5 rounded-lg bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)]"
+        >
+          <BookmarkPlus size={13} /> Save current palette
+        </button>
+      )}
+      {sortedSavedPalettes.length === 0 ? (
+        <p className="mx-2.5 mb-1.5 text-[11px] text-[var(--text-muted)]">
+          No saved palettes yet.
+        </p>
+      ) : (
+        <div className="flex flex-col gap-1.5 px-2.5 pb-1.5">
+          {sortedSavedPalettes.map((sp) => (
+            <div key={sp.id} className="rounded-lg p-1.5 ring-1 ring-[var(--border-strong)]">
+              <div className="mb-1 flex items-center justify-between gap-1">
+                <span className="truncate text-[11px] font-medium text-[var(--text-primary)]">
+                  {sp.name}
+                </span>
+                <div className="flex shrink-0 items-center gap-0.5">
+                  <button
+                    title={sp.pinned ? "Unpin from all projects" : "Pin to all projects"}
+                    onClick={() => handleTogglePin(sp.id)}
+                    className={cn(
+                      "rounded p-1 hover:bg-[var(--bg-elevated)]",
+                      sp.pinned ? "text-[var(--accent-light)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                    )}
+                  >
+                    <Pin size={11} fill={sp.pinned ? "currentColor" : "none"} />
+                  </button>
+                  <button
+                    title="Delete"
+                    onClick={() => handleDeleteSavedPalette(sp.id)}
+                    className="rounded p-1 text-[var(--text-muted)] hover:bg-red-500/10 hover:text-red-400"
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                </div>
+              </div>
+              <div className="flex gap-1">
+                {sp.colors.map((color, i) => (
+                  <button
+                    key={`${sp.id}-${i}`}
+                    onClick={() => {
+                      onApplyColorToSelection(color);
+                      copyHex(color);
+                    }}
+                    onContextMenu={handleSwatchContextMenu(color)}
+                    title={color}
+                    className="h-6 flex-1 rounded ring-1 ring-black/5 transition-transform hover:scale-105"
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {contextMenu && (
+        <div
+          onPointerDown={(e) => e.stopPropagation()}
+          style={{ position: "fixed", left: contextMenu.x, top: contextMenu.y, zIndex: 10000 }}
+          className="min-w-[190px] rounded-lg border border-[var(--border-strong)] bg-[var(--bg-surface)] p-1 shadow-[var(--shadow-pop)]"
+        >
+          <button
+            onClick={() => handleImplementToBackground(contextMenu.color)}
+            className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs text-[var(--text-primary)] hover:bg-[var(--accent-soft)]"
+          >
+            <PaintBucket size={13} /> Implement to background
+          </button>
+        </div>
+      )}
     </div>
   );
 }

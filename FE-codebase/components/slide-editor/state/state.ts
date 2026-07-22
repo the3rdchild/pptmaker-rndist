@@ -17,6 +17,8 @@ export type TableCellSelection = {
   elementPath?: string | null;
   rowIndex: number;
   colIndex: number;
+  /** "row"/"column" select every cell in that row/column; "cell" (default) is just the one. */
+  kind?: "cell" | "row" | "column";
 };
 
 export { useTableCellSelection } from "@/components/slide-editor/tables/useTableCellSelection";

@@ -241,6 +241,10 @@ export type TableElement = ElementBase & {
   min_columns?: number | null;
   max_rows?: number | null;
   min_rows?: number | null;
+  /** Fractional widths (sum ≈ 1), one per column — absent/short arrays fall back to equal width. */
+  column_widths?: number[] | null;
+  /** Fractional heights (sum ≈ 1), one per row including the header — absent/short arrays fall back to equal height. */
+  row_heights?: number[] | null;
 };
 
 export type RectangleElement = ElementBase & {

@@ -1,4 +1,6 @@
+import { useRef } from "react";
 import { Group, Rect, Text } from "react-konva";
+import type Konva from "konva";
 import { renderMarkdownTextRuns } from "@/components/slide-editor/text/markdown-text";
 import type { TextRun } from "@/components/slide-editor/types";
 import { layoutRichText } from "@/components/slide-editor/text/template-v2-text";
@@ -20,6 +22,33 @@ type RenderTextFont = {
   opacity: number;
 };
 
+const MIN_CELL_SIZE = 24;
+const HANDLE_HIT_SIZE = 8;
+
+// Cumulative pixel offsets/sizes for each column (or row), derived from
+// fractional weights so resizing the table as a whole scales every column
+// together. Falls back to equal division when weights are missing/stale
+// (wrong length) — every existing table with no column_widths keeps
+// rendering exactly as before.
+function trackSizes(weights: unknown, count: number, total: number): number[] {
+  const raw = Array.isArray(weights)
+    ? weights.filter((v): v is number => typeof v === "number" && v > 0)
+    : [];
+  const base = raw.length === count ? raw : Array.from({ length: count }, () => 1 / count);
+  const sum = base.reduce((a, b) => a + b, 0) || 1;
+  return base.map((v) => (v / sum) * total);
+}
+
+function offsetsFromSizes(sizes: number[]): number[] {
+  const offsets: number[] = [];
+  let cursor = 0;
+  for (const size of sizes) {
+    offsets.push(cursor);
+    cursor += size;
+  }
+  return offsets;
+}
+
 export function TemplateV2TableElement({
   element,
   width,
@@ -28,20 +57,24 @@ export function TemplateV2TableElement({
   selectedCell,
   onCellSelect,
   onCellEdit,
+  onResize,
 }: {
   element: RawElement;
   width: number;
   height: number;
   interactive: boolean;
-  selectedCell?: { rowIndex: number; colIndex: number } | null;
+  selectedCell?: { rowIndex: number; colIndex: number; kind?: "cell" | "row" | "column" } | null;
   onCellSelect?: (rowIndex: number, colIndex: number) => void;
   onCellEdit?: (rowIndex: number, colIndex: number) => void;
+  onResize?: (columnWidths: number[] | null, rowHeights: number[] | null) => void;
 }) {
   const rows = rawTableRows(element);
   const rowCount = Math.max(1, rows.length);
   const colCount = Math.max(1, ...rows.map((row) => row.length));
-  const cellW = width / colCount;
-  const cellH = height / rowCount;
+  const colWidths = trackSizes(element.column_widths, colCount, width);
+  const rowHeightsPx = trackSizes(element.row_heights, rowCount, height);
+  const colOffsets = offsetsFromSizes(colWidths);
+  const rowOffsets = offsetsFromSizes(rowHeightsPx);
   const font = rawFont(element);
 
   return (
@@ -69,6 +102,8 @@ export function TemplateV2TableElement({
               : runs;
           const text = tableCellTextContent(runs);
           const fontSize = cellFont.size;
+          const cellW = colWidths[colIndex] ?? width / colCount;
+          const cellH = rowHeightsPx[rowIndex] ?? height / rowCount;
           const textWidth = Math.max(1, cellW - 12);
           const cellLineHeight = effectiveLineHeight({
             text,
@@ -81,8 +116,8 @@ export function TemplateV2TableElement({
           return (
             <Group
               key={`${rowIndex}-${colIndex}`}
-              x={colIndex * cellW}
-              y={rowIndex * cellH}
+              x={colOffsets[colIndex] ?? 0}
+              y={rowOffsets[rowIndex] ?? 0}
               onClick={(event) => {
                 if (!interactive) return;
                 event.cancelBubble = true;
@@ -129,13 +164,262 @@ export function TemplateV2TableElement({
         }),
       )}
       <SelectedTableCellOutline
-        cellH={cellH}
-        cellW={cellW}
+        colWidths={colWidths}
+        rowHeights={rowHeightsPx}
+        colOffsets={colOffsets}
+        rowOffsets={rowOffsets}
         colCount={colCount}
         rowCount={rowCount}
         selectedCell={selectedCell}
+        tableWidth={width}
+        tableHeight={height}
       />
+      {interactive && onCellSelect ? (
+        <RowColumnHandles
+          colCount={colCount}
+          rowCount={rowCount}
+          colOffsets={colOffsets}
+          rowOffsets={rowOffsets}
+          tableWidth={width}
+          tableHeight={height}
+          onCellSelect={onCellSelect}
+        />
+      ) : null}
+      {interactive && onResize ? (
+        <ResizeHandles
+          colWidths={colWidths}
+          rowHeights={rowHeightsPx}
+          colOffsets={colOffsets}
+          rowOffsets={rowOffsets}
+          tableWidth={width}
+          tableHeight={height}
+          onResize={onResize}
+        />
+      ) : null}
     </Group>
+  );
+}
+
+// Thin strips just inside the top/left edges — clicking one selects the
+// whole row or column (sentinel: colIndex -1 = "row", rowIndex -1 =
+// "column", read by TemplateV2KonvaSlide.selectTableCell).
+function RowColumnHandles({
+  colCount,
+  rowCount,
+  colOffsets,
+  rowOffsets,
+  tableWidth,
+  tableHeight,
+  onCellSelect,
+}: {
+  colCount: number;
+  rowCount: number;
+  colOffsets: number[];
+  rowOffsets: number[];
+  tableWidth: number;
+  tableHeight: number;
+  onCellSelect: (rowIndex: number, colIndex: number) => void;
+}) {
+  const HANDLE_THICKNESS = 6;
+  return (
+    <Group listening>
+      {Array.from({ length: colCount }, (_, colIndex) => {
+        const x = colOffsets[colIndex] ?? 0;
+        const w =
+          (colOffsets[colIndex + 1] ?? tableWidth) - x;
+        return (
+          <Rect
+            key={`col-handle-${colIndex}`}
+            x={x}
+            y={-HANDLE_THICKNESS - 2}
+            width={w}
+            height={HANDLE_THICKNESS}
+            fill="rgba(124, 81, 248, 0.001)"
+            onClick={(event) => {
+              event.cancelBubble = true;
+              onCellSelect(-1, colIndex);
+            }}
+            onTap={(event) => {
+              event.cancelBubble = true;
+              onCellSelect(-1, colIndex);
+            }}
+            onMouseEnter={(event) => setCursor(event, "s-resize")}
+            onMouseLeave={(event) => setCursor(event, "default")}
+          />
+        );
+      })}
+      {Array.from({ length: rowCount }, (_, rowIndex) => {
+        const y = rowOffsets[rowIndex] ?? 0;
+        const h = (rowOffsets[rowIndex + 1] ?? tableHeight) - y;
+        return (
+          <Rect
+            key={`row-handle-${rowIndex}`}
+            x={-HANDLE_THICKNESS - 2}
+            y={y}
+            width={HANDLE_THICKNESS}
+            height={h}
+            fill="rgba(124, 81, 248, 0.001)"
+            onClick={(event) => {
+              event.cancelBubble = true;
+              onCellSelect(rowIndex, -1);
+            }}
+            onTap={(event) => {
+              event.cancelBubble = true;
+              onCellSelect(rowIndex, -1);
+            }}
+            onMouseEnter={(event) => setCursor(event, "e-resize")}
+            onMouseLeave={(event) => setCursor(event, "default")}
+          />
+        );
+      })}
+    </Group>
+  );
+}
+
+function setCursor(event: Konva.KonvaEventObject<Event>, cursor: string) {
+  const stage = event.target.getStage();
+  const container = stage?.container();
+  if (container) container.style.cursor = cursor;
+}
+
+// Drag handles on column/row boundaries. Reads the pointer's position in
+// the table's own LOCAL coordinate space (getRelativePointerPosition),
+// which Konva keeps correct under rotation without any manual math — the
+// handle is snapped back to its true boundary position on drag end
+// regardless of where the pointer ended up, only the resolved delta along
+// the relevant axis is kept.
+function ResizeHandles({
+  colWidths,
+  rowHeights,
+  colOffsets,
+  rowOffsets,
+  tableWidth,
+  tableHeight,
+  onResize,
+}: {
+  colWidths: number[];
+  rowHeights: number[];
+  colOffsets: number[];
+  rowOffsets: number[];
+  tableWidth: number;
+  tableHeight: number;
+  onResize: (columnWidths: number[] | null, rowHeights: number[] | null) => void;
+}) {
+  return (
+    <Group listening>
+      {colWidths.slice(0, -1).map((_, index) => (
+        <ColumnResizeHandle
+          key={`col-resize-${index}`}
+          index={index}
+          boundaryX={colOffsets[index + 1] ?? 0}
+          height={tableHeight}
+          colWidths={colWidths}
+          tableWidth={tableWidth}
+          onResize={onResize}
+        />
+      ))}
+      {rowHeights.slice(0, -1).map((_, index) => (
+        <RowResizeHandle
+          key={`row-resize-${index}`}
+          index={index}
+          boundaryY={rowOffsets[index + 1] ?? 0}
+          width={tableWidth}
+          rowHeights={rowHeights}
+          tableHeight={tableHeight}
+          onResize={onResize}
+        />
+      ))}
+    </Group>
+  );
+}
+
+function ColumnResizeHandle({
+  index,
+  boundaryX,
+  height,
+  colWidths,
+  tableWidth,
+  onResize,
+}: {
+  index: number;
+  boundaryX: number;
+  height: number;
+  colWidths: number[];
+  tableWidth: number;
+  onResize: (columnWidths: number[] | null, rowHeights: number[] | null) => void;
+}) {
+  const rectRef = useRef<Konva.Rect | null>(null);
+  return (
+    <Rect
+      ref={rectRef}
+      x={boundaryX - HANDLE_HIT_SIZE / 2}
+      y={0}
+      width={HANDLE_HIT_SIZE}
+      height={height}
+      fill="transparent"
+      draggable
+      onMouseEnter={(event) => setCursor(event, "col-resize")}
+      onMouseLeave={(event) => setCursor(event, "default")}
+      onDragEnd={(event) => {
+        const node = event.target;
+        const draggedX = node.x() + HANDLE_HIT_SIZE / 2;
+        const delta = draggedX - boundaryX;
+        node.position({ x: boundaryX - HANDLE_HIT_SIZE / 2, y: 0 });
+        const next = [...colWidths];
+        next[index] = Math.max(MIN_CELL_SIZE, colWidths[index] + delta);
+        const appliedDelta = next[index] - colWidths[index];
+        next[index + 1] = Math.max(MIN_CELL_SIZE, colWidths[index + 1] - appliedDelta);
+        onResize(
+          next.map((w) => w / tableWidth),
+          null,
+        );
+      }}
+    />
+  );
+}
+
+function RowResizeHandle({
+  index,
+  boundaryY,
+  width,
+  rowHeights,
+  tableHeight,
+  onResize,
+}: {
+  index: number;
+  boundaryY: number;
+  width: number;
+  rowHeights: number[];
+  tableHeight: number;
+  onResize: (columnWidths: number[] | null, rowHeights: number[] | null) => void;
+}) {
+  const rectRef = useRef<Konva.Rect | null>(null);
+  return (
+    <Rect
+      ref={rectRef}
+      x={0}
+      y={boundaryY - HANDLE_HIT_SIZE / 2}
+      width={width}
+      height={HANDLE_HIT_SIZE}
+      fill="transparent"
+      draggable
+      onMouseEnter={(event) => setCursor(event, "row-resize")}
+      onMouseLeave={(event) => setCursor(event, "default")}
+      onDragEnd={(event) => {
+        const node = event.target;
+        const draggedY = node.y() + HANDLE_HIT_SIZE / 2;
+        const delta = draggedY - boundaryY;
+        node.position({ x: 0, y: boundaryY - HANDLE_HIT_SIZE / 2 });
+        const next = [...rowHeights];
+        next[index] = Math.max(MIN_CELL_SIZE, rowHeights[index] + delta);
+        const appliedDelta = next[index] - rowHeights[index];
+        next[index + 1] = Math.max(MIN_CELL_SIZE, rowHeights[index + 1] - appliedDelta);
+        onResize(
+          null,
+          next.map((h) => h / tableHeight),
+        );
+      }}
+    />
   );
 }
 
@@ -206,29 +490,69 @@ function TableCellText({
 }
 
 function SelectedTableCellOutline({
-  cellH,
-  cellW,
+  colWidths,
+  rowHeights,
+  colOffsets,
+  rowOffsets,
   colCount,
   rowCount,
   selectedCell,
+  tableWidth,
+  tableHeight,
 }: {
-  cellH?: number;
-  cellW?: number;
+  colWidths: number[];
+  rowHeights: number[];
+  colOffsets: number[];
+  rowOffsets: number[];
   colCount: number;
-  rowCount?: number;
-  selectedCell?: { rowIndex: number; colIndex: number } | null;
+  rowCount: number;
+  selectedCell?: { rowIndex: number; colIndex: number; kind?: "cell" | "row" | "column" } | null;
+  tableWidth: number;
+  tableHeight: number;
 }) {
   if (!selectedCell) return null;
+  const kind = selectedCell.kind ?? "cell";
+
+  if (kind === "row") {
+    if (selectedCell.rowIndex < 0 || selectedCell.rowIndex >= rowCount) return null;
+    return (
+      <Rect
+        x={0}
+        y={rowOffsets[selectedCell.rowIndex] ?? 0}
+        width={tableWidth}
+        height={rowHeights[selectedCell.rowIndex] ?? 0}
+        fill="rgba(0,0,0,0)"
+        stroke="#7C51F8"
+        strokeWidth={2}
+        listening={false}
+      />
+    );
+  }
+  if (kind === "column") {
+    if (selectedCell.colIndex < 0 || selectedCell.colIndex >= colCount) return null;
+    return (
+      <Rect
+        x={colOffsets[selectedCell.colIndex] ?? 0}
+        y={0}
+        width={colWidths[selectedCell.colIndex] ?? 0}
+        height={tableHeight}
+        fill="rgba(0,0,0,0)"
+        stroke="#7C51F8"
+        strokeWidth={2}
+        listening={false}
+      />
+    );
+  }
+
   if (selectedCell.colIndex < 0 || selectedCell.colIndex >= colCount) return null;
-  if (cellW == null || cellH == null || rowCount == null) return null;
   if (selectedCell.rowIndex < 0 || selectedCell.rowIndex >= rowCount) return null;
 
   return (
     <Rect
-      x={selectedCell.colIndex * cellW}
-      y={selectedCell.rowIndex * cellH}
-      width={cellW}
-      height={cellH}
+      x={colOffsets[selectedCell.colIndex] ?? 0}
+      y={rowOffsets[selectedCell.rowIndex] ?? 0}
+      width={colWidths[selectedCell.colIndex] ?? 0}
+      height={rowHeights[selectedCell.rowIndex] ?? 0}
       fill="rgba(0,0,0,0)"
       stroke="#7C51F8"
       strokeWidth={2}

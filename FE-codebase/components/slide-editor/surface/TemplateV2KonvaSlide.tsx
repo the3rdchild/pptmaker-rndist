@@ -324,6 +324,8 @@ function TemplateV2KonvaSlideComponent({
     editTableCellSelection,
     selectedTableCell,
     selectTableCellSelection,
+    selectTableRow,
+    selectTableColumn,
     visibleSelectedTableCell,
   } = useTableCellSelection<Selection, ElementSelection>({
     keyForSelection,
@@ -974,6 +976,9 @@ function TemplateV2KonvaSlideComponent({
     [activateSurface, clearEditorUiState, clearInlineEdit, clearTableCellSelection],
   );
 
+  // -1 in either slot is a sentinel from the row/column handle strips
+  // (TemplateV2TableElement) — no new prop needed through the whole
+  // render tree, just a different interpretation at this one boundary.
   const selectTableCell = useCallback(
     (
       elementSelection: ElementSelection,
@@ -984,9 +989,21 @@ function TemplateV2KonvaSlideComponent({
       setSelection(elementSelection);
       clearInlineEdit();
       setIconEditorSelection(null);
-      selectTableCellSelection(elementSelection, rowIndex, colIndex);
+      if (colIndex === -1) {
+        selectTableRow(elementSelection, rowIndex);
+      } else if (rowIndex === -1) {
+        selectTableColumn(elementSelection, colIndex);
+      } else {
+        selectTableCellSelection(elementSelection, rowIndex, colIndex);
+      }
     },
-    [activateSurface, clearInlineEdit, selectTableCellSelection],
+    [
+      activateSurface,
+      clearInlineEdit,
+      selectTableCellSelection,
+      selectTableColumn,
+      selectTableRow,
+    ],
   );
 
   const editTableCell = useCallback(

@@ -703,6 +703,16 @@ function RawElementNode({
     },
     [onTableCellEdit, selection],
   );
+  const handleTableResize = useCallback(
+    (columnWidths: number[] | null, rowHeights: number[] | null) => {
+      onElementChange(selection, (current) => ({
+        ...current,
+        ...(columnWidths ? { column_widths: columnWidths } : {}),
+        ...(rowHeights ? { row_heights: rowHeights } : {}),
+      }));
+    },
+    [onElementChange, selection],
+  );
 
   return (
     <Group
@@ -797,6 +807,7 @@ function RawElementNode({
           selectedTableCell={selectedCell}
           onTableCellSelect={handleTableCellSelect}
           onTableCellEdit={handleTableCellEdit}
+          onTableResize={handleTableResize}
           fontRevision={fontRevision}
         />
       )}
@@ -894,6 +905,7 @@ function RawElementVisual({
   selectedTableCell,
   onTableCellSelect,
   onTableCellEdit,
+  onTableResize,
   fontRevision,
 }: {
   element: RawElement;
@@ -903,6 +915,7 @@ function RawElementVisual({
   selectedTableCell: TableCellSelection | null;
   onTableCellSelect: (rowIndex: number, colIndex: number) => void;
   onTableCellEdit: (rowIndex: number, colIndex: number) => void;
+  onTableResize: (columnWidths: number[] | null, rowHeights: number[] | null) => void;
   fontRevision: number;
 }) {
   void fontRevision;
@@ -1007,6 +1020,7 @@ function RawElementVisual({
         selectedCell={selectedTableCell}
         onCellSelect={onTableCellSelect}
         onCellEdit={onTableCellEdit}
+        onResize={onTableResize}
       />
     );
   }
@@ -1040,6 +1054,7 @@ const MemoizedRawElementVisual = memo(
     previous.selectedTableCell === next.selectedTableCell &&
     previous.onTableCellSelect === next.onTableCellSelect &&
     previous.onTableCellEdit === next.onTableCellEdit &&
+    previous.onTableResize === next.onTableResize &&
     previous.fontRevision === next.fontRevision,
 );
 

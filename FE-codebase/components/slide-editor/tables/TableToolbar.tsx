@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Columns3,
   MoreVertical,
+  Paintbrush,
   Plus,
   Rows3,
   Settings,
@@ -35,6 +36,7 @@ import {
   FloatingToolbarPanel,
   type FloatingToolbarBox,
 } from "@/components/slide-editor/toolbar/FloatingToolbar";
+import { applyTableTheme, TABLE_THEMES } from "@/components/slide-editor/tables/table-themes";
 
 type TableCellAlignment = NonNullable<TableCell["alignment"]>;
 
@@ -53,6 +55,7 @@ export function TableToolbarControls({
   onChange: (index: number, element: TableSlideElement) => void;
 }) {
   const [tableMenuOpen, setTableMenuOpen] = useState(false);
+  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const colorInputRef = useRef<HTMLInputElement | null>(null);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const rows = tableRowsAsStrings(element);
@@ -90,16 +93,24 @@ export function TableToolbarControls({
   const canMoveColumnRight = activeColumn < columnCount - 1;
 
   useEffect(() => {
-    if (!tableMenuOpen) return;
+    if (!tableMenuOpen && !themeMenuOpen) return;
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target instanceof Element ? event.target : null;
       if (target?.closest("[data-inline-edit-ignore='true']")) return;
       if (toolbarRef.current?.contains(event.target as Node)) return;
       setTableMenuOpen(false);
+      setThemeMenuOpen(false);
     };
     window.addEventListener("pointerdown", onPointerDown);
     return () => window.removeEventListener("pointerdown", onPointerDown);
-  }, [tableMenuOpen]);
+  }, [tableMenuOpen, themeMenuOpen]);
+
+  const applyTheme = (themeId: string) => {
+    const theme = TABLE_THEMES.find((t) => t.id === themeId);
+    if (!theme) return;
+    onChange(index, applyTableTheme(element, theme));
+    setThemeMenuOpen(false);
+  };
 
   const normalizeRows = (nextRows: string[][]) =>
     nextRows.map((row) =>
@@ -173,9 +184,47 @@ export function TableToolbarControls({
     );
   };
 
+  const selectionKind = selectedCell?.kind ?? "cell";
+
   const updateActiveCell = (
     patchCell: (cell: TableCell | undefined) => TableCell,
   ) => {
+    if (selectionKind === "column") {
+      onChange(index, {
+        ...element,
+        columns: element.columns.map((cell, colIndex) =>
+          colIndex === activeColumn ? patchCell(cell) : cell,
+        ),
+        rows: element.rows.map((row) =>
+          Array.from({ length: columnCount }, (_, colIndex) =>
+            colIndex === activeColumn
+              ? patchCell(row[colIndex])
+              : row[colIndex] ?? { runs: [] },
+          ),
+        ),
+      });
+      return;
+    }
+
+    if (selectionKind === "row") {
+      if (activeRow === 0) {
+        onChange(index, {
+          ...element,
+          columns: element.columns.map((cell) => patchCell(cell)),
+        });
+        return;
+      }
+      onChange(index, {
+        ...element,
+        rows: element.rows.map((row, rowIndex) =>
+          rowIndex === activeRow - 1
+            ? Array.from({ length: columnCount }, (_, colIndex) => patchCell(row[colIndex]))
+            : row,
+        ),
+      });
+      return;
+    }
+
     if (activeRow === 0) {
       onChange(index, {
         ...element,
@@ -263,6 +312,38 @@ export function TableToolbarControls({
       >
         <ActiveCellAlignmentIcon size={16} strokeWidth={1.33} />
       </button>
+      <Divider />
+      <button
+        type="button"
+        aria-label="Table theme"
+        aria-expanded={themeMenuOpen}
+        title="Table theme"
+        style={{
+          ...iconButtonStyle,
+          ...(themeMenuOpen ? activeButtonStyle : null),
+        }}
+        onClick={() => setThemeMenuOpen((open) => !open)}
+      >
+        <Paintbrush size={16} strokeWidth={1.33} />
+      </button>
+      {themeMenuOpen ? (
+        <FloatingToolbarPanel style={themeMenuStyle}>
+          {TABLE_THEMES.map((theme) => (
+            <button
+              key={theme.id}
+              type="button"
+              title={theme.label}
+              onClick={() => applyTheme(theme.id)}
+              style={themeSwatchButtonStyle}
+            >
+              <span style={{ ...themeSwatchStripStyle, background: theme.headerFill }} />
+              <span style={{ ...themeSwatchStripStyle, background: theme.rowFill }} />
+              <span style={{ ...themeSwatchStripStyle, background: theme.altRowFill }} />
+              <span style={themeSwatchLabelStyle}>{theme.label}</span>
+            </button>
+          ))}
+        </FloatingToolbarPanel>
+      ) : null}
       <Divider />
       <button
         type="button"
@@ -547,6 +628,45 @@ const menuStyle: CSSProperties = {
   border: "1px solid #E7E8EC",
   background: "#FFFFFF",
   boxShadow: "0 20px 52px rgba(15, 23, 42, 0.22)",
+};
+
+const themeMenuStyle: CSSProperties = {
+  width: 168,
+  padding: 8,
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+  borderRadius: 14,
+  border: "1px solid #E7E8EC",
+  background: "#FFFFFF",
+  boxShadow: "0 20px 52px rgba(15, 23, 42, 0.22)",
+};
+
+const themeSwatchButtonStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  height: 32,
+  padding: "0 8px",
+  border: 0,
+  borderRadius: 8,
+  background: "transparent",
+  cursor: "pointer",
+  fontFamily: "syne, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+};
+
+const themeSwatchStripStyle: CSSProperties = {
+  width: 12,
+  height: 20,
+  borderRadius: 3,
+  border: "1px solid rgba(15, 23, 42, 0.12)",
+};
+
+const themeSwatchLabelStyle: CSSProperties = {
+  marginLeft: 4,
+  fontSize: 13,
+  fontWeight: 500,
+  color: "#191919",
 };
 
 const menuItemStyle: CSSProperties = {

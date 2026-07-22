@@ -49,11 +49,13 @@ export function useTableCellSelection<
       elementSelection: TElementSelection,
       rowIndex: number,
       colIndex: number,
+      kind: TableCellSelection["kind"] = "cell",
     ): TableCellSelection => ({
       elementIndex: elementSelection.elementPath[0] ?? 0,
       elementPath: keyForSelection(elementSelection),
       rowIndex,
       colIndex,
+      kind,
     }),
     [keyForSelection],
   );
@@ -77,6 +79,22 @@ export function useTableCellSelection<
       setSelectedTableCell(
         cellSelectionFor(elementSelection, rowIndex, colIndex),
       );
+    },
+    [cellSelectionFor],
+  );
+
+  const selectTableRow = useCallback(
+    (elementSelection: TElementSelection, rowIndex: number) => {
+      setEditingTableCell(null);
+      setSelectedTableCell(cellSelectionFor(elementSelection, rowIndex, 0, "row"));
+    },
+    [cellSelectionFor],
+  );
+
+  const selectTableColumn = useCallback(
+    (elementSelection: TElementSelection, colIndex: number) => {
+      setEditingTableCell(null);
+      setSelectedTableCell(cellSelectionFor(elementSelection, 0, colIndex, "column"));
     },
     [cellSelectionFor],
   );
@@ -108,6 +126,8 @@ export function useTableCellSelection<
     clearTableCellSelection,
     editingTableCell,
     editTableCellSelection,
+    selectTableRow,
+    selectTableColumn,
     selectedTableCell,
     selectTableCellSelection,
     visibleSelectedTableCell,

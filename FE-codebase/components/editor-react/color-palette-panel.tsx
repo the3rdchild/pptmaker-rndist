@@ -328,6 +328,7 @@ export default function ColorPalettePanel({
   const [extractedColors, setExtractedColors] = useState<string[] | null>(null);
   const [savedPalettes, setSavedPalettes] = useState<SavedPalette[]>([]);
   const [savingName, setSavingName] = useState<string | null>(null);
+  const [saveSource, setSaveSource] = useState<string[] | null>(null);
   const [contextMenu, setContextMenu] = useState<{ color: string; x: number; y: number } | null>(null);
 
   useEffect(() => {
@@ -450,7 +451,7 @@ export default function ColorPalettePanel({
     const next: SavedPalette = {
       id: crypto.randomUUID(),
       name: trimmed,
-      colors: palette,
+      colors: saveSource ?? palette,
       pinned: false,
     };
     setSavedPalettes((prev) => {
@@ -459,6 +460,7 @@ export default function ColorPalettePanel({
       return updated;
     });
     setSavingName(null);
+    setSaveSource(null);
     notify.success("Palette saved", trimmed);
   };
 
@@ -614,6 +616,15 @@ export default function ColorPalettePanel({
                   onContextMenu={handleSwatchContextMenu(color)}
                 />
               ))}
+              <button
+                onClick={() => {
+                  setSaveSource(extractedColors);
+                  setSavingName("");
+                }}
+                className="mt-0.5 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)]"
+              >
+                <BookmarkPlus size={13} /> Save this palette
+              </button>
             </div>
           )}
         </>
@@ -696,7 +707,10 @@ export default function ColorPalettePanel({
             Save
           </button>
           <button
-            onClick={() => setSavingName(null)}
+            onClick={() => {
+              setSavingName(null);
+              setSaveSource(null);
+            }}
             className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
           >
             <X size={13} />
@@ -704,7 +718,10 @@ export default function ColorPalettePanel({
         </div>
       ) : (
         <button
-          onClick={() => setSavingName("")}
+          onClick={() => {
+            setSaveSource(palette);
+            setSavingName("");
+          }}
           className="mx-2.5 mb-1.5 flex h-8 w-[calc(100%-20px)] items-center justify-center gap-1.5 rounded-lg bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)]"
         >
           <BookmarkPlus size={13} /> Save current palette

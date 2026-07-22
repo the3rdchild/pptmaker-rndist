@@ -30,7 +30,7 @@ const HANDLE_HIT_SIZE = 8;
 // together. Falls back to equal division when weights are missing/stale
 // (wrong length) — every existing table with no column_widths keeps
 // rendering exactly as before.
-function trackSizes(weights: unknown, count: number, total: number): number[] {
+export function trackSizes(weights: unknown, count: number, total: number): number[] {
   const raw = Array.isArray(weights)
     ? weights.filter((v): v is number => typeof v === "number" && v > 0)
     : [];
@@ -39,7 +39,7 @@ function trackSizes(weights: unknown, count: number, total: number): number[] {
   return base.map((v) => (v / sum) * total);
 }
 
-function offsetsFromSizes(sizes: number[]): number[] {
+export function offsetsFromSizes(sizes: number[]): number[] {
   const offsets: number[] = [];
   let cursor = 0;
   for (const size of sizes) {

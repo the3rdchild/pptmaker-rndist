@@ -21,6 +21,10 @@ import { inlineStyles } from "@/components/slide-editor/toolbar/inlineStyles";
 import { TextToolbar } from "@/components/slide-editor/text/TextToolbar";
 import { TiptapInlineTextEditor } from "@/components/slide-editor/text/TiptapInlineTextEditor";
 import { readableTableTextColor } from "@/components/slide-editor/tables/table-colors";
+import {
+  offsetsFromSizes,
+  trackSizes,
+} from "@/components/slide-editor/tables/TemplateV2TableElement";
 
 const EMPTY_TEMPLATE_FONTS: TemplateFontOption[] = [];
 const TEMPLATE_V2_PX_PER_IN = 128;
@@ -68,10 +72,18 @@ export function TableInlineEditor({
   );
   const tableWidth = box.w * scale;
   const tableHeight = box.h * scale;
-  const cellWidth = tableWidth / columnCount;
-  const cellHeight = tableHeight / rowCount;
-  const cellLeft = box.x * scale + colIndex * cellWidth;
-  const cellTop = box.y * scale + rowIndex * cellHeight;
+  const rawTable = element as unknown as {
+    column_widths?: unknown;
+    row_heights?: unknown;
+  };
+  const colWidths = trackSizes(rawTable.column_widths, columnCount, tableWidth);
+  const rowHeightsPx = trackSizes(rawTable.row_heights, rowCount, tableHeight);
+  const colOffsets = offsetsFromSizes(colWidths);
+  const rowOffsets = offsetsFromSizes(rowHeightsPx);
+  const cellWidth = colWidths[colIndex] ?? tableWidth / columnCount;
+  const cellHeight = rowHeightsPx[rowIndex] ?? tableHeight / rowCount;
+  const cellLeft = box.x * scale + (colOffsets[colIndex] ?? 0);
+  const cellTop = box.y * scale + (rowOffsets[rowIndex] ?? 0);
   const paddingX = Math.max(4, 0.08 * scale);
   const paddingY = Math.max(3, 0.04 * scale);
   const textElement: TextSlideElement = {

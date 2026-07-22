@@ -36,6 +36,11 @@ import {
 } from "@/components/slide-editor/insert/insert-elements";
 import { normalizeBackendAssetUrls, resolveBackendAssetSource } from "@/utils/api";
 import { ImagesApi } from "@/app/(presentation-generator)/services/api/images";
+import {
+  loadIconCategories,
+  PresentationGenerationApi,
+  type IconCategory,
+} from "@/app/(presentation-generator)/services/api/presentation-generation";
 import type { SlideElement } from "@/components/slide-editor/types";
 
 const ThumbnailSlide = dynamic(
@@ -129,14 +134,123 @@ export function TemplatesTab({
 
 /* -------------------------------- Elements ------------------------------- */
 
+function IconsSection({
+  search,
+  onInsertIcon,
+}: {
+  search: string;
+  onInsertIcon: (iconUrl: string) => void;
+}) {
+  const [categories, setCategories] = useState<IconCategory[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [icons, setIcons] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const debouncedSearch = useDebouncedValue(search, 400);
+
+  useEffect(() => {
+    void loadIconCategories().then(setCategories);
+  }, []);
+
+  useEffect(() => {
+    const query = debouncedSearch.trim();
+    if (!query && !selectedCategory) {
+      setIcons([]);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    PresentationGenerationApi.searchIcons({
+      query,
+      limit: 24,
+      icon_weight: "regular",
+      category: selectedCategory,
+    })
+      .then((data) => {
+        if (!cancelled) setIcons(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (!cancelled) setIcons([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedSearch, selectedCategory]);
+
+  return (
+    <div>
+      <PanelLabel>Icons</PanelLabel>
+      {categories.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 px-2.5 pb-2">
+          {categories.map((category) => {
+            const isSelected = selectedCategory === category.id;
+            return (
+              <button
+                key={category.id}
+                onClick={() =>
+                  setSelectedCategory((current) => (current === category.id ? null : category.id))
+                }
+                className={cn(
+                  "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                  isSelected
+                    ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent-light)]"
+                    : "border-[var(--border-strong)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
+                )}
+              >
+                {category.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {loading ? (
+        <div className="flex items-center justify-center py-6 text-[var(--text-muted)]">
+          <Loader2 size={16} className="animate-spin" />
+        </div>
+      ) : icons.length > 0 ? (
+        <div className="grid grid-cols-6 gap-2 px-2.5 pb-2">
+          {icons.map((iconSrc, i) => (
+            <button
+              key={`${iconSrc}-${i}`}
+              onClick={() => onInsertIcon(iconSrc)}
+              title="Insert icon"
+              className="flex h-9 w-9 items-center justify-center rounded-md p-1.5 transition-colors hover:bg-[var(--bg-elevated)]"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={iconSrc} alt="" draggable={false} className="h-full w-full object-contain" />
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="px-2.5 pb-2 text-[11px] text-[var(--text-muted)]">
+          {search || selectedCategory ? "No icons found." : "Search or pick a category to browse icons."}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function useDebouncedValue<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const id = window.setTimeout(() => setDebounced(value), delay);
+    return () => window.clearTimeout(id);
+  }, [value, delay]);
+  return debounced;
+}
+
 export function ElementsTab({
   search,
   recentKeys,
   onInsertElements,
+  onInsertIcon,
 }: {
   search: string;
   recentKeys: string[];
   onInsertElements: (entry: ElementCatalogEntry) => void;
+  onInsertIcon: (iconUrl: string) => void;
 }) {
   const catalogByKey = new Map(ELEMENT_CATALOG.map((entry) => [entry.key, entry]));
   const recent = recentKeys
@@ -154,6 +268,7 @@ export function ElementsTab({
 
   return (
     <div className="p-1.5">
+      <IconsSection search={search} onInsertIcon={onInsertIcon} />
       {recent.length > 0 && !search && (
         <>
           <PanelLabel>Recently used</PanelLabel>

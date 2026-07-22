@@ -30,7 +30,10 @@ import {
 } from "@/components/editor-react/insert-panel-content";
 import type { ElementCatalogEntry } from "@/components/editor-react/element-catalog";
 import { appendInsertedContent } from "@/components/slide-editor/model/inserted-content";
-import { createImageInsertContent } from "@/components/slide-editor/insert/insert-elements";
+import {
+  createIconInsertElement,
+  createImageInsertContent,
+} from "@/components/slide-editor/insert/insert-elements";
 import {
   readBackgroundStyle,
   type BackgroundStyle,
@@ -141,6 +144,10 @@ export default function InsertToolbar({
     runInsert(elements as SlideElement[]);
   };
 
+  const handleInsertIcon = (iconUrl: string) => {
+    runInsert([createIconInsertElement(iconUrl)]);
+  };
+
   const handleBackgroundApply = (ui: Record<string, unknown>) => {
     const style = readBackgroundStyle(ui as RawUi);
     setRecentBackgrounds((prev) => {
@@ -190,6 +197,7 @@ export default function InsertToolbar({
                 search={search}
                 recentKeys={recentElementKeys}
                 onInsertElements={handleElementInsert}
+                onInsertIcon={handleInsertIcon}
               />
             )}
             {openTab === "text" && <TextTab search={search} onInsertElements={runInsert} />}

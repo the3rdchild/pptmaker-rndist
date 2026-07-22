@@ -569,6 +569,17 @@ function makeImageElement({
   };
 }
 
+export function createIconInsertElement(iconUrl: string): SlideElement {
+  return {
+    type: "image",
+    position: { x: 490, y: 280 },
+    size: { width: 96, height: 96 },
+    data: iconUrl,
+    is_icon: true,
+    fit: "contain",
+  } as SlideElement;
+}
+
 export function createImageInsertContent(kind?: string): EditorInsertContent {
   switch (kind) {
     case "image":

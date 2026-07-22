@@ -10,6 +10,8 @@ import {
   Plus,
   Rows3,
   Settings,
+  TableCellsMerge,
+  TableCellsSplit,
   Trash2,
 } from "lucide-react";
 import {
@@ -37,6 +39,11 @@ import {
   type FloatingToolbarBox,
 } from "@/components/slide-editor/toolbar/FloatingToolbar";
 import { applyTableTheme, TABLE_THEMES } from "@/components/slide-editor/tables/table-themes";
+import {
+  canMergeCells,
+  mergeCellsRectangle,
+  unmergeCellAt,
+} from "@/components/slide-editor/tables/table-merge";
 
 type TableCellAlignment = NonNullable<TableCell["alignment"]>;
 
@@ -85,10 +92,28 @@ export function TableToolbarControls({
       : activeCellAlignment === "right"
         ? AlignRight
         : AlignLeft;
+
+  // Multi-select (Shift range / Ctrl toggle, see useTableCellSelection) — these
+  // fall back to just the focus cell/row/column so single-target behavior is
+  // unchanged when there's no multi-selection in play.
+  const selectionKind = selectedCell?.kind ?? "cell";
+  const targetRowIndexes =
+    selectionKind === "row" && selectedCell?.rows?.length
+      ? selectedCell.rows
+      : [activeRow];
+  const targetColumnIndexes =
+    selectionKind === "column" && selectedCell?.columns?.length
+      ? selectedCell.columns
+      : [activeColumn];
+  const targetCellCoords =
+    selectionKind === "cell" && selectedCell?.cells?.length
+      ? selectedCell.cells
+      : [{ rowIndex: activeRow, colIndex: activeColumn }];
+
   const canAddRow = rows.length < 8;
   const canAddColumn = columnCount < 6;
-  const canDeleteRow = rows.length > 2;
-  const canDeleteColumn = columnCount > 1;
+  const canDeleteRow = rows.length - targetRowIndexes.length >= 2;
+  const canDeleteColumn = columnCount - targetColumnIndexes.length >= 1;
   const canMoveColumnLeft = activeColumn > 0;
   const canMoveColumnRight = activeColumn < columnCount - 1;
 
@@ -121,6 +146,19 @@ export function TableToolbarControls({
     onChange(index, setTableRowsFromStrings(element, nextRows));
   };
 
+  // Cell-identity-preserving grid (header + body as one array), used by the
+  // delete/merge ops below instead of the string round-trip `commitRows` goes
+  // through — that round-trip re-derives styling from whatever cell now SITS
+  // at a position after the text changes, which would silently reassign
+  // fill/font/colSpan/rowSpan to the wrong cell once rows/columns shift.
+  const normalizeCellRow = (row: TableCell[]): TableCell[] =>
+    Array.from({ length: columnCount }, (_, colIndex) => row[colIndex] ?? { runs: [] });
+  const cellGrid = [element.columns, ...element.rows].map(normalizeCellRow);
+  const commitCellGrid = (grid: TableCell[][]) => {
+    const [nextColumns, ...nextRows] = grid;
+    onChange(index, { ...element, columns: nextColumns ?? [], rows: nextRows });
+  };
+
   const addRow = () => {
     if (!canAddRow) return;
     const nextRows = normalizeRows(rows);
@@ -135,9 +173,8 @@ export function TableToolbarControls({
 
   const deleteRow = () => {
     if (!canDeleteRow) return;
-    const nextRows = normalizeRows(rows);
-    nextRows.splice(activeRow, 1);
-    commitRows(nextRows);
+    const targetRows = new Set(targetRowIndexes);
+    commitCellGrid(cellGrid.filter((_, rowIndex) => !targetRows.has(rowIndex)));
   };
 
   const addColumn = () => {
@@ -157,11 +194,9 @@ export function TableToolbarControls({
 
   const deleteColumn = () => {
     if (!canDeleteColumn) return;
-    commitRows(
-      rows.map((row) =>
-        Array.from({ length: columnCount }, (_, colIndex) => row[colIndex] ?? "")
-          .filter((_, colIndex) => colIndex !== activeColumn),
-      ),
+    const targetCols = new Set(targetColumnIndexes);
+    commitCellGrid(
+      cellGrid.map((row) => row.filter((_, colIndex) => !targetCols.has(colIndex))),
     );
   };
 
@@ -184,71 +219,70 @@ export function TableToolbarControls({
     );
   };
 
-  const selectionKind = selectedCell?.kind ?? "cell";
+  const canMergeSelection =
+    selectionKind === "cell" &&
+    targetCellCoords.length > 1 &&
+    canMergeCells(cellGrid, targetCellCoords);
 
-  const updateActiveCell = (
-    patchCell: (cell: TableCell | undefined) => TableCell,
-  ) => {
+  const mergeSelection = () => {
+    if (!canMergeSelection) return;
+    commitCellGrid(
+      mergeCellsRectangle(cellGrid, targetCellCoords, (cell, rowSpan, colSpan) => ({
+        ...cell,
+        rowSpan,
+        colSpan,
+      })),
+    );
+  };
+
+  const canUnmergeActiveCell = Boolean(
+    activeCell && ((activeCell.rowSpan ?? 1) > 1 || (activeCell.colSpan ?? 1) > 1),
+  );
+
+  const unmergeActiveCell = () => {
+    if (!canUnmergeActiveCell) return;
+    commitCellGrid(
+      unmergeCellAt(cellGrid, { rowIndex: activeRow, colIndex: activeColumn }, (cell) => ({
+        ...cell,
+        rowSpan: 1,
+        colSpan: 1,
+      })),
+    );
+  };
+
+  // Applies to the whole multi-selection (Shift range / Ctrl toggle), not just
+  // the focus cell — e.g. selecting 3 rows and picking a fill color paints all 3.
+  const updateActiveCell = (patchCell: (cell: TableCell) => TableCell) => {
     if (selectionKind === "column") {
-      onChange(index, {
-        ...element,
-        columns: element.columns.map((cell, colIndex) =>
-          colIndex === activeColumn ? patchCell(cell) : cell,
+      const cols = new Set(targetColumnIndexes);
+      commitCellGrid(
+        cellGrid.map((row) =>
+          row.map((cell, colIndex) => (cols.has(colIndex) ? patchCell(cell) : cell)),
         ),
-        rows: element.rows.map((row) =>
-          Array.from({ length: columnCount }, (_, colIndex) =>
-            colIndex === activeColumn
-              ? patchCell(row[colIndex])
-              : row[colIndex] ?? { runs: [] },
-          ),
-        ),
-      });
+      );
       return;
     }
 
     if (selectionKind === "row") {
-      if (activeRow === 0) {
-        onChange(index, {
-          ...element,
-          columns: element.columns.map((cell) => patchCell(cell)),
-        });
-        return;
-      }
-      onChange(index, {
-        ...element,
-        rows: element.rows.map((row, rowIndex) =>
-          rowIndex === activeRow - 1
-            ? Array.from({ length: columnCount }, (_, colIndex) => patchCell(row[colIndex]))
-            : row,
+      const targetRows = new Set(targetRowIndexes);
+      commitCellGrid(
+        cellGrid.map((row, rowIndex) =>
+          targetRows.has(rowIndex) ? row.map((cell) => patchCell(cell)) : row,
         ),
-      });
+      );
       return;
     }
 
-    if (activeRow === 0) {
-      onChange(index, {
-        ...element,
-        columns: element.columns.map((cell, colIndex) =>
-          colIndex === activeColumn ? patchCell(cell) : cell,
+    const cellKeys = new Set(
+      targetCellCoords.map((c) => `${c.rowIndex}:${c.colIndex}`),
+    );
+    commitCellGrid(
+      cellGrid.map((row, rowIndex) =>
+        row.map((cell, colIndex) =>
+          cellKeys.has(`${rowIndex}:${colIndex}`) ? patchCell(cell) : cell,
         ),
-      });
-      return;
-    }
-
-    onChange(index, {
-      ...element,
-      rows: element.rows.map((row, rowIndex) =>
-        rowIndex === activeRow - 1
-          ? Array.from(
-            { length: columnCount },
-            (_, colIndex) =>
-              colIndex === activeColumn
-                ? patchCell(row[colIndex])
-                : row[colIndex] ?? { runs: [] },
-          )
-          : row,
       ),
-    });
+    );
   };
 
   const updateActiveCellFillColor = (color: string) => {
@@ -380,6 +414,8 @@ export function TableToolbarControls({
         canDeleteRow={canDeleteRow}
         canMoveColumnLeft={canMoveColumnLeft}
         canMoveColumnRight={canMoveColumnRight}
+        canMergeSelection={canMergeSelection}
+        canUnmergeActiveCell={canUnmergeActiveCell}
         menuOpen={tableMenuOpen}
         onAddColumn={() => runTableMenuAction(addColumn)}
         onAddRow={() => runTableMenuAction(addRow)}
@@ -387,6 +423,8 @@ export function TableToolbarControls({
         onDeleteRow={() => runTableMenuAction(deleteRow)}
         onMoveColumnLeft={() => runTableMenuAction(() => moveColumn("left"))}
         onMoveColumnRight={() => runTableMenuAction(() => moveColumn("right"))}
+        onMergeSelection={() => runTableMenuAction(mergeSelection)}
+        onUnmergeActiveCell={() => runTableMenuAction(unmergeActiveCell)}
       />
     </div>
   );
@@ -441,6 +479,8 @@ function TableToolbarMenu({
   canDeleteRow,
   canMoveColumnLeft,
   canMoveColumnRight,
+  canMergeSelection,
+  canUnmergeActiveCell,
   menuOpen,
   onAddColumn,
   onAddRow,
@@ -448,6 +488,8 @@ function TableToolbarMenu({
   onDeleteRow,
   onMoveColumnLeft,
   onMoveColumnRight,
+  onMergeSelection,
+  onUnmergeActiveCell,
 }: {
   canAddColumn: boolean;
   canAddRow: boolean;
@@ -455,6 +497,8 @@ function TableToolbarMenu({
   canDeleteRow: boolean;
   canMoveColumnLeft: boolean;
   canMoveColumnRight: boolean;
+  canMergeSelection: boolean;
+  canUnmergeActiveCell: boolean;
   menuOpen: boolean;
   onAddColumn: () => void;
   onAddRow: () => void;
@@ -462,6 +506,8 @@ function TableToolbarMenu({
   onDeleteRow: () => void;
   onMoveColumnLeft: () => void;
   onMoveColumnRight: () => void;
+  onMergeSelection: () => void;
+  onUnmergeActiveCell: () => void;
 }) {
   if (!menuOpen) return null;
 
@@ -490,6 +536,19 @@ function TableToolbarMenu({
         icon={<Plus size={20} strokeWidth={2.4} />}
         label="Add Column"
         onClick={onAddColumn}
+      />
+      <div style={menuDividerStyle} />
+      <MenuItem
+        disabled={!canMergeSelection}
+        icon={<TableCellsMerge size={20} strokeWidth={2.2} />}
+        label="Merge Cells"
+        onClick={onMergeSelection}
+      />
+      <MenuItem
+        disabled={!canUnmergeActiveCell}
+        icon={<TableCellsSplit size={20} strokeWidth={2.2} />}
+        label="Unmerge Cells"
+        onClick={onUnmergeActiveCell}
       />
       <div style={menuDividerStyle} />
       <MenuItem

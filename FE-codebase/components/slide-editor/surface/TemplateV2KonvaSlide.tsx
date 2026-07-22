@@ -94,6 +94,7 @@ import {
 } from "@/components/slide-editor/selection/layering";
 import { AlignDistributeToolbar } from "@/components/slide-editor/selection/AlignDistributeToolbar";
 import { TemplateV2SelectionTransformers } from "@/components/slide-editor/selection/SelectionTransformers";
+import { extractDominantColors } from "@/components/slide-editor/utils/extract-image-colors";
 import { useFontLoadState } from "@/components/slide-editor/surface/fontLoading";
 import { SlideBackground } from "@/components/slide-editor/surface/SlideBackground";
 import {
@@ -191,7 +192,9 @@ import {
 import {
   TEMPLATE_V2_ACTIVATE_SURFACE_EVENT,
   TEMPLATE_V2_APPLY_COLOR_EVENT,
+  TEMPLATE_V2_EXTRACT_IMAGE_COLORS_EVENT,
   TEMPLATE_V2_HISTORY_EVENT,
+  TEMPLATE_V2_IMAGE_COLORS_RESULT_EVENT,
   TEMPLATE_V2_INSERT_ELEMENTS_EVENT,
   TEMPLATE_V2_REDO_EVENT,
   TEMPLATE_V2_SURFACE_SELECTED_EVENT,
@@ -199,6 +202,7 @@ import {
   type TemplateV2ActivateSurfaceDetail,
   type TemplateV2ApplyColorDetail,
   type TemplateV2HistoryDetail,
+  type TemplateV2ImageColorsResultDetail,
   type TemplateV2InsertElementsDetail,
   type TemplateV2SurfaceSelectedDetail,
 } from "@/components/slide-editor/events/events";
@@ -2149,6 +2153,40 @@ function TemplateV2KonvaSlideComponent({
     return () =>
       window.removeEventListener(TEMPLATE_V2_APPLY_COLOR_EVENT, handleApplyColor);
   }, [commitUi, isEditMode, selection, updateElement]);
+
+  // Lets the palette panel's "Extract color from this image" button pull
+  // dominant colors from the currently selected image element.
+  useEffect(() => {
+    if (!isEditMode || typeof window === "undefined") return;
+
+    const handleExtractColors = () => {
+      const respond = (detail: TemplateV2ImageColorsResultDetail) => {
+        window.dispatchEvent(
+          new CustomEvent<TemplateV2ImageColorsResultDetail>(
+            TEMPLATE_V2_IMAGE_COLORS_RESULT_EVENT,
+            { detail },
+          ),
+        );
+      };
+      if (!isSurfaceActive() || !selection || selection.kind !== "element") {
+        respond({ colors: [], error: "Select an image first." });
+        return;
+      }
+      const current = getElementAtSelection(currentUiRef.current, selection);
+      const src = current && readString(current.type) === "image" ? readString(current.data) : null;
+      if (!src) {
+        respond({ colors: [], error: "Select an image first." });
+        return;
+      }
+      extractDominantColors(src)
+        .then((colors) => respond({ colors }))
+        .catch(() => respond({ colors: [], error: "Couldn't read colors from this image." }));
+    };
+
+    window.addEventListener(TEMPLATE_V2_EXTRACT_IMAGE_COLORS_EVENT, handleExtractColors);
+    return () =>
+      window.removeEventListener(TEMPLATE_V2_EXTRACT_IMAGE_COLORS_EVENT, handleExtractColors);
+  }, [isEditMode, isSurfaceActive, selection]);
 
   if (!uiDraft) {
     return (

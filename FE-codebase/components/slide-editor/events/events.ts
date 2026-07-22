@@ -10,6 +10,10 @@ export const TEMPLATE_V2_UNDO_EVENT = "presenton:template-v2-undo";
 export const TEMPLATE_V2_REDO_EVENT = "presenton:template-v2-redo";
 export const TEMPLATE_V2_HISTORY_EVENT = "presenton:template-v2-history";
 export const TEMPLATE_V2_APPLY_COLOR_EVENT = "presenton:template-v2-apply-color";
+export const TEMPLATE_V2_EXTRACT_IMAGE_COLORS_EVENT =
+  "presenton:template-v2-extract-image-colors";
+export const TEMPLATE_V2_IMAGE_COLORS_RESULT_EVENT =
+  "presenton:template-v2-image-colors-result";
 
 export type TemplateV2InsertComponent = {
   id?: string;
@@ -67,4 +71,9 @@ export type TemplateV2HistoryDetail = {
 
 export type TemplateV2ApplyColorDetail = {
   color: string;
+};
+
+export type TemplateV2ImageColorsResultDetail = {
+  colors: string[];
+  error?: string;
 };

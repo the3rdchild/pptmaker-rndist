@@ -14,6 +14,7 @@ export const TEMPLATE_V2_EXTRACT_IMAGE_COLORS_EVENT =
   "presenton:template-v2-extract-image-colors";
 export const TEMPLATE_V2_IMAGE_COLORS_RESULT_EVENT =
   "presenton:template-v2-image-colors-result";
+export const TEMPLATE_V2_SELECT_ELEMENT_EVENT = "presenton:template-v2-select-element";
 
 export type TemplateV2InsertComponent = {
   id?: string;
@@ -76,4 +77,10 @@ export type TemplateV2ApplyColorDetail = {
 export type TemplateV2ImageColorsResultDetail = {
   colors: string[];
   error?: string;
+};
+
+export type TemplateV2SelectElementDetail = {
+  slideIndex: number;
+  componentIndex: number;
+  elementPath: number[];
 };

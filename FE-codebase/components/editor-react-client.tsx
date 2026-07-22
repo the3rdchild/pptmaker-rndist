@@ -24,9 +24,11 @@ import {
   TEMPLATE_V2_APPLY_COLOR_EVENT,
   TEMPLATE_V2_HISTORY_EVENT,
   TEMPLATE_V2_REDO_EVENT,
+  TEMPLATE_V2_SELECT_ELEMENT_EVENT,
   TEMPLATE_V2_UNDO_EVENT,
   type TemplateV2ApplyColorDetail,
   type TemplateV2HistoryDetail,
+  type TemplateV2SelectElementDetail,
 } from "@/components/slide-editor/events/events";
 import type { RootState, AppDispatch } from "@/store/editorStore";
 import {
@@ -50,6 +52,7 @@ import PresentMode from "@/components/editor-react/present-mode";
 import { exportToPptx } from "@/components/editor-react/export-pptx";
 import AIAssistantPanel from "@/components/editor-react/ai-assistant-panel";
 import FindReplacePanel from "@/components/editor-react/find-replace-panel";
+import type { FindMatchLocation } from "@/components/editor-react/find-replace";
 import {
   DeckLayoutPicker,
   mapAIPPTSlideToTemplateUi,
@@ -295,6 +298,39 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
   };
   const handleToggleHide = (i: number) => {
     dispatch(setSlideHidden({ index: i, hidden: !slides[i]?.isHidden }));
+  };
+
+  // Find & Replace's Prev/Next navigate to a match that may be on a
+  // different slide. Switching slides remounts that slide's
+  // TemplateV2KonvaSlide (key={safeActive}), so the select-element event
+  // can only be dispatched once the new instance has mounted and attached
+  // its listener — stash the target and fire it on the next paint after
+  // activeIndex actually changes.
+  const pendingMatchSelectRef = useRef<{ componentIndex: number; elementPath: number[] } | null>(null);
+  useEffect(() => {
+    if (!pendingMatchSelectRef.current) return;
+    const detail = { slideIndex: safeActive, ...pendingMatchSelectRef.current };
+    pendingMatchSelectRef.current = null;
+    const id = requestAnimationFrame(() => {
+      window.dispatchEvent(
+        new CustomEvent<TemplateV2SelectElementDetail>(TEMPLATE_V2_SELECT_ELEMENT_EVENT, { detail }),
+      );
+    });
+    return () => cancelAnimationFrame(id);
+  }, [safeActive]);
+
+  const handleNavigateToMatch = (match: FindMatchLocation) => {
+    const target = { componentIndex: match.componentIndex, elementPath: match.elementPath };
+    if (match.slideIndex === safeActive) {
+      window.dispatchEvent(
+        new CustomEvent<TemplateV2SelectElementDetail>(TEMPLATE_V2_SELECT_ELEMENT_EVENT, {
+          detail: { slideIndex: match.slideIndex, ...target },
+        }),
+      );
+      return;
+    }
+    pendingMatchSelectRef.current = target;
+    setActiveIndex(match.slideIndex);
   };
   const handleExport = async () => {
     const blob = await exportToPptx(
@@ -602,11 +638,12 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
               <div className="absolute left-0 top-[calc(100%+6px)] z-50">
                 <FindReplacePanel
                   slides={slides}
-                  onReplaceAll={(nextSlides) => {
+                  onApplySlides={(nextSlides) => {
                     if (presentationData) {
                       dispatch(setPresentationData({ ...presentationData, slides: nextSlides }));
                     }
                   }}
+                  onNavigateToMatch={handleNavigateToMatch}
                   onClose={() => setShowFindReplace(false)}
                 />
               </div>

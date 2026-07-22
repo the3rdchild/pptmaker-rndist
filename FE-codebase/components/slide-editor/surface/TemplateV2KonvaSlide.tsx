@@ -197,6 +197,7 @@ import {
   TEMPLATE_V2_IMAGE_COLORS_RESULT_EVENT,
   TEMPLATE_V2_INSERT_ELEMENTS_EVENT,
   TEMPLATE_V2_REDO_EVENT,
+  TEMPLATE_V2_SELECT_ELEMENT_EVENT,
   TEMPLATE_V2_SURFACE_SELECTED_EVENT,
   TEMPLATE_V2_UNDO_EVENT,
   type TemplateV2ActivateSurfaceDetail,
@@ -204,6 +205,7 @@ import {
   type TemplateV2HistoryDetail,
   type TemplateV2ImageColorsResultDetail,
   type TemplateV2InsertElementsDetail,
+  type TemplateV2SelectElementDetail,
   type TemplateV2SurfaceSelectedDetail,
 } from "@/components/slide-editor/events/events";
 
@@ -2187,6 +2189,28 @@ function TemplateV2KonvaSlideComponent({
     return () =>
       window.removeEventListener(TEMPLATE_V2_EXTRACT_IMAGE_COLORS_EVENT, handleExtractColors);
   }, [isEditMode, isSurfaceActive, selection]);
+
+  // Lets Find & Replace jump to (select + highlight) a specific match's
+  // element, on whichever slide instance it targets.
+  useEffect(() => {
+    if (!isEditMode || typeof window === "undefined") return;
+
+    const handleSelectElement = (event: Event) => {
+      const detail = (event as CustomEvent<TemplateV2SelectElementDetail>).detail;
+      if (!detail || !eventTargetsThisSlide(detail, slideId, surfaceSlideIndex, () => false)) {
+        return;
+      }
+      select({
+        kind: "element",
+        componentIndex: detail.componentIndex,
+        elementPath: detail.elementPath,
+      });
+    };
+
+    window.addEventListener(TEMPLATE_V2_SELECT_ELEMENT_EVENT, handleSelectElement);
+    return () =>
+      window.removeEventListener(TEMPLATE_V2_SELECT_ELEMENT_EVENT, handleSelectElement);
+  }, [isEditMode, select, slideId, surfaceSlideIndex]);
 
   if (!uiDraft) {
     return (

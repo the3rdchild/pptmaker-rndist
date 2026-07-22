@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Search, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronDown, ChevronUp, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { notify } from "@/components/ui/sonner";
 import { PopPanel, ToolButton } from "@/components/editor-react/ui";
@@ -9,41 +9,85 @@ import {
   applyTextTransformToSlides,
   buildFindRegex,
   countTransform,
+  findMatchLocationsInSlides,
+  replaceMatchAtLocation,
   replaceTransform,
+  type FindMatchLocation,
 } from "@/components/editor-react/find-replace";
 import type { SlideData } from "@/store/presentationGeneration";
 
 export interface FindReplacePanelProps {
   slides: SlideData[];
-  onReplaceAll: (slides: SlideData[]) => void;
+  onApplySlides: (slides: SlideData[]) => void;
+  onNavigateToMatch: (match: FindMatchLocation) => void;
   onClose: () => void;
 }
 
 export default function FindReplacePanel({
   slides,
-  onReplaceAll,
+  onApplySlides,
+  onNavigateToMatch,
   onClose,
 }: FindReplacePanelProps) {
   const [find, setFind] = useState("");
   const [replace, setReplace] = useState("");
   const [matchCase, setMatchCase] = useState(false);
+  const [activeMatchIndex, setActiveMatchIndex] = useState(0);
+
+  const regex = useMemo(() => buildFindRegex(find, matchCase), [find, matchCase]);
+
+  const matches = useMemo(() => {
+    if (!regex) return [];
+    return findMatchLocationsInSlides(slides, regex);
+  }, [regex, slides]);
 
   const matchCount = useMemo(() => {
-    const regex = buildFindRegex(find, matchCase);
     if (!regex) return 0;
     return applyTextTransformToSlides(slides, countTransform(regex)).count;
-  }, [find, matchCase, slides]);
+  }, [regex, slides]);
+
+  // Every time the match list changes (new search, or the deck changed
+  // under us), snap the cursor back into range and jump the canvas to it.
+  useEffect(() => {
+    if (matches.length === 0) return;
+    const clamped = Math.min(activeMatchIndex, matches.length - 1);
+    if (clamped !== activeMatchIndex) {
+      setActiveMatchIndex(clamped);
+      return;
+    }
+    onNavigateToMatch(matches[clamped]);
+    // Only re-run when the match list itself changes shape/identity or the
+    // cursor moves — not on every onNavigateToMatch identity change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matches, activeMatchIndex]);
+
+  const goToNext = () => {
+    if (matches.length === 0) return;
+    setActiveMatchIndex((i) => (i + 1) % matches.length);
+  };
+  const goToPrev = () => {
+    if (matches.length === 0) return;
+    setActiveMatchIndex((i) => (i - 1 + matches.length) % matches.length);
+  };
 
   const handleReplaceAll = () => {
-    const regex = buildFindRegex(find, matchCase);
     if (!regex) return;
     const result = applyTextTransformToSlides(slides, replaceTransform(regex, replace));
     if (result.count === 0) {
       notify.warning("No matches", `"${find}" wasn't found in this deck.`);
       return;
     }
-    onReplaceAll(result.slides);
+    onApplySlides(result.slides);
     notify.success("Replaced", `${result.count} occurrence${result.count === 1 ? "" : "s"} replaced.`);
+  };
+
+  const handleReplaceSelected = () => {
+    if (!regex || matches.length === 0) return;
+    const location = matches[Math.min(activeMatchIndex, matches.length - 1)];
+    const result = replaceMatchAtLocation(slides, location, regex, replace);
+    if (result.count === 0) return;
+    onApplySlides(result.slides);
+    notify.success("Replaced", `${result.count} occurrence${result.count === 1 ? "" : "s"} replaced on this element.`);
   };
 
   return (
@@ -67,10 +111,34 @@ export default function FindReplacePanel({
           type="text"
           autoFocus
           value={find}
-          onChange={(e) => setFind(e.target.value)}
+          onChange={(e) => {
+            setFind(e.target.value);
+            setActiveMatchIndex(0);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.shiftKey ? goToPrev : goToNext)();
+          }}
           placeholder="Find in deck…"
-          className="h-9 w-full rounded-lg border border-[var(--border-strong)] bg-[var(--bg-base)] pl-8 pr-3 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none transition-colors focus:border-[var(--accent)]/60"
+          className="h-9 w-full rounded-lg border border-[var(--border-strong)] bg-[var(--bg-base)] pl-8 pr-16 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none transition-colors focus:border-[var(--accent)]/60"
         />
+        {matches.length > 0 && (
+          <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
+            <button
+              onClick={goToPrev}
+              title="Previous match (Shift+Enter)"
+              className="grid h-6 w-6 place-items-center rounded text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
+            >
+              <ChevronUp size={13} />
+            </button>
+            <button
+              onClick={goToNext}
+              title="Next match (Enter)"
+              className="grid h-6 w-6 place-items-center rounded text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
+            >
+              <ChevronDown size={13} />
+            </button>
+          </div>
+        )}
       </div>
 
       <input
@@ -86,7 +154,10 @@ export default function FindReplacePanel({
           <input
             type="checkbox"
             checked={matchCase}
-            onChange={(e) => setMatchCase(e.target.checked)}
+            onChange={(e) => {
+              setMatchCase(e.target.checked);
+              setActiveMatchIndex(0);
+            }}
             className="h-3 w-3 accent-[var(--accent)]"
           />
           Match case
@@ -97,18 +168,31 @@ export default function FindReplacePanel({
             find && matchCount === 0 ? "text-[var(--text-muted)]" : "text-[var(--text-secondary)]"
           )}
         >
-          {find ? `${matchCount} match${matchCount === 1 ? "" : "es"}` : ""}
+          {find
+            ? matches.length > 0
+              ? `${Math.min(activeMatchIndex, matches.length - 1) + 1} of ${matches.length} element${matches.length === 1 ? "" : "s"} (${matchCount} match${matchCount === 1 ? "" : "es"})`
+              : `${matchCount} matches`
+            : ""}
         </span>
       </div>
 
-      <ToolButton
-        variant="accent"
-        onClick={handleReplaceAll}
-        disabled={!find || matchCount === 0}
-        className="h-8 w-full"
-      >
-        Replace all
-      </ToolButton>
+      <div className="flex gap-1.5">
+        <ToolButton
+          onClick={handleReplaceSelected}
+          disabled={!find || matches.length === 0}
+          className="h-8 flex-1"
+        >
+          Replace selected
+        </ToolButton>
+        <ToolButton
+          variant="accent"
+          onClick={handleReplaceAll}
+          disabled={!find || matchCount === 0}
+          className="h-8 flex-1"
+        >
+          Replace all
+        </ToolButton>
+      </div>
     </PopPanel>
   );
 }

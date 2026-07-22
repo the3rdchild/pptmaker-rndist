@@ -23,8 +23,10 @@ import { TiptapInlineTextEditor } from "@/components/slide-editor/text/TiptapInl
 import { readableTableTextColor } from "@/components/slide-editor/tables/table-colors";
 import {
   offsetsFromSizes,
+  sumRange,
   trackSizes,
 } from "@/components/slide-editor/tables/TemplateV2TableElement";
+import { effectiveSpan } from "@/components/slide-editor/tables/table-merge";
 
 const EMPTY_TEMPLATE_FONTS: TemplateFontOption[] = [];
 const TEMPLATE_V2_PX_PER_IN = 128;
@@ -80,8 +82,17 @@ export function TableInlineEditor({
   const rowHeightsPx = trackSizes(rawTable.row_heights, rowCount, tableHeight);
   const colOffsets = offsetsFromSizes(colWidths);
   const rowOffsets = offsetsFromSizes(rowHeightsPx);
-  const cellWidth = colWidths[colIndex] ?? tableWidth / columnCount;
-  const cellHeight = rowHeightsPx[rowIndex] ?? tableHeight / rowCount;
+  const { rowSpan, colSpan } = effectiveSpan(
+    cell,
+    rowIndex,
+    colIndex,
+    rowCount,
+    columnCount,
+  );
+  const cellWidth =
+    sumRange(colWidths, colIndex, colSpan) || tableWidth / columnCount;
+  const cellHeight =
+    sumRange(rowHeightsPx, rowIndex, rowSpan) || tableHeight / rowCount;
   const cellLeft = box.x * scale + (colOffsets[colIndex] ?? 0);
   const cellTop = box.y * scale + (rowOffsets[rowIndex] ?? 0);
   const paddingX = Math.max(4, 0.08 * scale);

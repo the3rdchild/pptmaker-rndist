@@ -230,6 +230,12 @@ export type TableCell = {
   font?: Font | null;
   alignment?: HorizontalAlignment | null;
   runs: TextRun[];
+  /** Merge Cells (PRD #17): only meaningful on the top-left ("anchor") cell of a
+   * merged block. >1 means this cell's rendered box spans that many columns/rows;
+   * the other grid positions it covers stay in `rows`/`columns` (grid shape doesn't
+   * change) but are skipped at render time and redirect clicks to the anchor. */
+  colSpan?: number | null;
+  rowSpan?: number | null;
 };
 
 export type TableElement = ElementBase & {

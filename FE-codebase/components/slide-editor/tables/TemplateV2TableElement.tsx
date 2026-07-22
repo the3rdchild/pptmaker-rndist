@@ -7,6 +7,10 @@ import { layoutRichText } from "@/components/slide-editor/text/template-v2-text"
 import { effectiveLineHeight } from "@/components/slide-editor/text/text-line-height";
 import { readableTableTextColor } from "@/components/slide-editor/tables/table-colors";
 import { colorWithOpacity } from "@/components/slide-editor/model/render-style";
+import {
+  computeMergedCoverage,
+  effectiveSpan,
+} from "@/components/slide-editor/tables/table-merge";
 
 type UnknownRecord = Record<string, any>;
 type RawElement = UnknownRecord;
@@ -24,6 +28,31 @@ type RenderTextFont = {
 
 const MIN_CELL_SIZE = 24;
 const HANDLE_HIT_SIZE = 8;
+
+type TableCellCoord = { rowIndex: number; colIndex: number };
+export type TableSelectModifiers = { shift: boolean; ctrl: boolean };
+type SelectedCellLike = {
+  rowIndex: number;
+  colIndex: number;
+  kind?: "cell" | "row" | "column";
+  cells?: TableCellCoord[];
+  rows?: number[];
+  columns?: number[];
+};
+
+function modifiersFromEvent(
+  event: Konva.KonvaEventObject<Event>,
+): TableSelectModifiers {
+  const evt = event.evt as (MouseEvent | undefined) & {
+    shiftKey?: boolean;
+    ctrlKey?: boolean;
+    metaKey?: boolean;
+  };
+  return {
+    shift: Boolean(evt?.shiftKey),
+    ctrl: Boolean(evt?.ctrlKey || evt?.metaKey),
+  };
+}
 
 // Cumulative pixel offsets/sizes for each column (or row), derived from
 // fractional weights so resizing the table as a whole scales every column
@@ -49,6 +78,12 @@ export function offsetsFromSizes(sizes: number[]): number[] {
   return offsets;
 }
 
+export function sumRange(sizes: number[], start: number, count: number): number {
+  let total = 0;
+  for (let i = start; i < start + count; i++) total += sizes[i] ?? 0;
+  return total;
+}
+
 export function TemplateV2TableElement({
   element,
   width,
@@ -63,8 +98,12 @@ export function TemplateV2TableElement({
   width: number;
   height: number;
   interactive: boolean;
-  selectedCell?: { rowIndex: number; colIndex: number; kind?: "cell" | "row" | "column" } | null;
-  onCellSelect?: (rowIndex: number, colIndex: number) => void;
+  selectedCell?: SelectedCellLike | null;
+  onCellSelect?: (
+    rowIndex: number,
+    colIndex: number,
+    modifiers?: TableSelectModifiers,
+  ) => void;
   onCellEdit?: (rowIndex: number, colIndex: number) => void;
   onResize?: (columnWidths: number[] | null, rowHeights: number[] | null) => void;
 }) {
@@ -76,12 +115,71 @@ export function TemplateV2TableElement({
   const colOffsets = offsetsFromSizes(colWidths);
   const rowOffsets = offsetsFromSizes(rowHeightsPx);
   const font = rawFont(element);
+  const cellGrid = rows.map((row) =>
+    Array.from(
+      { length: colCount },
+      (_, colIndex) => asRecord(row[colIndex]) ?? undefined,
+    ),
+  );
+  const mergedCoverage = computeMergedCoverage(cellGrid);
 
   return (
     <Group listening={interactive}>
       {rows.map((row, rowIndex) =>
         Array.from({ length: colCount }, (_, colIndex) => {
+          const coveredBy = mergedCoverage.get(`${rowIndex}:${colIndex}`);
+          const plainCellW = colWidths[colIndex] ?? width / colCount;
+          const plainCellH = rowHeightsPx[rowIndex] ?? height / rowCount;
+
+          if (coveredBy) {
+            // Covered by a merge anchor elsewhere in the grid — no visual of its
+            // own, just an invisible hit-box so clicks anywhere in the merged
+            // block's footprint still land, redirected to the anchor cell.
+            return (
+              <Group
+                key={`${rowIndex}-${colIndex}`}
+                x={colOffsets[colIndex] ?? 0}
+                y={rowOffsets[rowIndex] ?? 0}
+                onMouseDown={(event) => {
+                  if (!interactive) return;
+                  event.cancelBubble = true;
+                }}
+                onClick={(event) => {
+                  if (!interactive) return;
+                  event.cancelBubble = true;
+                  onCellSelect?.(coveredBy.rowIndex, coveredBy.colIndex, modifiersFromEvent(event));
+                }}
+                onTap={(event) => {
+                  if (!interactive) return;
+                  event.cancelBubble = true;
+                  onCellSelect?.(coveredBy.rowIndex, coveredBy.colIndex, modifiersFromEvent(event));
+                }}
+                onDblClick={(event) => {
+                  if (!interactive) return;
+                  event.cancelBubble = true;
+                  onCellSelect?.(coveredBy.rowIndex, coveredBy.colIndex);
+                  onCellEdit?.(coveredBy.rowIndex, coveredBy.colIndex);
+                }}
+                onDblTap={(event) => {
+                  if (!interactive) return;
+                  event.cancelBubble = true;
+                  onCellSelect?.(coveredBy.rowIndex, coveredBy.colIndex);
+                  onCellEdit?.(coveredBy.rowIndex, coveredBy.colIndex);
+                }}
+              >
+                <Rect width={plainCellW} height={plainCellH} fill="rgba(0,0,0,0)" />
+              </Group>
+            );
+          }
+
           const cell = asRecord(row[colIndex]) ?? {};
+          const { rowSpan, colSpan } = effectiveSpan(
+            cell,
+            rowIndex,
+            colIndex,
+            rowCount,
+            colCount,
+          );
           const firstRun = asRecord(readArray(cell.runs)[0]) ?? {};
           const cellFont = fontFromRecord(
             asRecord(cell.font) ?? asRecord(firstRun.font),
@@ -102,8 +200,8 @@ export function TemplateV2TableElement({
               : runs;
           const text = tableCellTextContent(runs);
           const fontSize = cellFont.size;
-          const cellW = colWidths[colIndex] ?? width / colCount;
-          const cellH = rowHeightsPx[rowIndex] ?? height / rowCount;
+          const cellW = sumRange(colWidths, colIndex, colSpan) || plainCellW;
+          const cellH = sumRange(rowHeightsPx, rowIndex, rowSpan) || plainCellH;
           const textWidth = Math.max(1, cellW - 12);
           const cellLineHeight = effectiveLineHeight({
             text,
@@ -118,15 +216,19 @@ export function TemplateV2TableElement({
               key={`${rowIndex}-${colIndex}`}
               x={colOffsets[colIndex] ?? 0}
               y={rowOffsets[rowIndex] ?? 0}
+              onMouseDown={(event) => {
+                if (!interactive) return;
+                event.cancelBubble = true;
+              }}
               onClick={(event) => {
                 if (!interactive) return;
                 event.cancelBubble = true;
-                onCellSelect?.(rowIndex, colIndex);
+                onCellSelect?.(rowIndex, colIndex, modifiersFromEvent(event));
               }}
               onTap={(event) => {
                 if (!interactive) return;
                 event.cancelBubble = true;
-                onCellSelect?.(rowIndex, colIndex);
+                onCellSelect?.(rowIndex, colIndex, modifiersFromEvent(event));
               }}
               onDblClick={(event) => {
                 if (!interactive) return;
@@ -171,6 +273,7 @@ export function TemplateV2TableElement({
         colCount={colCount}
         rowCount={rowCount}
         selectedCell={selectedCell}
+        cellGrid={cellGrid}
         tableWidth={width}
         tableHeight={height}
       />
@@ -185,6 +288,7 @@ export function TemplateV2TableElement({
           onCellSelect={onCellSelect}
         />
       ) : null}
+
       {interactive && onResize ? (
         <ResizeHandles
           colWidths={colWidths}
@@ -218,7 +322,11 @@ function RowColumnHandles({
   rowOffsets: number[];
   tableWidth: number;
   tableHeight: number;
-  onCellSelect: (rowIndex: number, colIndex: number) => void;
+  onCellSelect: (
+    rowIndex: number,
+    colIndex: number,
+    modifiers?: TableSelectModifiers,
+  ) => void;
 }) {
   const HANDLE_THICKNESS = 6;
   return (
@@ -235,13 +343,16 @@ function RowColumnHandles({
             width={w}
             height={HANDLE_THICKNESS}
             fill="rgba(124, 81, 248, 0.001)"
+            onMouseDown={(event) => {
+              event.cancelBubble = true;
+            }}
             onClick={(event) => {
               event.cancelBubble = true;
-              onCellSelect(-1, colIndex);
+              onCellSelect(-1, colIndex, modifiersFromEvent(event));
             }}
             onTap={(event) => {
               event.cancelBubble = true;
-              onCellSelect(-1, colIndex);
+              onCellSelect(-1, colIndex, modifiersFromEvent(event));
             }}
             onMouseEnter={(event) => setCursor(event, "s-resize")}
             onMouseLeave={(event) => setCursor(event, "default")}
@@ -259,13 +370,16 @@ function RowColumnHandles({
             width={HANDLE_THICKNESS}
             height={h}
             fill="rgba(124, 81, 248, 0.001)"
+            onMouseDown={(event) => {
+              event.cancelBubble = true;
+            }}
             onClick={(event) => {
               event.cancelBubble = true;
-              onCellSelect(rowIndex, -1);
+              onCellSelect(rowIndex, -1, modifiersFromEvent(event));
             }}
             onTap={(event) => {
               event.cancelBubble = true;
-              onCellSelect(rowIndex, -1);
+              onCellSelect(rowIndex, -1, modifiersFromEvent(event));
             }}
             onMouseEnter={(event) => setCursor(event, "e-resize")}
             onMouseLeave={(event) => setCursor(event, "default")}
@@ -497,6 +611,7 @@ function SelectedTableCellOutline({
   colCount,
   rowCount,
   selectedCell,
+  cellGrid,
   tableWidth,
   tableHeight,
 }: {
@@ -506,7 +621,8 @@ function SelectedTableCellOutline({
   rowOffsets: number[];
   colCount: number;
   rowCount: number;
-  selectedCell?: { rowIndex: number; colIndex: number; kind?: "cell" | "row" | "column" } | null;
+  selectedCell?: SelectedCellLike | null;
+  cellGrid?: (UnknownRecord | null | undefined)[][];
   tableWidth: number;
   tableHeight: number;
 }) {
@@ -514,50 +630,96 @@ function SelectedTableCellOutline({
   const kind = selectedCell.kind ?? "cell";
 
   if (kind === "row") {
-    if (selectedCell.rowIndex < 0 || selectedCell.rowIndex >= rowCount) return null;
+    const rowIndexes = selectedCell.rows?.length
+      ? selectedCell.rows
+      : [selectedCell.rowIndex];
     return (
-      <Rect
-        x={0}
-        y={rowOffsets[selectedCell.rowIndex] ?? 0}
-        width={tableWidth}
-        height={rowHeights[selectedCell.rowIndex] ?? 0}
-        fill="rgba(0,0,0,0)"
-        stroke="#7C51F8"
-        strokeWidth={2}
-        listening={false}
-      />
+      <>
+        {rowIndexes
+          .filter((rowIndex) => rowIndex >= 0 && rowIndex < rowCount)
+          .map((rowIndex) => (
+            <Rect
+              key={`row-outline-${rowIndex}`}
+              x={0}
+              y={rowOffsets[rowIndex] ?? 0}
+              width={tableWidth}
+              height={rowHeights[rowIndex] ?? 0}
+              fill="rgba(0,0,0,0)"
+              stroke="#7C51F8"
+              strokeWidth={2}
+              listening={false}
+            />
+          ))}
+      </>
     );
   }
   if (kind === "column") {
-    if (selectedCell.colIndex < 0 || selectedCell.colIndex >= colCount) return null;
+    const colIndexes = selectedCell.columns?.length
+      ? selectedCell.columns
+      : [selectedCell.colIndex];
     return (
-      <Rect
-        x={colOffsets[selectedCell.colIndex] ?? 0}
-        y={0}
-        width={colWidths[selectedCell.colIndex] ?? 0}
-        height={tableHeight}
-        fill="rgba(0,0,0,0)"
-        stroke="#7C51F8"
-        strokeWidth={2}
-        listening={false}
-      />
+      <>
+        {colIndexes
+          .filter((colIndex) => colIndex >= 0 && colIndex < colCount)
+          .map((colIndex) => (
+            <Rect
+              key={`col-outline-${colIndex}`}
+              x={colOffsets[colIndex] ?? 0}
+              y={0}
+              width={colWidths[colIndex] ?? 0}
+              height={tableHeight}
+              fill="rgba(0,0,0,0)"
+              stroke="#7C51F8"
+              strokeWidth={2}
+              listening={false}
+            />
+          ))}
+      </>
     );
   }
 
-  if (selectedCell.colIndex < 0 || selectedCell.colIndex >= colCount) return null;
-  if (selectedCell.rowIndex < 0 || selectedCell.rowIndex >= rowCount) return null;
+  const cells = selectedCell.cells?.length
+    ? selectedCell.cells
+    : [{ rowIndex: selectedCell.rowIndex, colIndex: selectedCell.colIndex }];
 
   return (
-    <Rect
-      x={colOffsets[selectedCell.colIndex] ?? 0}
-      y={rowOffsets[selectedCell.rowIndex] ?? 0}
-      width={colWidths[selectedCell.colIndex] ?? 0}
-      height={rowHeights[selectedCell.rowIndex] ?? 0}
-      fill="rgba(0,0,0,0)"
-      stroke="#7C51F8"
-      strokeWidth={2}
-      listening={false}
-    />
+    <>
+      {cells
+        .filter(
+          (cell) =>
+            cell.colIndex >= 0 &&
+            cell.colIndex < colCount &&
+            cell.rowIndex >= 0 &&
+            cell.rowIndex < rowCount,
+        )
+        .map((cell) => {
+          const gridCell = cellGrid?.[cell.rowIndex]?.[cell.colIndex] ?? undefined;
+          const { rowSpan, colSpan } = effectiveSpan(
+            gridCell,
+            cell.rowIndex,
+            cell.colIndex,
+            rowCount,
+            colCount,
+          );
+          const cellWidth =
+            sumRange(colWidths, cell.colIndex, colSpan) || colWidths[cell.colIndex] || 0;
+          const cellHeight =
+            sumRange(rowHeights, cell.rowIndex, rowSpan) || rowHeights[cell.rowIndex] || 0;
+          return (
+            <Rect
+              key={`cell-outline-${cell.rowIndex}-${cell.colIndex}`}
+              x={colOffsets[cell.colIndex] ?? 0}
+              y={rowOffsets[cell.rowIndex] ?? 0}
+              width={cellWidth}
+              height={cellHeight}
+              fill="rgba(0,0,0,0)"
+              stroke="#7C51F8"
+              strokeWidth={2}
+              listening={false}
+            />
+          );
+        })}
+    </>
   );
 }
 

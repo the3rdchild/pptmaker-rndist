@@ -47,6 +47,7 @@ import {
 import { ElementToolbar } from "@/components/slide-editor/toolbar/ElementToolbar";
 import { ChartDataEditorPopover } from "@/components/slide-editor/charts/ChartEditorContent";
 import { TableInlineEditor } from "@/components/slide-editor/tables/TableInlineEditor";
+import type { TableSelectModifiers } from "@/components/slide-editor/tables/TemplateV2TableElement";
 import { TemplateV2InlineEditor } from "@/components/slide-editor/text/TemplateV2InlineEditor";
 import {
   measureWordWrappedTextRunsHeight,
@@ -1009,17 +1010,18 @@ function TemplateV2KonvaSlideComponent({
       elementSelection: ElementSelection,
       rowIndex: number,
       colIndex: number,
+      modifiers?: TableSelectModifiers,
     ) => {
       activateSurface(elementSelection);
       setSelection(elementSelection);
       clearInlineEdit();
       setIconEditorSelection(null);
       if (colIndex === -1) {
-        selectTableRow(elementSelection, rowIndex);
+        selectTableRow(elementSelection, rowIndex, modifiers);
       } else if (rowIndex === -1) {
-        selectTableColumn(elementSelection, colIndex);
+        selectTableColumn(elementSelection, colIndex, modifiers);
       } else {
-        selectTableCellSelection(elementSelection, rowIndex, colIndex);
+        selectTableCellSelection(elementSelection, rowIndex, colIndex, modifiers);
       }
     },
     [

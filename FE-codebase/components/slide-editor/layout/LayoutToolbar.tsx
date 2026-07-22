@@ -14,6 +14,7 @@ import { ChartToolbarControls } from "@/components/slide-editor/charts/ChartTool
 import { Panel } from "@/components/slide-editor/shapes/ShapeToolbar";
 import type {
   ChartSlideElement,
+  TableCellSelection,
   TableSlideElement,
 } from "@/components/slide-editor/state/state";
 import { TableToolbarControls } from "@/components/slide-editor/tables/TableToolbar";
@@ -107,7 +108,7 @@ type TemplateV2LayoutToolbarProps = {
   onChartChange?: (element: ChartSlideElement) => void;
   onChartEdit?: () => void;
   onTableChange?: (element: TableSlideElement) => void;
-  selectedTableCell?: { rowIndex: number; colIndex: number } | null;
+  selectedTableCell?: TableCellSelection | null;
   position?: { left: number; top: number };
   componentActions?: TemplateV2SelectionComponentActions | null;
   ungroupAction?: TemplateV2UngroupAction | null;
@@ -418,15 +419,7 @@ export function TemplateV2LayoutToolbar({
           <TableToolbarControls
             element={element}
             index={0}
-            selectedCell={
-              selectedTableCell
-                ? {
-                    elementIndex: 0,
-                    rowIndex: selectedTableCell.rowIndex,
-                    colIndex: selectedTableCell.colIndex,
-                  }
-                : null
-            }
+            selectedCell={selectedTableCell ?? null}
             onChange={(_index, element) => onTableChange(element)}
           />
         ) : null}

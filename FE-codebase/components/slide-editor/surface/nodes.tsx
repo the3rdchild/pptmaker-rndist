@@ -37,7 +37,10 @@ import {
 import type { TableCellSelection } from "@/components/slide-editor/state/state";
 import { loadKonvaImage } from "@/components/slide-editor/surface/exportAssets";
 import { TemplateV2ChartJsElement as RawChartElement } from "@/components/slide-editor/charts/TemplateV2ChartJsElement";
-import { TemplateV2TableElement as RawTableElement } from "@/components/slide-editor/tables/TemplateV2TableElement";
+import {
+  TemplateV2TableElement as RawTableElement,
+  type TableSelectModifiers,
+} from "@/components/slide-editor/tables/TemplateV2TableElement";
 import { transformSvgMarkup } from "@/lib/svg-color";
 import {
   asRecord,
@@ -335,6 +338,7 @@ export function RawComponentNode({
     selection: ElementSelection,
     rowIndex: number,
     colIndex: number,
+    modifiers?: TableSelectModifiers,
   ) => void;
   onTableCellEdit: (
     selection: ElementSelection,
@@ -636,6 +640,7 @@ function RawElementNode({
     selection: ElementSelection,
     rowIndex: number,
     colIndex: number,
+    modifiers?: TableSelectModifiers,
   ) => void;
   onTableCellEdit: (
     selection: ElementSelection,
@@ -692,8 +697,8 @@ function RawElementNode({
     : null;
   const centerOrigin = shouldUseCenterOrigin(element);
   const handleTableCellSelect = useCallback(
-    (rowIndex: number, colIndex: number) => {
-      onTableCellSelect(selection, rowIndex, colIndex);
+    (rowIndex: number, colIndex: number, modifiers?: TableSelectModifiers) => {
+      onTableCellSelect(selection, rowIndex, colIndex, modifiers);
     },
     [onTableCellSelect, selection],
   );

@@ -144,6 +144,26 @@ const replaceSvgValue = (
     return output;
 };
 
+const getRootAttributeValue = (
+    input: string,
+    attrName: string
+): string | null => {
+    const rootMatch = input.match(ROOT_SVG_TAG_PATTERN);
+    if (!rootMatch) return null;
+    const attrs = rootMatch[1];
+    const escapedAttrName = escapeRegExp(attrName);
+    const patterns = [
+        new RegExp(`\\s${escapedAttrName}\\s*=\\s*"(.*?)"`, "i"),
+        new RegExp(`\\s${escapedAttrName}\\s*=\\s*'(.*?)'`, "i"),
+        new RegExp(`\\s${escapedAttrName}\\s*=\\s*([^\\s"'=<>` + "`" + `]+)`, "i"),
+    ];
+    for (const pattern of patterns) {
+        const match = attrs.match(pattern);
+        if (match) return match[1];
+    }
+    return null;
+};
+
 const upsertRootAttribute = (
     input: string,
     attrName: string,
@@ -459,6 +479,15 @@ export const transformSvgMarkup = (
     }
 
     if (normalizedColor) {
+        // An outline-style icon (fill="none" on the root, color carried by
+        // stroke) must keep that "none" — forcing a root fill here would
+        // make every child path render filled *and* stroked once they
+        // inherit it, turning a clean outline icon into a solid blob.
+        const rootFillBeforeColor = getRootAttributeValue(output, "fill");
+        const preserveRootFill =
+            rootFillBeforeColor != null &&
+            shouldPreservePaintValueForExplicitColor(rootFillBeforeColor);
+
         output = replaceSvgValue(
             output,
             "stroke",
@@ -471,7 +500,9 @@ export const transformSvgMarkup = (
             normalizedColor,
             shouldPreservePaintValueForExplicitColor
         );
-        output = upsertRootAttribute(output, "fill", normalizedColor);
+        if (!preserveRootFill) {
+            output = upsertRootAttribute(output, "fill", normalizedColor);
+        }
     }
 
     if (normalizedStroke) {
@@ -484,13 +515,20 @@ export const transformSvgMarkup = (
     }
 
     if (normalizedFill) {
+        const rootFillBeforeFill = getRootAttributeValue(output, "fill");
+        const preserveRootFill =
+            rootFillBeforeFill != null &&
+            shouldPreservePaintValueForExplicitColor(rootFillBeforeFill);
+
         output = replaceSvgValue(
             output,
             "fill",
             normalizedFill,
             shouldPreservePaintValueForExplicitColor
         );
-        output = upsertRootAttribute(output, "fill", normalizedFill);
+        if (!preserveRootFill) {
+            output = upsertRootAttribute(output, "fill", normalizedFill);
+        }
     }
 
     if (normalizedStrokeWidth) {

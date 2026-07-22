@@ -38,7 +38,7 @@ import type { TableCellSelection } from "@/components/slide-editor/state/state";
 import { loadKonvaImage } from "@/components/slide-editor/surface/exportAssets";
 import { TemplateV2ChartJsElement as RawChartElement } from "@/components/slide-editor/charts/TemplateV2ChartJsElement";
 import { TemplateV2TableElement as RawTableElement } from "@/components/slide-editor/tables/TemplateV2TableElement";
-import { buildSvgUpdateUrl } from "@/lib/svg-color";
+import { transformSvgMarkup } from "@/lib/svg-color";
 import {
   asRecord,
   borderRadius,
@@ -1170,12 +1170,8 @@ function RawImageElement({
   const src = readString(element.data);
   const color = readString(element.color);
   const isIcon = isRawIconElement(element);
-  const renderSrc = useMemo(() => {
-    if (!src || !color || !isIcon || typeof window === "undefined") return src;
-    const baseUrl = window.location.href;
-    if (!isStaticSvgIconSource(src, baseUrl)) return src;
-    return buildSvgUpdateUrl(src, baseUrl, { color }) ?? src;
-  }, [color, isIcon, src]);
+  const recoloredSrc = useRecoloredIconSrc(src, color, isIcon);
+  const renderSrc = recoloredSrc ?? src;
   const loaded = useLoadedKonvaImage(renderSrc);
 
   if (!loaded) {
@@ -1894,6 +1890,54 @@ function isSafeSvgClipPathData(value: string) {
     /[A-Za-z]/.test(value) &&
     /^[AaCcHhLlMmQqSsTtVvZz0-9eE\s.,+\-]*$/.test(value)
   );
+}
+
+// Fetches the source SVG text and recolors it client-side via
+// transformSvgMarkup, instead of round-tripping through a server-side
+// proxy route (this app has no Next.js API routes at all — /api/update-svg
+// referenced by lib/svg-color.ts's buildSvgUpdateUrl was never implemented).
+// Cached by src+color so repeated selections of the same icon/color don't
+// refetch.
+const recoloredSvgCache = new Map<string, string>();
+
+function useRecoloredIconSrc(
+  src: string | null,
+  color: string | null,
+  isIcon: boolean,
+): string | null {
+  const [recolored, setRecolored] = useState<string | null>(null);
+  const eligible = Boolean(src && color && isIcon && isStaticSvgIconSource(src, typeof window !== "undefined" ? window.location.href : ""));
+
+  useEffect(() => {
+    if (!eligible || !src || !color) {
+      setRecolored(null);
+      return;
+    }
+    const cacheKey = `${src}::${color}`;
+    const cached = recoloredSvgCache.get(cacheKey);
+    if (cached) {
+      setRecolored(cached);
+      return;
+    }
+    let cancelled = false;
+    fetch(src)
+      .then((res) => (res.ok ? res.text() : Promise.reject(new Error(`Failed to fetch ${src}`))))
+      .then((svgText) => {
+        if (cancelled) return;
+        const transformed = transformSvgMarkup(svgText, { color });
+        const dataUrl = `data:image/svg+xml;utf8,${encodeURIComponent(transformed)}`;
+        recoloredSvgCache.set(cacheKey, dataUrl);
+        setRecolored(dataUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setRecolored(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [eligible, src, color]);
+
+  return eligible ? recolored : null;
 }
 
 function useLoadedKonvaImage(src: string | null): HTMLImageElement | null {

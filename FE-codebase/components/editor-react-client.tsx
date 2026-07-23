@@ -487,6 +487,28 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
       }
     };
 
+    // Applies the deck-generation LLM's own topic-color pick (the JSONL
+    // stream's very first line, emitted before any slide) as an immediate
+    // baseline tint — reliable even for topics with no photogenic cover image
+    // or when hero-photo generation fails/yields nothing vivid. The later
+    // cover-photo extraction in requestHeroImage overwrites this once (if)
+    // it finds a better match, so this is purely a "never stay plain white"
+    // floor, not a competing source of truth.
+    let themeApplied = false;
+    const tryApplyThemeLine = (line: string): boolean => {
+      if (themeApplied) return false;
+      try {
+        const parsed = JSON.parse(line) as { type?: string; color?: string };
+        if (parsed.type !== "theme" || typeof parsed.color !== "string") return false;
+        if (!/^#[0-9a-fA-F]{6}$/.test(parsed.color)) return false;
+        themeApplied = true;
+        dispatch(applyAccentBackground(tintTowardWhite(parsed.color, 0.88)));
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
     const READ_IDLE_TIMEOUT_MS = 60000;
     const readWithTimeout = () =>
       Promise.race([
@@ -499,7 +521,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
     for (;;) {
       const { done, value } = await readWithTimeout();
       if (done) {
-        if (buf.trim()) {
+        if (buf.trim() && !tryApplyThemeLine(buf.trim())) {
           const filled = await mapLine(buf.trim());
           if (filled) {
             const index = count;
@@ -515,7 +537,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
       buf = lines.pop() || "";
       for (const line of lines) {
         const t = line.trim();
-        if (!t || t.startsWith("```")) continue;
+        if (!t || t.startsWith("```") || tryApplyThemeLine(t)) continue;
         const filled = await mapLine(t);
         if (filled) {
           const index = count;

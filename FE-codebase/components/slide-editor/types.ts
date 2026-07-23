@@ -278,6 +278,13 @@ export type SvgElement = ElementBase & {
   svg: string;
 };
 
+export type FormulaElement = ElementBase & {
+  type: "formula";
+  /** Raw TeX/LaTeX source, e.g. "E = mc^2". Rendered via MathJax's SVG output. */
+  latex: string;
+  color?: string | null;
+};
+
 export type ChartElement = ElementBase & {
   type: "chart";
   chart_type: ChartType;
@@ -358,6 +365,7 @@ export type SlideElement =
   | EllipseElement
   | LineElement
   | SvgElement
+  | FormulaElement
   | ChartElement
   | InfographicElement
   | FlexElement

@@ -7,6 +7,7 @@ import {
   PaintBucket,
   Palette,
   Shapes,
+  Sigma,
   Sparkles,
   Table as TableIcon,
   Type,
@@ -21,6 +22,7 @@ import ColorPalettePanel from "@/components/editor-react/color-palette-panel";
 import {
   ChartTab,
   ElementsTab,
+  FormulaTab,
   PlaceholderTab,
   TableTab,
   TemplatesTab,
@@ -56,6 +58,7 @@ type TabId =
   | "text"
   | "chart"
   | "table"
+  | "formula"
   | "uploads"
   | "magic-media"
   | "palette"
@@ -72,6 +75,7 @@ const TABS: {
   { id: "text", label: "Text", icon: Type, searchPlaceholder: "Search text styles" },
   { id: "chart", label: "Chart", icon: BarChart3, searchPlaceholder: "Search charts" },
   { id: "table", label: "Table", icon: TableIcon },
+  { id: "formula", label: "Formula", icon: Sigma, searchPlaceholder: "Search formulas" },
   { id: "palette", label: "Palette", icon: Palette },
   { id: "uploads", label: "Uploads", icon: UploadIcon, searchPlaceholder: "Search uploads" },
   { id: "magic-media", label: "Magic Media", icon: Sparkles },
@@ -203,6 +207,9 @@ export default function InsertToolbar({
             {openTab === "text" && <TextTab search={search} onInsertElements={runInsert} />}
             {openTab === "chart" && <ChartTab search={search} onInsertElements={runInsert} />}
             {openTab === "table" && <TableTab onInsertElements={runInsert} />}
+            {openTab === "formula" && (
+              <FormulaTab search={search} onInsertElements={runInsert} />
+            )}
             {openTab === "palette" && (
               <ColorPalettePanel
                 onApplyColorToSelection={onApplyColorToSelection}

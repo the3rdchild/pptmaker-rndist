@@ -11,9 +11,11 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ChartToolbarControls } from "@/components/slide-editor/charts/ChartToolbar";
+import { FormulaToolbarControls } from "@/components/slide-editor/formula/FormulaToolbar";
 import { Panel } from "@/components/slide-editor/shapes/ShapeToolbar";
 import type {
   ChartSlideElement,
+  FormulaSlideElement,
   TableCellSelection,
   TableSlideElement,
 } from "@/components/slide-editor/state/state";
@@ -78,7 +80,8 @@ export type TemplateV2ToolbarElement =
   | TemplateV2LayoutElement
   | TemplateV2LineToolbarElement
   | ChartSlideElement
-  | TableSlideElement;
+  | TableSlideElement
+  | FormulaSlideElement;
 
 export type TemplateV2SelectionComponentActions = {
   canUngroup: boolean;
@@ -108,6 +111,7 @@ type TemplateV2LayoutToolbarProps = {
   onChartChange?: (element: ChartSlideElement) => void;
   onChartEdit?: () => void;
   onTableChange?: (element: TableSlideElement) => void;
+  onFormulaChange?: (element: FormulaSlideElement) => void;
   selectedTableCell?: TableCellSelection | null;
   position?: { left: number; top: number };
   componentActions?: TemplateV2SelectionComponentActions | null;
@@ -306,6 +310,7 @@ export function TemplateV2LayoutToolbar({
   onChartChange,
   onChartEdit,
   onTableChange,
+  onFormulaChange,
   selectedTableCell,
   position,
   componentActions,
@@ -328,10 +333,13 @@ export function TemplateV2LayoutToolbar({
   const hasTableControls = Boolean(
     element && onTableChange && isTemplateV2TableToolbarElement(element),
   );
+  const hasFormulaControls = Boolean(
+    element && onFormulaChange && isTemplateV2FormulaToolbarElement(element),
+  );
   const hasLayoutControls =
     hasFlowControls || hasContainerControls || hasLineControls;
   const hasToolbarControls =
-    hasLayoutControls || hasChartControls || hasTableControls;
+    hasLayoutControls || hasChartControls || hasTableControls || hasFormulaControls;
   const ungroupAction = componentActions?.canUngroup
     ? componentActions
     : flowUngroupAction?.canUngroup
@@ -422,6 +430,11 @@ export function TemplateV2LayoutToolbar({
             selectedCell={selectedTableCell ?? null}
             onChange={(_index, element) => onTableChange(element)}
           />
+        ) : hasFormulaControls &&
+          element &&
+          onFormulaChange &&
+          isTemplateV2FormulaToolbarElement(element) ? (
+          <FormulaToolbarControls element={element} onChange={onFormulaChange} />
         ) : null}
         {componentActions ? (
           <>
@@ -487,4 +500,10 @@ export function isTemplateV2TableToolbarElement(
   element: RawRecord | TemplateV2ToolbarElement | null | undefined,
 ): element is TableSlideElement {
   return element?.type === "table";
+}
+
+export function isTemplateV2FormulaToolbarElement(
+  element: RawRecord | TemplateV2ToolbarElement | null | undefined,
+): element is FormulaSlideElement {
+  return element?.type === "formula";
 }

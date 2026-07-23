@@ -15,6 +15,7 @@ import {
   Loader2,
   PieChart,
   Quote,
+  Sigma,
   Table as TableIcon,
   Type,
   Wand2,
@@ -31,6 +32,7 @@ import {
 } from "@/components/editor-react/element-catalog";
 import {
   createChartInsertElements,
+  createFormulaInsertElements,
   createTableInsertElements,
   createTextInsertElements,
 } from "@/components/slide-editor/insert/insert-elements";
@@ -446,6 +448,46 @@ export function TableTab({
         >
           <TableIcon size={26} />
         </GridCard>
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------------- Formula -------------------------------- */
+
+const FORMULA_KINDS: { kind: string; label: string }[] = [
+  { kind: "quadratic-formula", label: "Quadratic Formula" },
+  { kind: "pythagorean-theorem", label: "Pythagorean Theorem" },
+  { kind: "mass-energy", label: "Mass-Energy" },
+  { kind: "integral", label: "Integral" },
+  { kind: "summation", label: "Summation" },
+  { kind: "euler-identity", label: "Euler's Identity" },
+];
+
+export function FormulaTab({
+  search,
+  onInsertElements,
+}: {
+  search: string;
+  onInsertElements: (elements: SlideElement[]) => void;
+}) {
+  const filtered = FORMULA_KINDS.filter((formula) => matches(formula.label, search));
+  return (
+    <div className="p-1.5">
+      <PanelLabel>Formula</PanelLabel>
+      <div className="grid grid-cols-2 gap-2.5 px-2.5 pb-2">
+        {filtered.map((formula) => (
+          <GridCard
+            key={formula.kind}
+            label={formula.label}
+            aspect="wide"
+            onClick={() =>
+              onInsertElements(createFormulaInsertElements(formula.kind))
+            }
+          >
+            <Sigma size={22} />
+          </GridCard>
+        ))}
       </div>
     </div>
   );

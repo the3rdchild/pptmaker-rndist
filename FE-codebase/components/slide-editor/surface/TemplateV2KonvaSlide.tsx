@@ -42,6 +42,7 @@ import {
   useTableCellSelection,
   useTemplateV2InlineEditing,
   type ChartSlideElement,
+  type FormulaSlideElement,
   type TableSlideElement,
 } from "@/components/slide-editor/state/state";
 import { ElementToolbar } from "@/components/slide-editor/toolbar/ElementToolbar";
@@ -85,6 +86,7 @@ import {
 import {
   getTemplateV2SelectionChartToolbarTarget,
   getTemplateV2SelectionEditorToolbarTarget,
+  getTemplateV2SelectionFormulaToolbarTarget,
   getTemplateV2SelectionTableToolbarTarget,
   getTemplateV2SelectionToolbarTarget,
 } from "@/components/slide-editor/selection/toolbarTarget";
@@ -459,9 +461,35 @@ function TemplateV2KonvaSlideComponent({
       uiDraft,
     ],
   );
-  const editorToolbarTarget = useMemo(
+  const formulaToolbarTarget = useMemo(
     () =>
       layoutToolbarTarget || chartToolbarTarget || tableToolbarTarget
+        ? null
+        : getTemplateV2SelectionFormulaToolbarTarget({
+            selection,
+            selectedBox,
+            selectedComponent,
+            selectedElement,
+            absoluteBoxForSelection: (targetSelection) =>
+              absoluteBoxForSelection(uiDraft, targetSelection),
+          }),
+    [
+      chartToolbarTarget,
+      layoutToolbarTarget,
+      selectedBox,
+      selectedComponent,
+      selectedElement,
+      selection,
+      tableToolbarTarget,
+      uiDraft,
+    ],
+  );
+  const editorToolbarTarget = useMemo(
+    () =>
+      layoutToolbarTarget ||
+      chartToolbarTarget ||
+      tableToolbarTarget ||
+      formulaToolbarTarget
         ? null
         : getTemplateV2SelectionEditorToolbarTarget({
             selection,
@@ -473,6 +501,7 @@ function TemplateV2KonvaSlideComponent({
           }),
     [
       chartToolbarTarget,
+      formulaToolbarTarget,
       layoutToolbarTarget,
       selectedBox,
       selectedComponent,
@@ -535,6 +564,7 @@ function TemplateV2KonvaSlideComponent({
   );
   const floatingToolbarAnchorBox = getTemplateV2SelectionToolbarAnchorBox({
     chartTarget: chartToolbarTarget,
+    formulaTarget: formulaToolbarTarget,
     layoutTarget: layoutToolbarTarget,
     selectedBox,
     selection,
@@ -543,6 +573,7 @@ function TemplateV2KonvaSlideComponent({
   const hasFloatingToolbar = hasTemplateV2SelectionToolbar({
     anchorBox: floatingToolbarAnchorBox,
     chartTarget: chartToolbarTarget,
+    formulaTarget: formulaToolbarTarget,
     isEditMode,
     layoutTarget: layoutToolbarTarget,
     selection,
@@ -551,6 +582,7 @@ function TemplateV2KonvaSlideComponent({
   const selectionToolbarPosition = getTemplateV2SelectionToolbarPosition({
     anchorBox: floatingToolbarAnchorBox,
     chartTarget: chartToolbarTarget,
+    formulaTarget: formulaToolbarTarget,
     layoutTarget: layoutToolbarTarget,
     root: rootElement,
     tableTarget: tableToolbarTarget,
@@ -1704,6 +1736,30 @@ function TemplateV2KonvaSlideComponent({
     [editorAnalyticsProps, tableToolbarTarget, updateElement],
   );
 
+  const applyFormulaToolbarElementChange = useCallback(
+    (editorElement: FormulaSlideElement) => {
+      if (!formulaToolbarTarget) return;
+      const current = getElementAtSelection(
+        currentUiRef.current,
+        formulaToolbarTarget.selection,
+      );
+      const box = absoluteBoxForSelection(
+        currentUiRef.current,
+        formulaToolbarTarget.selection,
+      );
+      if (!current || !box) return;
+      const next = mergeEditorToolbarElement(current, editorElement, box);
+      updateElement(formulaToolbarTarget.selection, () => next);
+      trackEvent(MixpanelEvent.Editor_Element_Style_Changed, {
+        ...editorAnalyticsProps({
+          element_type: "formula",
+          change_source: "formula_toolbar",
+        }),
+      });
+    },
+    [editorAnalyticsProps, formulaToolbarTarget, updateElement],
+  );
+
   const applyEditorToolbarTargetElementChange = useCallback(
     (editorElement: SlideElement) => {
       if (!editorToolbarTarget) return;
@@ -2459,6 +2515,7 @@ function TemplateV2KonvaSlideComponent({
         chartTarget={chartToolbarTarget}
         componentCount={components.length}
         editorTarget={editorToolbarTarget}
+        formulaTarget={formulaToolbarTarget}
         isEditMode={isEditMode}
         layoutTarget={layoutToolbarTarget}
         position={selectionToolbarPosition}
@@ -2478,6 +2535,7 @@ function TemplateV2KonvaSlideComponent({
         onDeleteSelection={deleteSelection}
         onDuplicateSelection={duplicateSelection}
         onEditorChange={applyEditorToolbarTargetElementChange}
+        onFormulaChange={applyFormulaToolbarElementChange}
         onLayoutChange={applyLayoutElementChange}
         onLayerAction={reorderSelectedComponentLayer}
         onTableChange={applyTableToolbarElementChange}

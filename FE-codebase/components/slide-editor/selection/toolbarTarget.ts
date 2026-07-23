@@ -8,6 +8,7 @@ import { rawChartToEditorChart } from "@/components/slide-editor/model/chart-mod
 import { rawElementForEditorToolbar } from "@/components/slide-editor/model/model";
 import type {
   ChartSlideElement,
+  FormulaSlideElement,
   TableSlideElement,
 } from "@/components/slide-editor/state/state";
 import type { SlideElement } from "@/components/slide-editor/types";
@@ -34,6 +35,12 @@ export type TemplateV2ChartSelectionToolbarTarget = {
 export type TemplateV2TableSelectionToolbarTarget = {
   selection: TemplateV2ToolbarElementSelection;
   element: TableSlideElement;
+  box: TemplateV2ToolbarBox;
+};
+
+export type TemplateV2FormulaSelectionToolbarTarget = {
+  selection: TemplateV2ToolbarElementSelection;
+  element: FormulaSlideElement;
   box: TemplateV2ToolbarBox;
 };
 
@@ -176,6 +183,48 @@ export function getTemplateV2SelectionTableToolbarTarget({
     : null;
 }
 
+export function getTemplateV2SelectionFormulaToolbarTarget({
+  selection,
+  selectedBox,
+  selectedComponent,
+  selectedElement,
+  absoluteBoxForSelection,
+}: SelectionToolbarTargetOptions): TemplateV2FormulaSelectionToolbarTarget | null {
+  if (
+    selection?.kind === "element" &&
+    selectedElement &&
+    selectedBox &&
+    isTemplateV2FormulaElement(selectedElement)
+  ) {
+    return {
+      selection,
+      element: formulaToolbarElement(selectedElement, selectedBox),
+      box: selectedBox,
+    };
+  }
+
+  if (selection?.kind !== "component" || !selectedComponent) return null;
+
+  const formulaRoot = findFirstComponentFormulaElement(
+    readArray(selectedComponent.elements),
+  );
+  if (!formulaRoot) return null;
+
+  const elementSelection: TemplateV2ToolbarElementSelection = {
+    kind: "element",
+    componentIndex: selection.componentIndex,
+    elementPath: formulaRoot.elementPath,
+  };
+  const box = absoluteBoxForSelection(elementSelection);
+  return box
+    ? {
+        selection: elementSelection,
+        element: formulaToolbarElement(formulaRoot.element, box),
+        box,
+      }
+    : null;
+}
+
 export function getTemplateV2SelectionEditorToolbarTarget({
   selection,
   selectedComponent,
@@ -233,6 +282,12 @@ function isTemplateV2TableElement(
   return element?.type === "table";
 }
 
+function isTemplateV2FormulaElement(
+  element: RawRecord | null | undefined,
+): element is RawRecord {
+  return element?.type === "formula";
+}
+
 function isTemplateV2EditorToolbarElement(
   element: RawRecord | null | undefined,
 ): element is RawRecord {
@@ -281,6 +336,45 @@ function tableToolbarElement(
     rows: readArray(element.rows).map((row) => readArray(row)) as
       TableSlideElement["rows"],
   };
+}
+
+function formulaToolbarElement(
+  element: RawRecord,
+  box: TemplateV2ToolbarBox,
+): FormulaSlideElement {
+  return {
+    ...element,
+    type: "formula",
+    latex: typeof element.latex === "string" ? element.latex : "",
+    position: {
+      x: box.x,
+      y: box.y,
+    },
+    size: {
+      width: box.width,
+      height: box.height,
+    },
+  };
+}
+
+function findFirstComponentFormulaElement(
+  elements: unknown[],
+  parentPath: number[] = [],
+): { element: RawRecord; elementPath: number[] } | null {
+  for (let index = 0; index < elements.length; index += 1) {
+    const element = asRecord(elements[index]);
+    if (!element) continue;
+    const elementPath = [...parentPath, index];
+    if (isTemplateV2FormulaElement(element)) {
+      return { element, elementPath };
+    }
+    const nested = findFirstComponentFormulaElement(
+      childElements(element),
+      elementPath,
+    );
+    if (nested) return nested;
+  }
+  return null;
 }
 
 function findFirstComponentChartElement(

@@ -1,5 +1,6 @@
 import type {
   TemplateV2ChartSelectionToolbarTarget,
+  TemplateV2FormulaSelectionToolbarTarget,
   TemplateV2SelectionToolbarTarget,
   TemplateV2TableSelectionToolbarTarget,
 } from "@/components/slide-editor/selection/toolbarTarget";
@@ -35,12 +36,14 @@ const TOOLBAR_MARGIN = 8;
 
 export function getTemplateV2SelectionToolbarAnchorBox({
   chartTarget,
+  formulaTarget,
   layoutTarget,
   selectedBox,
   selection,
   tableTarget,
 }: {
   chartTarget?: TemplateV2ChartSelectionToolbarTarget | null;
+  formulaTarget?: TemplateV2FormulaSelectionToolbarTarget | null;
   layoutTarget: TemplateV2SelectionToolbarTarget | null;
   selectedBox: TemplateV2ToolbarBox | null;
   selection: TemplateV2ToolbarSelection;
@@ -48,12 +51,17 @@ export function getTemplateV2SelectionToolbarAnchorBox({
 }) {
   return selection?.kind === "component"
     ? selectedBox
-    : layoutTarget?.box ?? chartTarget?.box ?? tableTarget?.box ?? null;
+    : layoutTarget?.box ??
+        chartTarget?.box ??
+        tableTarget?.box ??
+        formulaTarget?.box ??
+        null;
 }
 
 export function hasTemplateV2SelectionToolbar({
   anchorBox,
   chartTarget,
+  formulaTarget,
   isEditMode,
   layoutTarget,
   selection,
@@ -61,6 +69,7 @@ export function hasTemplateV2SelectionToolbar({
 }: {
   anchorBox: TemplateV2ToolbarBox | null;
   chartTarget?: TemplateV2ChartSelectionToolbarTarget | null;
+  formulaTarget?: TemplateV2FormulaSelectionToolbarTarget | null;
   isEditMode: boolean;
   layoutTarget: TemplateV2SelectionToolbarTarget | null;
   selection: TemplateV2ToolbarSelection;
@@ -72,7 +81,8 @@ export function hasTemplateV2SelectionToolbar({
       (selection?.kind === "component" ||
         layoutTarget ||
         chartTarget ||
-        tableTarget),
+        tableTarget ||
+        formulaTarget),
   );
 }
 
@@ -83,6 +93,7 @@ export function getTemplateV2SelectionToolbarPosition({
 }: {
   anchorBox: TemplateV2ToolbarBox | null;
   chartTarget?: TemplateV2ChartSelectionToolbarTarget | null;
+  formulaTarget?: TemplateV2FormulaSelectionToolbarTarget | null;
   layoutTarget: TemplateV2SelectionToolbarTarget | null;
   root: HTMLElement | null;
   tableTarget?: TemplateV2TableSelectionToolbarTarget | null;

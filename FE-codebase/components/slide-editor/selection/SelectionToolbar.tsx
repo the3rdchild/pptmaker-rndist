@@ -8,6 +8,7 @@ import type { ComponentLayerAction } from "@/components/slide-editor/selection/l
 import type {
   TemplateV2ChartSelectionToolbarTarget,
   TemplateV2EditorSelectionToolbarTarget,
+  TemplateV2FormulaSelectionToolbarTarget,
   TemplateV2SelectionToolbarTarget,
   TemplateV2TableSelectionToolbarTarget,
 } from "@/components/slide-editor/selection/toolbarTarget";
@@ -18,6 +19,7 @@ import type {
 import type { TemplateV2ToolbarViewportBounds } from "@/components/slide-editor/selection/toolbarPosition";
 import type {
   ChartSlideElement,
+  FormulaSlideElement,
   TableCellSelection,
   TableSlideElement,
 } from "@/components/slide-editor/state/state";
@@ -32,6 +34,7 @@ type TemplateV2SelectionToolbarProps = {
   chartTarget: TemplateV2ChartSelectionToolbarTarget | null;
   componentCount: number;
   editorTarget: TemplateV2EditorSelectionToolbarTarget | null;
+  formulaTarget: TemplateV2FormulaSelectionToolbarTarget | null;
   isEditMode: boolean;
   layoutTarget: TemplateV2SelectionToolbarTarget | null;
   position: { left: number; top: number } | null;
@@ -47,6 +50,7 @@ type TemplateV2SelectionToolbarProps = {
   onEditorChange: (element: SlideElement) => void;
   onDeleteSelection: () => void;
   onDuplicateSelection: () => void;
+  onFormulaChange: (element: FormulaSlideElement) => void;
   onLayoutChange: (changes: Record<string, unknown>) => void;
   onLayerAction: (action: ComponentLayerAction) => void;
   onTableChange: (element: TableSlideElement) => void;
@@ -61,6 +65,7 @@ export function TemplateV2SelectionToolbar({
   chartTarget,
   componentCount,
   editorTarget,
+  formulaTarget,
   isEditMode,
   layoutTarget,
   position,
@@ -76,6 +81,7 @@ export function TemplateV2SelectionToolbar({
   onEditorChange,
   onDeleteSelection,
   onDuplicateSelection,
+  onFormulaChange,
   onLayoutChange,
   onLayerAction,
   onTableChange,
@@ -121,6 +127,7 @@ export function TemplateV2SelectionToolbar({
         layoutTarget?.element ??
         chartTarget?.element ??
         tableTarget?.element ??
+        formulaTarget?.element ??
         null
       }
       position={position ?? undefined}
@@ -130,6 +137,7 @@ export function TemplateV2SelectionToolbar({
       onChartEdit={chartTarget ? onChartEdit : undefined}
       onChange={layoutTarget ? onLayoutChange : undefined}
       onTableChange={tableTarget ? onTableChange : undefined}
+      onFormulaChange={formulaTarget ? onFormulaChange : undefined}
       selectedTableCell={selectedTableCell}
       ungroupAction={
         canUngroupLayoutTarget

@@ -7,6 +7,7 @@ import type { ComponentActionsMenuActions } from "@/components/slide-editor/sele
 import { BulletsToolbar } from "@/components/slide-editor/text/BulletsToolbar";
 import { ChartToolbar } from "@/components/slide-editor/charts/ChartToolbar";
 import { DesignVariablesToolbar } from "@/components/slide-editor/toolbar/DesignVariablesToolbar";
+import { FormulaToolbar } from "@/components/slide-editor/formula/FormulaToolbar";
 import { ImageToolbar } from "@/components/slide-editor/images/ImageToolbar";
 import { LineToolbar } from "@/components/slide-editor/shapes/LineToolbar";
 import { ShapeToolbar } from "@/components/slide-editor/shapes/ShapeToolbar";
@@ -162,6 +163,17 @@ const TOOLBAR_RENDERERS: Partial<
             ? selectedTableCell
             : null
         }
+        onChange={(index, element) => onChange(index, element, path)}
+      />
+    ) : null,
+
+  formula: ({ anchorBox, element, index, onChange, path, scale }) =>
+    element.type === "formula" ? (
+      <FormulaToolbar
+        element={element}
+        index={index}
+        anchorBox={anchorBox}
+        scale={scale}
         onChange={(index, element) => onChange(index, element, path)}
       />
     ) : null,

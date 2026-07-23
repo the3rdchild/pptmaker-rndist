@@ -545,6 +545,33 @@ export function createTableInsertElements(kind?: string): SlideElement[] {
   return kind === "simple-table" ? [makeSimpleTableElement()] : [];
 }
 
+const DEFAULT_FORMULA_INSERT_POSITION = { x: 240, y: 260 };
+const DEFAULT_FORMULA_INSERT_SIZE = { width: 480, height: 140 };
+
+const FORMULA_PRESETS: Record<string, string> = {
+  "quadratic-formula": "x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}",
+  "pythagorean-theorem": "a^2 + b^2 = c^2",
+  "mass-energy": "E = mc^2",
+  integral: "\\int_{a}^{b} f(x)\\,dx",
+  summation: "\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}",
+  "euler-identity": "e^{i\\pi} + 1 = 0",
+};
+
+function makeFormulaElement(latex: string): SlideElement {
+  return {
+    type: "formula",
+    position: { ...DEFAULT_FORMULA_INSERT_POSITION },
+    size: { ...DEFAULT_FORMULA_INSERT_SIZE },
+    latex,
+    color: "101323",
+  };
+}
+
+export function createFormulaInsertElements(kind?: string): SlideElement[] {
+  const latex = kind ? FORMULA_PRESETS[kind] : undefined;
+  return latex ? [makeFormulaElement(latex)] : [];
+}
+
 function makeImageElement({
   x,
   y,

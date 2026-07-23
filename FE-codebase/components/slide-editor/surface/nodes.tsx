@@ -37,6 +37,7 @@ import {
 import type { TableCellSelection } from "@/components/slide-editor/state/state";
 import { loadKonvaImage } from "@/components/slide-editor/surface/exportAssets";
 import { TemplateV2ChartJsElement as RawChartElement } from "@/components/slide-editor/charts/TemplateV2ChartJsElement";
+import { TemplateV2FormulaElement as RawFormulaElement } from "@/components/slide-editor/formula/TemplateV2FormulaElement";
 import {
   TemplateV2TableElement as RawTableElement,
   type TableSelectModifiers,
@@ -1045,6 +1046,9 @@ function RawElementVisual({
   }
   if (type === "infographic") {
     return <RawInfographicElement element={element} width={width} height={height} interactive={interactive} />;
+  }
+  if (type === "formula") {
+    return <RawFormulaElement element={element} width={width} height={height} interactive={interactive} />;
   }
   return null;
 }

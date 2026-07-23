@@ -1,5 +1,5 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
-import { hexLightness } from "@/components/slide-editor/utils/extract-image-colors";
+import { hexLightness, tintTowardWhite } from "@/components/slide-editor/utils/extract-image-colors";
 
 export interface SlideData {
   ui?: Record<string, unknown> | null;
@@ -40,11 +40,19 @@ interface PresentationGenerationState {
     return slides.map((s, i) => ({ ...s, index: i }));
   }
 
-  // Tints every slide's full-stage background rectangle to `color`, but only
-  // if it's currently white/near-white — a cover/section layout that already
-  // ships with an intentionally-colored full-bleed background is left alone.
-  const STAGE_W = 1280;
-  const STAGE_H = 720;
+  // Retints EVERY rectangle in a slide to `color`, not just the full-stage
+  // background — the decorative "accent chip" cards each template pack ships
+  // (e.g. swift's #BFF4FF light-blue cards) are their own small rectangles
+  // with a hardcoded pack color, completely untouched by a background-only
+  // fix. Each rectangle keeps ITS OWN current lightness as the tint amount
+  // (tintTowardWhite(color, lightness)) so a light pastel wash stays a light
+  // wash and a bolder accent chip stays bolder — just recolored to the new
+  // hue instead of the pack's original one. Near-black rectangles (borders,
+  // text-box backings) are left alone entirely; recoloring those to an
+  // accent hue would look wrong, not better.
+  const NEAR_BLACK_LIGHTNESS = 0.15;
+  const NEAR_WHITE_LIGHTNESS = 0.92;
+  const NEAR_WHITE_TINT_AMOUNT = 0.88;
 
   function withBackgroundTint(
     ui: Record<string, unknown> | null | undefined,
@@ -61,15 +69,13 @@ interface PresentationGenerationState {
       let changed = false;
       const nextElements = elements.map((el) => {
         if (el.type !== "rectangle") return el;
-        const size = el.size as { width?: number; height?: number } | undefined;
-        const isFullStage =
-          size && Math.abs((size.width ?? 0) - STAGE_W) < 4 && Math.abs((size.height ?? 0) - STAGE_H) < 4;
-        if (!isFullStage) return el;
         const fill = (el.fill as { color?: string } | undefined) ?? {};
-        const currentLightness = fill.color ? hexLightness(fill.color) : 1;
-        if (currentLightness < 0.92) return el;
+        if (!fill.color) return el;
+        const lightness = hexLightness(fill.color);
+        if (lightness <= NEAR_BLACK_LIGHTNESS) return el;
+        const tintAmount = lightness >= NEAR_WHITE_LIGHTNESS ? NEAR_WHITE_TINT_AMOUNT : lightness;
         changed = true;
-        return { ...el, fill: { ...fill, color } };
+        return { ...el, fill: { ...fill, color: tintTowardWhite(color, tintAmount) } };
       });
       if (!changed) return component;
       changedAny = true;

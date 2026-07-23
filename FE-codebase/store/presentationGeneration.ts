@@ -54,6 +54,56 @@ interface PresentationGenerationState {
   const NEAR_WHITE_LIGHTNESS = 0.92;
   const NEAR_WHITE_TINT_AMOUNT = 0.88;
 
+  // The "accent chip" cards a repeated grid/flex layout produces (e.g. a
+  // 4-card "why X matters" slide) are NOT top-level elements — they're
+  // nested one or more levels down inside `children`/`child`, exactly like
+  // ai-layout-fill.ts's own walkElement() has to recurse to find them. A
+  // flat, single-level elements.map() (the original version of this
+  // function) silently missed every one of them, which is why only the
+  // full-stage background rectangle ever visibly changed color.
+  function tintElementTree(
+    el: Record<string, unknown>,
+    color: string,
+  ): { el: Record<string, unknown>; changed: boolean } {
+    let next = el;
+    let changed = false;
+
+    if (el.type === "rectangle") {
+      const fill = (el.fill as { color?: string } | undefined) ?? {};
+      if (fill.color) {
+        const lightness = hexLightness(fill.color);
+        if (lightness > NEAR_BLACK_LIGHTNESS) {
+          const tintAmount = lightness >= NEAR_WHITE_LIGHTNESS ? NEAR_WHITE_TINT_AMOUNT : lightness;
+          next = { ...next, fill: { ...fill, color: tintTowardWhite(color, tintAmount) } };
+          changed = true;
+        }
+      }
+    }
+
+    if (Array.isArray(next.children)) {
+      let childChanged = false;
+      const nextChildren = (next.children as Record<string, unknown>[]).map((child) => {
+        const result = tintElementTree(child, color);
+        if (result.changed) childChanged = true;
+        return result.el;
+      });
+      if (childChanged) {
+        next = { ...next, children: nextChildren };
+        changed = true;
+      }
+    }
+
+    if (next.child && typeof next.child === "object") {
+      const result = tintElementTree(next.child as Record<string, unknown>, color);
+      if (result.changed) {
+        next = { ...next, child: result.el };
+        changed = true;
+      }
+    }
+
+    return { el: next, changed };
+  }
+
   export function withBackgroundTint(
     ui: Record<string, unknown> | null | undefined,
     color: string,
@@ -68,14 +118,9 @@ interface PresentationGenerationState {
         : [];
       let changed = false;
       const nextElements = elements.map((el) => {
-        if (el.type !== "rectangle") return el;
-        const fill = (el.fill as { color?: string } | undefined) ?? {};
-        if (!fill.color) return el;
-        const lightness = hexLightness(fill.color);
-        if (lightness <= NEAR_BLACK_LIGHTNESS) return el;
-        const tintAmount = lightness >= NEAR_WHITE_LIGHTNESS ? NEAR_WHITE_TINT_AMOUNT : lightness;
-        changed = true;
-        return { ...el, fill: { ...fill, color: tintTowardWhite(color, tintAmount) } };
+        const result = tintElementTree(el, color);
+        if (result.changed) changed = true;
+        return result.el;
       });
       if (!changed) return component;
       changedAny = true;

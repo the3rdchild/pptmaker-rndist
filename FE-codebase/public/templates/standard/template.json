@@ -14493,6 +14493,1815 @@
           ]
         }
       ]
+    },
+    {
+      "id": "icon_feature_row_3488",
+      "description": "Three rounded white cards in a horizontal row, each with a green icon tile, a serif title, and a supporting paragraph.",
+      "components": [
+        {
+          "id": "plain_canvas",
+          "description": "Full-slide white background.",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 1280,
+            "height": 720
+          },
+          "elements": [
+            {
+              "type": "rectangle",
+              "position": {
+                "x": 0,
+                "y": 0
+              },
+              "size": {
+                "width": 1280,
+                "height": 720
+              },
+              "fill": {
+                "color": "#FFFFFF",
+                "opacity": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "top_title_block",
+          "description": "Header section with a short accent rule and a large serif title.",
+          "position": {
+            "x": 48,
+            "y": 40
+          },
+          "size": {
+            "width": 1184,
+            "height": 110
+          },
+          "elements": [
+            {
+              "type": "rectangle",
+              "position": {
+                "x": 24,
+                "y": 0
+              },
+              "size": {
+                "width": 64,
+                "height": 4
+              },
+              "fill": {
+                "color": "#168C2A",
+                "opacity": 1
+              },
+              "border_radius": {
+                "tl": 2,
+                "tr": 2,
+                "bl": 2,
+                "br": 2
+              },
+              "decorative": true
+            },
+            {
+              "type": "text",
+              "position": {
+                "x": 0,
+                "y": 20
+              },
+              "size": {
+                "width": 1184,
+                "height": 72
+              },
+              "font": {
+                "size": 52,
+                "family": "Playfair Display",
+                "color": "#111827",
+                "bold": true,
+                "line_height": 1.0,
+                "wrap": "word"
+              },
+              "alignment": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "runs": [
+                {
+                  "text": "What We Offer"
+                }
+              ],
+              "decorative": false,
+              "name": "slide_title"
+            }
+          ]
+        },
+        {
+          "id": "feature_row",
+          "description": "Row of three feature cards.",
+          "position": {
+            "x": 48,
+            "y": 200
+          },
+          "size": {
+            "width": 1184,
+            "height": 400
+          },
+          "elements": [
+            {
+              "type": "grid",
+              "position": {
+                "x": 0,
+                "y": 0
+              },
+              "size": {
+                "width": 1184,
+                "height": 400
+              },
+              "columns": 3,
+              "rows": 1,
+              "column_gap": 32,
+              "align_items": "flex-start",
+              "justify_items": "center",
+              "children": [
+                {
+                  "type": "group",
+                  "size": {
+                    "width": 360,
+                    "height": 400
+                  },
+                  "children": [
+                    {
+                      "type": "rectangle",
+                      "position": {
+                        "x": 0,
+                        "y": 0
+                      },
+                      "size": {
+                        "width": 360,
+                        "height": 400
+                      },
+                      "fill": {
+                        "color": "#FFFFFF",
+                        "opacity": 1
+                      },
+                      "border_radius": {
+                        "tl": 20,
+                        "tr": 20,
+                        "bl": 20,
+                        "br": 20
+                      },
+                      "shadow": {
+                        "color": "#000000",
+                        "blur": 28,
+                        "opacity": 0.06,
+                        "offset_x": 0,
+                        "offset_y": 8
+                      },
+                      "border": {
+                        "color": "#E5E7EB",
+                        "width": 1,
+                        "opacity": 1
+                      },
+                      "decorative": true
+                    },
+                    {
+                      "type": "container",
+                      "position": {
+                        "x": 32,
+                        "y": 32
+                      },
+                      "size": {
+                        "width": 56,
+                        "height": 56
+                      },
+                      "alignment": {
+                        "horizontal": "center",
+                        "vertical": "middle"
+                      },
+                      "fill": {
+                        "color": "#168C2A",
+                        "opacity": 1
+                      },
+                      "border_radius": {
+                        "tl": 14,
+                        "tr": 14,
+                        "bl": 14,
+                        "br": 14
+                      },
+                      "padding": {
+                        "top": 16,
+                        "right": 16,
+                        "bottom": 16,
+                        "left": 16
+                      },
+                      "child": {
+                        "type": "image",
+                        "size": {
+                          "width": 24,
+                          "height": 24
+                        },
+                        "data": "/static/icons/placeholder.svg",
+                        "fit": "contain",
+                        "color": "#FFFFFF",
+                        "decorative": false,
+                        "name": "feature_icon",
+                        "is_icon": true
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 32,
+                        "y": 112
+                      },
+                      "size": {
+                        "width": 296,
+                        "height": 64
+                      },
+                      "font": {
+                        "size": 24,
+                        "family": "Playfair Display",
+                        "color": "#111827",
+                        "bold": true,
+                        "line_height": 1.15,
+                        "wrap": "word"
+                      },
+                      "alignment": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "Strategy"
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "feature_title"
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 32,
+                        "y": 192
+                      },
+                      "size": {
+                        "width": 296,
+                        "height": 160
+                      },
+                      "font": {
+                        "size": 15,
+                        "family": "Playfair Display",
+                        "color": "#6B7280",
+                        "line_height": 1.5,
+                        "wrap": "word"
+                      },
+                      "alignment": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "Research-driven planning that aligns every decision with measurable business outcomes."
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "feature_body"
+                    }
+                  ]
+                },
+                {
+                  "type": "group",
+                  "size": {
+                    "width": 360,
+                    "height": 400
+                  },
+                  "children": [
+                    {
+                      "type": "rectangle",
+                      "position": {
+                        "x": 0,
+                        "y": 0
+                      },
+                      "size": {
+                        "width": 360,
+                        "height": 400
+                      },
+                      "fill": {
+                        "color": "#FFFFFF",
+                        "opacity": 1
+                      },
+                      "border_radius": {
+                        "tl": 20,
+                        "tr": 20,
+                        "bl": 20,
+                        "br": 20
+                      },
+                      "shadow": {
+                        "color": "#000000",
+                        "blur": 28,
+                        "opacity": 0.06,
+                        "offset_x": 0,
+                        "offset_y": 8
+                      },
+                      "border": {
+                        "color": "#E5E7EB",
+                        "width": 1,
+                        "opacity": 1
+                      },
+                      "decorative": true
+                    },
+                    {
+                      "type": "container",
+                      "position": {
+                        "x": 32,
+                        "y": 32
+                      },
+                      "size": {
+                        "width": 56,
+                        "height": 56
+                      },
+                      "alignment": {
+                        "horizontal": "center",
+                        "vertical": "middle"
+                      },
+                      "fill": {
+                        "color": "#168C2A",
+                        "opacity": 1
+                      },
+                      "border_radius": {
+                        "tl": 14,
+                        "tr": 14,
+                        "bl": 14,
+                        "br": 14
+                      },
+                      "padding": {
+                        "top": 16,
+                        "right": 16,
+                        "bottom": 16,
+                        "left": 16
+                      },
+                      "child": {
+                        "type": "image",
+                        "size": {
+                          "width": 24,
+                          "height": 24
+                        },
+                        "data": "/static/icons/placeholder.svg",
+                        "fit": "contain",
+                        "color": "#FFFFFF",
+                        "decorative": false,
+                        "name": "feature_icon",
+                        "is_icon": true
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 32,
+                        "y": 112
+                      },
+                      "size": {
+                        "width": 296,
+                        "height": 64
+                      },
+                      "font": {
+                        "size": 24,
+                        "family": "Playfair Display",
+                        "color": "#111827",
+                        "bold": true,
+                        "line_height": 1.15,
+                        "wrap": "word"
+                      },
+                      "alignment": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "Design"
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "feature_title"
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 32,
+                        "y": 192
+                      },
+                      "size": {
+                        "width": 296,
+                        "height": 160
+                      },
+                      "font": {
+                        "size": 15,
+                        "family": "Playfair Display",
+                        "color": "#6B7280",
+                        "line_height": 1.5,
+                        "wrap": "word"
+                      },
+                      "alignment": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "Crafted interfaces balancing brand expression with clarity and ease of use."
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "feature_body"
+                    }
+                  ]
+                },
+                {
+                  "type": "group",
+                  "size": {
+                    "width": 360,
+                    "height": 400
+                  },
+                  "children": [
+                    {
+                      "type": "rectangle",
+                      "position": {
+                        "x": 0,
+                        "y": 0
+                      },
+                      "size": {
+                        "width": 360,
+                        "height": 400
+                      },
+                      "fill": {
+                        "color": "#FFFFFF",
+                        "opacity": 1
+                      },
+                      "border_radius": {
+                        "tl": 20,
+                        "tr": 20,
+                        "bl": 20,
+                        "br": 20
+                      },
+                      "shadow": {
+                        "color": "#000000",
+                        "blur": 28,
+                        "opacity": 0.06,
+                        "offset_x": 0,
+                        "offset_y": 8
+                      },
+                      "border": {
+                        "color": "#E5E7EB",
+                        "width": 1,
+                        "opacity": 1
+                      },
+                      "decorative": true
+                    },
+                    {
+                      "type": "container",
+                      "position": {
+                        "x": 32,
+                        "y": 32
+                      },
+                      "size": {
+                        "width": 56,
+                        "height": 56
+                      },
+                      "alignment": {
+                        "horizontal": "center",
+                        "vertical": "middle"
+                      },
+                      "fill": {
+                        "color": "#168C2A",
+                        "opacity": 1
+                      },
+                      "border_radius": {
+                        "tl": 14,
+                        "tr": 14,
+                        "bl": 14,
+                        "br": 14
+                      },
+                      "padding": {
+                        "top": 16,
+                        "right": 16,
+                        "bottom": 16,
+                        "left": 16
+                      },
+                      "child": {
+                        "type": "image",
+                        "size": {
+                          "width": 24,
+                          "height": 24
+                        },
+                        "data": "/static/icons/placeholder.svg",
+                        "fit": "contain",
+                        "color": "#FFFFFF",
+                        "decorative": false,
+                        "name": "feature_icon",
+                        "is_icon": true
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 32,
+                        "y": 112
+                      },
+                      "size": {
+                        "width": 296,
+                        "height": 64
+                      },
+                      "font": {
+                        "size": 24,
+                        "family": "Playfair Display",
+                        "color": "#111827",
+                        "bold": true,
+                        "line_height": 1.15,
+                        "wrap": "word"
+                      },
+                      "alignment": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "Delivery"
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "feature_title"
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 32,
+                        "y": 192
+                      },
+                      "size": {
+                        "width": 296,
+                        "height": 160
+                      },
+                      "font": {
+                        "size": 15,
+                        "family": "Playfair Display",
+                        "color": "#6B7280",
+                        "line_height": 1.5,
+                        "wrap": "word"
+                      },
+                      "alignment": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "Iterative shipping in tight cycles, with transparent progress at every milestone."
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "feature_body"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "icon_stat_tiles_5602",
+      "description": "Three soft-tinted KPI tiles in a row, each pairing a green icon with a large figure and a short caption.",
+      "components": [
+        {
+          "id": "plain_canvas",
+          "description": "Full-slide white background.",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 1280,
+            "height": 720
+          },
+          "elements": [
+            {
+              "type": "rectangle",
+              "position": {
+                "x": 0,
+                "y": 0
+              },
+              "size": {
+                "width": 1280,
+                "height": 720
+              },
+              "fill": {
+                "color": "#FFFFFF",
+                "opacity": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "top_title_block",
+          "description": "Header section with a short accent rule and a large serif title.",
+          "position": {
+            "x": 48,
+            "y": 40
+          },
+          "size": {
+            "width": 1184,
+            "height": 110
+          },
+          "elements": [
+            {
+              "type": "rectangle",
+              "position": {
+                "x": 24,
+                "y": 0
+              },
+              "size": {
+                "width": 64,
+                "height": 4
+              },
+              "fill": {
+                "color": "#168C2A",
+                "opacity": 1
+              },
+              "border_radius": {
+                "tl": 2,
+                "tr": 2,
+                "bl": 2,
+                "br": 2
+              },
+              "decorative": true
+            },
+            {
+              "type": "text",
+              "position": {
+                "x": 0,
+                "y": 20
+              },
+              "size": {
+                "width": 1184,
+                "height": 72
+              },
+              "font": {
+                "size": 52,
+                "family": "Playfair Display",
+                "color": "#111827",
+                "bold": true,
+                "line_height": 1.0,
+                "wrap": "word"
+              },
+              "alignment": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "runs": [
+                {
+                  "text": "By The Numbers"
+                }
+              ],
+              "decorative": false,
+              "name": "slide_title"
+            }
+          ]
+        },
+        {
+          "id": "stat_tiles",
+          "description": "Row of three stat tiles.",
+          "position": {
+            "x": 48,
+            "y": 220
+          },
+          "size": {
+            "width": 1184,
+            "height": 280
+          },
+          "elements": [
+            {
+              "type": "grid",
+              "position": {
+                "x": 0,
+                "y": 0
+              },
+              "size": {
+                "width": 1184,
+                "height": 280
+              },
+              "columns": 3,
+              "rows": 1,
+              "column_gap": 32,
+              "align_items": "flex-start",
+              "justify_items": "center",
+              "children": [
+                {
+                  "type": "group",
+                  "size": {
+                    "width": 360,
+                    "height": 280
+                  },
+                  "children": [
+                    {
+                      "type": "rectangle",
+                      "position": {
+                        "x": 0,
+                        "y": 0
+                      },
+                      "size": {
+                        "width": 360,
+                        "height": 280
+                      },
+                      "fill": {
+                        "color": "#F8FAF8",
+                        "opacity": 1
+                      },
+                      "border_radius": {
+                        "tl": 20,
+                        "tr": 20,
+                        "bl": 20,
+                        "br": 20
+                      },
+                      "border": {
+                        "color": "#E5E7EB",
+                        "width": 1,
+                        "opacity": 1
+                      },
+                      "decorative": true
+                    },
+                    {
+                      "type": "container",
+                      "position": {
+                        "x": 32,
+                        "y": 32
+                      },
+                      "size": {
+                        "width": 48,
+                        "height": 48
+                      },
+                      "alignment": {
+                        "horizontal": "center",
+                        "vertical": "middle"
+                      },
+                      "fill": {
+                        "color": "#168C2A",
+                        "opacity": 1
+                      },
+                      "border_radius": {
+                        "tl": 12,
+                        "tr": 12,
+                        "bl": 12,
+                        "br": 12
+                      },
+                      "padding": {
+                        "top": 14,
+                        "right": 14,
+                        "bottom": 14,
+                        "left": 14
+                      },
+                      "child": {
+                        "type": "image",
+                        "size": {
+                          "width": 20,
+                          "height": 20
+                        },
+                        "data": "/static/icons/placeholder.svg",
+                        "fit": "contain",
+                        "color": "#FFFFFF",
+                        "decorative": false,
+                        "name": "stat_icon",
+                        "is_icon": true
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 32,
+                        "y": 104
+                      },
+                      "size": {
+                        "width": 296,
+                        "height": 80
+                      },
+                      "font": {
+                        "size": 56,
+                        "family": "Playfair Display",
+                        "color": "#168C2A",
+                        "bold": true,
+                        "line_height": 1.0,
+                        "wrap": "none"
+                      },
+                      "alignment": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "98%"
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "stat_value"
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 32,
+                        "y": 200
+                      },
+                      "size": {
+                        "width": 296,
+                        "height": 56
+                      },
+                      "font": {
+                        "size": 16,
+                        "family": "Playfair Display",
+                        "color": "#6B7280",
+                        "line_height": 1.4,
+                        "wrap": "word"
+                      },
+                      "alignment": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "Client satisfaction across completed projects"
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "stat_label"
+                    }
+                  ]
+                },
+                {
+                  "type": "group",
+                  "size": {
+                    "width": 360,
+                    "height": 280
+                  },
+                  "children": [
+                    {
+                      "type": "rectangle",
+                      "position": {
+                        "x": 0,
+                        "y": 0
+                      },
+                      "size": {
+                        "width": 360,
+                        "height": 280
+                      },
+                      "fill": {
+                        "color": "#F8FAF8",
+                        "opacity": 1
+                      },
+                      "border_radius": {
+                        "tl": 20,
+                        "tr": 20,
+                        "bl": 20,
+                        "br": 20
+                      },
+                      "border": {
+                        "color": "#E5E7EB",
+                        "width": 1,
+                        "opacity": 1
+                      },
+                      "decorative": true
+                    },
+                    {
+                      "type": "container",
+                      "position": {
+                        "x": 32,
+                        "y": 32
+                      },
+                      "size": {
+                        "width": 48,
+                        "height": 48
+                      },
+                      "alignment": {
+                        "horizontal": "center",
+                        "vertical": "middle"
+                      },
+                      "fill": {
+                        "color": "#168C2A",
+                        "opacity": 1
+                      },
+                      "border_radius": {
+                        "tl": 12,
+                        "tr": 12,
+                        "bl": 12,
+                        "br": 12
+                      },
+                      "padding": {
+                        "top": 14,
+                        "right": 14,
+                        "bottom": 14,
+                        "left": 14
+                      },
+                      "child": {
+                        "type": "image",
+                        "size": {
+                          "width": 20,
+                          "height": 20
+                        },
+                        "data": "/static/icons/placeholder.svg",
+                        "fit": "contain",
+                        "color": "#FFFFFF",
+                        "decorative": false,
+                        "name": "stat_icon",
+                        "is_icon": true
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 32,
+                        "y": 104
+                      },
+                      "size": {
+                        "width": 296,
+                        "height": 80
+                      },
+                      "font": {
+                        "size": 56,
+                        "family": "Playfair Display",
+                        "color": "#168C2A",
+                        "bold": true,
+                        "line_height": 1.0,
+                        "wrap": "none"
+                      },
+                      "alignment": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "24h"
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "stat_value"
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 32,
+                        "y": 200
+                      },
+                      "size": {
+                        "width": 296,
+                        "height": 56
+                      },
+                      "font": {
+                        "size": 16,
+                        "family": "Playfair Display",
+                        "color": "#6B7280",
+                        "line_height": 1.4,
+                        "wrap": "word"
+                      },
+                      "alignment": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "Average response time for support requests"
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "stat_label"
+                    }
+                  ]
+                },
+                {
+                  "type": "group",
+                  "size": {
+                    "width": 360,
+                    "height": 280
+                  },
+                  "children": [
+                    {
+                      "type": "rectangle",
+                      "position": {
+                        "x": 0,
+                        "y": 0
+                      },
+                      "size": {
+                        "width": 360,
+                        "height": 280
+                      },
+                      "fill": {
+                        "color": "#F8FAF8",
+                        "opacity": 1
+                      },
+                      "border_radius": {
+                        "tl": 20,
+                        "tr": 20,
+                        "bl": 20,
+                        "br": 20
+                      },
+                      "border": {
+                        "color": "#E5E7EB",
+                        "width": 1,
+                        "opacity": 1
+                      },
+                      "decorative": true
+                    },
+                    {
+                      "type": "container",
+                      "position": {
+                        "x": 32,
+                        "y": 32
+                      },
+                      "size": {
+                        "width": 48,
+                        "height": 48
+                      },
+                      "alignment": {
+                        "horizontal": "center",
+                        "vertical": "middle"
+                      },
+                      "fill": {
+                        "color": "#168C2A",
+                        "opacity": 1
+                      },
+                      "border_radius": {
+                        "tl": 12,
+                        "tr": 12,
+                        "bl": 12,
+                        "br": 12
+                      },
+                      "padding": {
+                        "top": 14,
+                        "right": 14,
+                        "bottom": 14,
+                        "left": 14
+                      },
+                      "child": {
+                        "type": "image",
+                        "size": {
+                          "width": 20,
+                          "height": 20
+                        },
+                        "data": "/static/icons/placeholder.svg",
+                        "fit": "contain",
+                        "color": "#FFFFFF",
+                        "decorative": false,
+                        "name": "stat_icon",
+                        "is_icon": true
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 32,
+                        "y": 104
+                      },
+                      "size": {
+                        "width": 296,
+                        "height": 80
+                      },
+                      "font": {
+                        "size": 56,
+                        "family": "Playfair Display",
+                        "color": "#168C2A",
+                        "bold": true,
+                        "line_height": 1.0,
+                        "wrap": "none"
+                      },
+                      "alignment": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "12+"
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "stat_value"
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 32,
+                        "y": 200
+                      },
+                      "size": {
+                        "width": 296,
+                        "height": 56
+                      },
+                      "font": {
+                        "size": 16,
+                        "family": "Playfair Display",
+                        "color": "#6B7280",
+                        "line_height": 1.4,
+                        "wrap": "word"
+                      },
+                      "alignment": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "Industries served worldwide"
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "stat_label"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "icon_bullet_list_9120",
+      "description": "Four horizontal bordered rows stacked vertically, each a green icon tile beside a serif title and a short description.",
+      "components": [
+        {
+          "id": "plain_canvas",
+          "description": "Full-slide white background.",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 1280,
+            "height": 720
+          },
+          "elements": [
+            {
+              "type": "rectangle",
+              "position": {
+                "x": 0,
+                "y": 0
+              },
+              "size": {
+                "width": 1280,
+                "height": 720
+              },
+              "fill": {
+                "color": "#FFFFFF",
+                "opacity": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "top_title_block",
+          "description": "Header section with a short accent rule and a large serif title.",
+          "position": {
+            "x": 48,
+            "y": 40
+          },
+          "size": {
+            "width": 1184,
+            "height": 110
+          },
+          "elements": [
+            {
+              "type": "rectangle",
+              "position": {
+                "x": 24,
+                "y": 0
+              },
+              "size": {
+                "width": 64,
+                "height": 4
+              },
+              "fill": {
+                "color": "#168C2A",
+                "opacity": 1
+              },
+              "border_radius": {
+                "tl": 2,
+                "tr": 2,
+                "bl": 2,
+                "br": 2
+              },
+              "decorative": true
+            },
+            {
+              "type": "text",
+              "position": {
+                "x": 0,
+                "y": 20
+              },
+              "size": {
+                "width": 1184,
+                "height": 72
+              },
+              "font": {
+                "size": 52,
+                "family": "Playfair Display",
+                "color": "#111827",
+                "bold": true,
+                "line_height": 1.0,
+                "wrap": "word"
+              },
+              "alignment": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "runs": [
+                {
+                  "text": "Key Capabilities"
+                }
+              ],
+              "decorative": false,
+              "name": "slide_title"
+            }
+          ]
+        },
+        {
+          "id": "bullet_list",
+          "description": "Vertical stack of four icon rows.",
+          "position": {
+            "x": 72,
+            "y": 188
+          },
+          "size": {
+            "width": 1136,
+            "height": 392
+          },
+          "elements": [
+            {
+              "type": "flex",
+              "position": {
+                "x": 0,
+                "y": 0
+              },
+              "size": {
+                "width": 1136,
+                "height": 392
+              },
+              "direction": "column",
+              "align_items": "flex-start",
+              "justify_content": "flex-start",
+              "gap": 16,
+              "children": [
+                {
+                  "type": "group",
+                  "size": {
+                    "width": 1136,
+                    "height": 88
+                  },
+                  "children": [
+                    {
+                      "type": "rectangle",
+                      "position": {
+                        "x": 0,
+                        "y": 0
+                      },
+                      "size": {
+                        "width": 1136,
+                        "height": 88
+                      },
+                      "fill": {
+                        "color": "#FFFFFF",
+                        "opacity": 1
+                      },
+                      "border_radius": {
+                        "tl": 14,
+                        "tr": 14,
+                        "bl": 14,
+                        "br": 14
+                      },
+                      "border": {
+                        "color": "#E5E7EB",
+                        "width": 1,
+                        "opacity": 1
+                      },
+                      "decorative": true
+                    },
+                    {
+                      "type": "container",
+                      "position": {
+                        "x": 20,
+                        "y": 20
+                      },
+                      "size": {
+                        "width": 48,
+                        "height": 48
+                      },
+                      "alignment": {
+                        "horizontal": "center",
+                        "vertical": "middle"
+                      },
+                      "fill": {
+                        "color": "#168C2A",
+                        "opacity": 1
+                      },
+                      "border_radius": {
+                        "tl": 12,
+                        "tr": 12,
+                        "bl": 12,
+                        "br": 12
+                      },
+                      "padding": {
+                        "top": 14,
+                        "right": 14,
+                        "bottom": 14,
+                        "left": 14
+                      },
+                      "child": {
+                        "type": "image",
+                        "size": {
+                          "width": 20,
+                          "height": 20
+                        },
+                        "data": "/static/icons/placeholder.svg",
+                        "fit": "contain",
+                        "color": "#FFFFFF",
+                        "decorative": false,
+                        "name": "row_icon",
+                        "is_icon": true
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 92,
+                        "y": 16
+                      },
+                      "size": {
+                        "width": 1024,
+                        "height": 30
+                      },
+                      "font": {
+                        "size": 19,
+                        "family": "Playfair Display",
+                        "color": "#111827",
+                        "bold": true,
+                        "line_height": 1.15,
+                        "wrap": "word"
+                      },
+                      "alignment": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "Discovery & Research"
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "row_title"
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 92,
+                        "y": 46
+                      },
+                      "size": {
+                        "width": 1024,
+                        "height": 28
+                      },
+                      "font": {
+                        "size": 14,
+                        "family": "Playfair Display",
+                        "color": "#6B7280",
+                        "line_height": 1.3,
+                        "wrap": "word"
+                      },
+                      "alignment": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "Stakeholder interviews and competitive analysis ground every recommendation in real evidence."
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "row_body"
+                    }
+                  ]
+                },
+                {
+                  "type": "group",
+                  "size": {
+                    "width": 1136,
+                    "height": 88
+                  },
+                  "children": [
+                    {
+                      "type": "rectangle",
+                      "position": {
+                        "x": 0,
+                        "y": 0
+                      },
+                      "size": {
+                        "width": 1136,
+                        "height": 88
+                      },
+                      "fill": {
+                        "color": "#FFFFFF",
+                        "opacity": 1
+                      },
+                      "border_radius": {
+                        "tl": 14,
+                        "tr": 14,
+                        "bl": 14,
+                        "br": 14
+                      },
+                      "border": {
+                        "color": "#E5E7EB",
+                        "width": 1,
+                        "opacity": 1
+                      },
+                      "decorative": true
+                    },
+                    {
+                      "type": "container",
+                      "position": {
+                        "x": 20,
+                        "y": 20
+                      },
+                      "size": {
+                        "width": 48,
+                        "height": 48
+                      },
+                      "alignment": {
+                        "horizontal": "center",
+                        "vertical": "middle"
+                      },
+                      "fill": {
+                        "color": "#168C2A",
+                        "opacity": 1
+                      },
+                      "border_radius": {
+                        "tl": 12,
+                        "tr": 12,
+                        "bl": 12,
+                        "br": 12
+                      },
+                      "padding": {
+                        "top": 14,
+                        "right": 14,
+                        "bottom": 14,
+                        "left": 14
+                      },
+                      "child": {
+                        "type": "image",
+                        "size": {
+                          "width": 20,
+                          "height": 20
+                        },
+                        "data": "/static/icons/placeholder.svg",
+                        "fit": "contain",
+                        "color": "#FFFFFF",
+                        "decorative": false,
+                        "name": "row_icon",
+                        "is_icon": true
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 92,
+                        "y": 16
+                      },
+                      "size": {
+                        "width": 1024,
+                        "height": 30
+                      },
+                      "font": {
+                        "size": 19,
+                        "family": "Playfair Display",
+                        "color": "#111827",
+                        "bold": true,
+                        "line_height": 1.15,
+                        "wrap": "word"
+                      },
+                      "alignment": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "Design Systems"
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "row_title"
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 92,
+                        "y": 46
+                      },
+                      "size": {
+                        "width": 1024,
+                        "height": 28
+                      },
+                      "font": {
+                        "size": 14,
+                        "family": "Playfair Display",
+                        "color": "#6B7280",
+                        "line_height": 1.3,
+                        "wrap": "word"
+                      },
+                      "alignment": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "Reusable component libraries keep products consistent and teams shipping faster."
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "row_body"
+                    }
+                  ]
+                },
+                {
+                  "type": "group",
+                  "size": {
+                    "width": 1136,
+                    "height": 88
+                  },
+                  "children": [
+                    {
+                      "type": "rectangle",
+                      "position": {
+                        "x": 0,
+                        "y": 0
+                      },
+                      "size": {
+                        "width": 1136,
+                        "height": 88
+                      },
+                      "fill": {
+                        "color": "#FFFFFF",
+                        "opacity": 1
+                      },
+                      "border_radius": {
+                        "tl": 14,
+                        "tr": 14,
+                        "bl": 14,
+                        "br": 14
+                      },
+                      "border": {
+                        "color": "#E5E7EB",
+                        "width": 1,
+                        "opacity": 1
+                      },
+                      "decorative": true
+                    },
+                    {
+                      "type": "container",
+                      "position": {
+                        "x": 20,
+                        "y": 20
+                      },
+                      "size": {
+                        "width": 48,
+                        "height": 48
+                      },
+                      "alignment": {
+                        "horizontal": "center",
+                        "vertical": "middle"
+                      },
+                      "fill": {
+                        "color": "#168C2A",
+                        "opacity": 1
+                      },
+                      "border_radius": {
+                        "tl": 12,
+                        "tr": 12,
+                        "bl": 12,
+                        "br": 12
+                      },
+                      "padding": {
+                        "top": 14,
+                        "right": 14,
+                        "bottom": 14,
+                        "left": 14
+                      },
+                      "child": {
+                        "type": "image",
+                        "size": {
+                          "width": 20,
+                          "height": 20
+                        },
+                        "data": "/static/icons/placeholder.svg",
+                        "fit": "contain",
+                        "color": "#FFFFFF",
+                        "decorative": false,
+                        "name": "row_icon",
+                        "is_icon": true
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 92,
+                        "y": 16
+                      },
+                      "size": {
+                        "width": 1024,
+                        "height": 30
+                      },
+                      "font": {
+                        "size": 19,
+                        "family": "Playfair Display",
+                        "color": "#111827",
+                        "bold": true,
+                        "line_height": 1.15,
+                        "wrap": "word"
+                      },
+                      "alignment": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "Engineering"
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "row_title"
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 92,
+                        "y": 46
+                      },
+                      "size": {
+                        "width": 1024,
+                        "height": 28
+                      },
+                      "font": {
+                        "size": 14,
+                        "family": "Playfair Display",
+                        "color": "#6B7280",
+                        "line_height": 1.3,
+                        "wrap": "word"
+                      },
+                      "alignment": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "Type-safe codebases with automated testing and continuous deployment baked in."
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "row_body"
+                    }
+                  ]
+                },
+                {
+                  "type": "group",
+                  "size": {
+                    "width": 1136,
+                    "height": 88
+                  },
+                  "children": [
+                    {
+                      "type": "rectangle",
+                      "position": {
+                        "x": 0,
+                        "y": 0
+                      },
+                      "size": {
+                        "width": 1136,
+                        "height": 88
+                      },
+                      "fill": {
+                        "color": "#FFFFFF",
+                        "opacity": 1
+                      },
+                      "border_radius": {
+                        "tl": 14,
+                        "tr": 14,
+                        "bl": 14,
+                        "br": 14
+                      },
+                      "border": {
+                        "color": "#E5E7EB",
+                        "width": 1,
+                        "opacity": 1
+                      },
+                      "decorative": true
+                    },
+                    {
+                      "type": "container",
+                      "position": {
+                        "x": 20,
+                        "y": 20
+                      },
+                      "size": {
+                        "width": 48,
+                        "height": 48
+                      },
+                      "alignment": {
+                        "horizontal": "center",
+                        "vertical": "middle"
+                      },
+                      "fill": {
+                        "color": "#168C2A",
+                        "opacity": 1
+                      },
+                      "border_radius": {
+                        "tl": 12,
+                        "tr": 12,
+                        "bl": 12,
+                        "br": 12
+                      },
+                      "padding": {
+                        "top": 14,
+                        "right": 14,
+                        "bottom": 14,
+                        "left": 14
+                      },
+                      "child": {
+                        "type": "image",
+                        "size": {
+                          "width": 20,
+                          "height": 20
+                        },
+                        "data": "/static/icons/placeholder.svg",
+                        "fit": "contain",
+                        "color": "#FFFFFF",
+                        "decorative": false,
+                        "name": "row_icon",
+                        "is_icon": true
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 92,
+                        "y": 16
+                      },
+                      "size": {
+                        "width": 1024,
+                        "height": 30
+                      },
+                      "font": {
+                        "size": 19,
+                        "family": "Playfair Display",
+                        "color": "#111827",
+                        "bold": true,
+                        "line_height": 1.15,
+                        "wrap": "word"
+                      },
+                      "alignment": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "Support & Growth"
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "row_title"
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 92,
+                        "y": 46
+                      },
+                      "size": {
+                        "width": 1024,
+                        "height": 28
+                      },
+                      "font": {
+                        "size": 14,
+                        "family": "Playfair Display",
+                        "color": "#6B7280",
+                        "line_height": 1.3,
+                        "wrap": "word"
+                      },
+                      "alignment": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "Ongoing optimization and transparent reporting tied to the metrics that matter."
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "row_body"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
     }
   ],
   "fonts": {

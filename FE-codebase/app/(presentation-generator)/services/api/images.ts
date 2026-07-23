@@ -1,15 +1,28 @@
 import type { ImageAssetResponse } from "./types";
 
-// Stub: real upload is a backend feature. For now, returns a local
-// object URL so images can be placed on the canvas without a backend round-trip.
+// Stub: real upload is a backend feature. For now, embeds the file as a
+// base64 data URL so the image survives a page reload (a blob: URL would
+// be revoked when the document unloads and leave a broken element).
 export class ImagesApi {
   static async uploadImage(file: File): Promise<ImageAssetResponse> {
-    const objectUrl = URL.createObjectURL(file);
+    const dataUrl = await readFileAsDataUrl(file);
     return {
       message: "ok",
-      path: objectUrl,
+      path: dataUrl,
       id: crypto.randomUUID(),
-      file_url: objectUrl,
+      file_url: dataUrl,
     };
   }
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      resolve(typeof result === "string" ? result : "");
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
 }

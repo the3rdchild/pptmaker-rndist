@@ -376,6 +376,22 @@ export interface HeroImageMarker {
 
 type PhotoCandidate = HeroImageMarker & { area: number };
 
+// Full-bleed background photos (near stage size, 1280x720) must stay
+// sharp-cornered — rounding them would show the slide background through the
+// corner gaps. Everything smaller (hero panels, card/portrait photos) gets
+// rounded like Canva.
+const STAGE_W = 1280;
+const STAGE_H = 720;
+
+/** Sets a generous uniform corner radius on a photo element, scaled to its
+ * size, unless it's a full-bleed background. Mutates in place (components are
+ * already deep-cloned by fillLayout). */
+function roundPhotoCorners(el: Rec, w: number, h: number): void {
+  if (w >= STAGE_W * 0.94 && h >= STAGE_H * 0.94) return;
+  const radius = Math.round(Math.min(28, Math.max(14, Math.min(w, h) * 0.07)));
+  el.border_radius = { tl: radius, tr: radius, br: radius, bl: radius };
+}
+
 /** Finds every non-icon, non-decorative image element in the layout still
  * pointing at a real (fillable) photo slot. */
 function findAllPhotoSlots(components: Rec[]): PhotoCandidate[] {
@@ -392,6 +408,7 @@ function findAllPhotoSlots(components: Rec[]): PhotoCandidate[] {
       const occurrenceIndex = occurrenceCounters.get(key) ?? 0;
       occurrenceCounters.set(key, occurrenceIndex + 1);
       if (area > 20000) {
+        roundPhotoCorners(el, w, h);
         candidates.push({ area, componentId, elementName: String(el.name), occurrenceIndex });
       }
       return;

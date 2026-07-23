@@ -3,11 +3,16 @@
 // a slide from scratch. Picks a layout matching the slide's role, then
 // walks its component tree filling only non-decorative text placeholders —
 // every other design decision (colors, decorative shapes, positions,
-// chart/table example data) is left exactly as the template author made it.
+// chart/table example data) is left exactly as the template author made it,
+// EXCEPT icon placeholders (every pack ships every icon slot as the exact
+// same generic /static/icons/placeholder.svg) — those get swapped for a
+// real, content-relevant icon below.
 //
 // This mirrors the old PPTist "AIPPT" template-filling behaviour (see
 // worker/services/deck_service.py's AIPPTSlide contract) that got dropped
 // when the flat hardcoded layouts in map-slide.ts were written as a stub.
+
+import { PresentationGenerationApi } from "@/app/(presentation-generator)/services/api/presentation-generation";
 
 export type AIPPTSlide =
   | { type: "cover"; data: { title: string; text: string } }
@@ -374,6 +379,111 @@ export interface FilledSlide {
   heroImage: HeroImageMarker | null;
 }
 
+/* ---------------------------- Icon auto-fill ------------------------------ */
+//
+// Every template pack's icon slots are hardcoded to this exact placeholder
+// SVG, never swapped — confirmed by inspecting all 4 packs' template.json.
+// The slots themselves (position/size within a card) are already correctly
+// authored; only the actual icon graphic needs to change per slide.
+
+const PLACEHOLDER_ICON_SRC = "/static/icons/placeholder.svg";
+
+function isPlaceholderIcon(el: Rec): boolean {
+  return el.type === "image" && el.is_icon === true && el.data === PLACEHOLDER_ICON_SRC;
+}
+
+/** Collects every placeholder icon AND every text run found under `node`,
+ * within the SAME subtree — used to pair each icon with its nearest card
+ * title/label as a search query (a card's icon+title+body are siblings
+ * under one item-slot node, per walkElement's own grouping above). */
+function collectPlaceholderIconsAndText(node: Rec, icons: Rec[], texts: string[]): void {
+  if (isPlaceholderIcon(node)) {
+    icons.push(node);
+    return;
+  }
+  if (isTextLike(node)) {
+    const runs = (node.runs as Rec[] | undefined) ?? [];
+    const text = runs.map((r) => String(r.text ?? "")).join("");
+    if (text) texts.push(text);
+    return;
+  }
+  const children = node.children as Rec[] | undefined;
+  if (Array.isArray(children)) {
+    for (const child of children) collectPlaceholderIconsAndText(child, icons, texts);
+    return;
+  }
+  const child = node.child as Rec | undefined;
+  if (child) collectPlaceholderIconsAndText(child, icons, texts);
+}
+
+/** Replaces every placeholder icon in `ui` with a real icon searched via the
+ * existing (client-side, no network round trip) icon index, using the
+ * nearest sibling text as the search query, falling back to `fallbackQuery`
+ * (the slide's own title) for an icon with no text nearby. No-op if there
+ * are no placeholder icons or every search comes up empty. */
+async function fillPlaceholderIcons(ui: Rec, fallbackQuery: string): Promise<Rec> {
+  const components = (ui.components as Rec[]) ?? [];
+  const searchTasks: { icon: Rec; query: string }[] = [];
+
+  for (const component of components) {
+    const elements = (component.elements as Rec[]) ?? [];
+    for (const el of elements) {
+      const icons: Rec[] = [];
+      const texts: string[] = [];
+      collectPlaceholderIconsAndText(el, icons, texts);
+      if (!icons.length) continue;
+      const query = texts[0] || fallbackQuery;
+      for (const icon of icons) searchTasks.push({ icon, query });
+    }
+  }
+  if (!searchTasks.length) return ui;
+
+  const results = await Promise.all(
+    searchTasks.map(({ query }) =>
+      PresentationGenerationApi.searchIcons({ query, limit: 1 }).catch(() => [] as string[]),
+    ),
+  );
+
+  const urlByIcon = new Map<Rec, string>();
+  searchTasks.forEach(({ icon }, i) => {
+    const url = results[i]?.[0];
+    if (url) urlByIcon.set(icon, url);
+  });
+  if (!urlByIcon.size) return ui;
+
+  // fillLayout mutates elements in place (setText etc.) rather than cloning,
+  // so the node references captured above are still the exact objects that
+  // will be encountered here — safe to match by identity.
+  function patch(node: Rec): Rec {
+    if (isPlaceholderIcon(node) && urlByIcon.has(node)) {
+      return { ...node, data: urlByIcon.get(node) };
+    }
+    let next = node;
+    if (Array.isArray(next.children)) {
+      next = { ...next, children: (next.children as Rec[]).map(patch) };
+    }
+    if (next.child && typeof next.child === "object") {
+      next = { ...next, child: patch(next.child as Rec) };
+    }
+    return next;
+  }
+
+  return {
+    ...ui,
+    components: components.map((component) => ({
+      ...component,
+      elements: ((component.elements as Rec[]) ?? []).map(patch),
+    })),
+  };
+}
+
+function slideTitleForIconFallback(slide: AIPPTSlide): string {
+  if (slide.type === "cover" || slide.type === "transition" || slide.type === "content") {
+    return slide.data.title;
+  }
+  return "presentation";
+}
+
 /** High-level entry point: pick a layout for this slide's role and fill it. */
 export async function mapAIPPTSlideToTemplateUi(
   slide: AIPPTSlide,
@@ -382,5 +492,7 @@ export async function mapAIPPTSlideToTemplateUi(
   await picker.ensureLoaded();
   const layout = picker.pickFor(slide.type);
   if (!layout) return null;
-  return fillLayout(layout, slide);
+  const filled = fillLayout(layout, slide);
+  filled.ui = await fillPlaceholderIcons(filled.ui, slideTitleForIconFallback(slide));
+  return filled;
 }

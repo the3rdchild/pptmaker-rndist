@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { useDispatch, useSelector } from "react-redux";
 import {
   Check,
+  ChevronDown,
   Download,
   LayoutGrid,
   Loader2,
@@ -46,11 +47,22 @@ import type { PresentationData, SlideData } from "@/store/presentationGeneration
 import { useSessionStore } from "@/store/session.store";
 import { getDeck, saveDeck, streamAipptDeck, generateImage, type AgentAction } from "@/lib/api";
 import { normalizeBackendAssetUrls } from "@/utils/api";
-import { Toaster } from "@/components/ui/sonner";
+import { Toaster, notify } from "@/components/ui/sonner";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import SlideSidebar from "@/components/editor-react/slide-sidebar";
 import InsertToolbar from "@/components/editor-react/insert-toolbar";
 import PresentMode from "@/components/editor-react/present-mode";
 import { exportToPptx } from "@/components/editor-react/export-pptx";
+import { buildPdfFromSlideImages } from "@/components/editor-react/export-pdf";
+import {
+  PdfExportCapture,
+  type PdfExportSlide,
+} from "@/components/editor-react/PdfExportCapture";
 import AIAssistantPanel from "@/components/editor-react/ai-assistant-panel";
 import FindReplacePanel from "@/components/editor-react/find-replace-panel";
 import SlideSorter from "@/components/editor-react/slide-sorter";
@@ -121,6 +133,9 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
   const [saveState, setSaveState] = useState<
     "idle" | "pending" | "saving" | "saved"
   >("idle");
+  const [pdfExportSlides, setPdfExportSlides] = useState<
+    PdfExportSlide[] | null
+  >(null);
   const [showAiPanel, setShowAiPanel] = useState(false);
   const [showFindReplace, setShowFindReplace] = useState(false);
   const [showSlideSorter, setShowSlideSorter] = useState(false);
@@ -354,6 +369,40 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
     a.click();
     URL.revokeObjectURL(url);
   };
+  // Kicks off PdfExportCapture (mounted below in the JSX tree), which
+  // renders every slide off-screen at full resolution and reports back via
+  // handlePdfCaptured once every slide's Stage is ready to rasterize.
+  const handleExportPdf = () => {
+    if (slides.length === 0) return;
+    notify.loading("Preparing PDF…", undefined, { id: "pdf-export" });
+    setPdfExportSlides(slides.map((slide) => ({ ui: slide.ui })));
+  };
+  const handlePdfCaptured = useCallback(
+    async (dataUrls: string[] | null) => {
+      setPdfExportSlides(null);
+      if (!dataUrls) {
+        notify.error("Couldn't export PDF", "Try again in a moment.", {
+          id: "pdf-export",
+        });
+        return;
+      }
+      try {
+        const blob = await buildPdfFromSlideImages(dataUrls);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${presentationData?.title ?? "presentation"}.pdf`;
+        a.click();
+        URL.revokeObjectURL(url);
+        notify.dismiss("pdf-export");
+      } catch {
+        notify.error("Couldn't export PDF", "Try again in a moment.", {
+          id: "pdf-export",
+        });
+      }
+    },
+    [presentationData?.title],
+  );
   const handleInsert = (ui: Record<string, unknown>) => {
     dispatch(updateSlideUi({ index: safeActive, ui }));
   };
@@ -734,18 +783,40 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
             Present
           </ToolButton>
           <ToolDivider className="mx-1" />
-          <ToolButton
-            id="onboarding-export"
-            variant="accent"
-            onClick={handleExport}
-            title="Export to PPTX"
-            className="px-3"
-          >
-            <Download className="h-3.5 w-3.5" />
-            Export
-          </ToolButton>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <ToolButton
+                id="onboarding-export"
+                variant="accent"
+                title="Export"
+                className="px-3"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export
+                <ChevronDown className="h-3 w-3" />
+              </ToolButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-primary)]"
+            >
+              <DropdownMenuItem
+                onSelect={handleExport}
+                className="focus:bg-[var(--bg-elevated)] focus:text-[var(--text-primary)]"
+              >
+                Export to PPTX
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={handleExportPdf}
+                className="focus:bg-[var(--bg-elevated)] focus:text-[var(--text-primary)]"
+              >
+                Export to PDF
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
+      <PdfExportCapture slides={pdfExportSlides} onCapture={handlePdfCaptured} />
       <div className="flex flex-1 overflow-hidden">
         <div id="onboarding-sidebar" className="flex h-full shrink-0">
           <SlideSidebar

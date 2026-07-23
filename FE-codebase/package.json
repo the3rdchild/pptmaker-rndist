@@ -28,6 +28,7 @@
     "clsx": "^2.1.1",
     "driver.js": "^1.8.0",
     "file-saver": "^2.0.5",
+    "jspdf": "^4.2.1",
     "konva": "^10.3.0",
     "lucide-react": "^0.469.0",
     "mathjax-full": "^3.2.2",

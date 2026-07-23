@@ -26,3 +26,12 @@ export function loadKonvaImage(src: string): Promise<HTMLImageElement | null> {
   imageCache.set(src, promise);
   return promise;
 }
+
+/** Every image/icon/formula element funnels through loadKonvaImage above, so
+ * this is the one place a caller (e.g. PDF export, capturing a Stage right
+ * after mounting it) can wait for "everything that's currently loading has
+ * settled" without threading a readiness callback through every element
+ * type individually. */
+export function pendingKonvaImageLoads(): Promise<HTMLImageElement | null>[] {
+  return Array.from(imageCache.values());
+}

@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
   type ChangeEvent as ReactChangeEvent,
+  type Ref,
 } from "react";
 import type Konva from "konva";
 import { useDispatch } from "react-redux";
@@ -271,6 +272,10 @@ type TemplateV2KonvaSlideProps = {
   slideIndex: number;
   renderIndex?: number;
   fonts?: unknown;
+  /** Exposes the underlying Konva Stage so a caller can rasterize it (e.g.
+   * PDF export's stage.toDataURL()) without the component otherwise needing
+   * to know its consumer cares about that. */
+  stageRef?: Ref<Konva.Stage>;
 };
 
 function TemplateV2KonvaSlideComponent({
@@ -281,6 +286,7 @@ function TemplateV2KonvaSlideComponent({
   slideIndex,
   renderIndex,
   fonts,
+  stageRef,
 }: TemplateV2KonvaSlideProps) {
   const dispatch = useDispatch();
   const surfaceId = useId();
@@ -2422,6 +2428,7 @@ function TemplateV2KonvaSlideComponent({
         />
       ) : null}
       <Stage
+        ref={stageRef}
         width={STAGE_WIDTH}
         height={STAGE_HEIGHT}
         onMouseDown={handleStageMouseDown}

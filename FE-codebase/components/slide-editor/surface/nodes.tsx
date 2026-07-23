@@ -697,6 +697,11 @@ function RawElementNode({
         }
     : null;
   const centerOrigin = shouldUseCenterOrigin(element);
+  // An element is independently movable when it carries its own absolute
+  // position (i.e. NOT positioned by a flex/grid flow engine). Flow-managed
+  // children can't be dragged — the engine would just reposition them on the
+  // next layout pass — so those still move only as part of their component.
+  const elementDraggable = isEditMode && !layoutManaged;
   const handleTableCellSelect = useCallback(
     (rowIndex: number, colIndex: number, modifiers?: TableSelectModifiers) => {
       onTableCellSelect(selection, rowIndex, colIndex, modifiers);
@@ -738,27 +743,51 @@ function RawElementNode({
       clipHeight={clipChildren ? box.height : undefined}
       rotation={readNumber(element.rotation) ?? 0}
       opacity={readNumber(element.opacity) ?? 1}
+      draggable={elementDraggable}
+      onDragStart={(event) => {
+        event.cancelBubble = true;
+        onSelect(selection);
+      }}
+      onDragMove={(event) => {
+        event.cancelBubble = true;
+      }}
+      onDragEnd={(event) => {
+        event.cancelBubble = true;
+        const node = groupRef.current;
+        if (!node) return;
+        onElementChange(selection, (current) => ({
+          ...current,
+          position: positionFromNodeInParent(node, parentBox, box),
+          // Pin the element to its dragged spot so a subsequent flow-layout
+          // pass doesn't yank it back to the engine-computed coordinates.
+          __presenton_manual_position: true,
+        }));
+      }}
       onMouseDown={(event) => {
         if (!isEditMode) return;
-        event.cancelBubble = false;
+        // When this element is independently draggable, swallow the mousedown
+        // so Konva begins an ELEMENT drag instead of bubbling into the parent
+        // component's drag. For non-draggable (layout-managed) children, let
+        // it bubble so dragging still moves the whole component.
+        if (elementDraggable) event.cancelBubble = true;
       }}
       onTouchStart={(event) => {
         if (!isEditMode) return;
-        event.cancelBubble = false;
+        if (elementDraggable) event.cancelBubble = true;
       }}
       onClick={(event) => {
         if (!isEditMode) return;
-        if (componentIndex === ROOT_ELEMENTS_COMPONENT_INDEX) {
-          event.cancelBubble = true;
-          onSelect(selection);
-        }
+        // A single click selects the element directly — no need to
+        // double-click to "enter" the component first. cancelBubble keeps
+        // the parent component's onMouseDown from re-selecting the whole
+        // group on top of this element selection.
+        event.cancelBubble = true;
+        onSelect(selection);
       }}
       onTap={(event) => {
         if (!isEditMode) return;
-        if (componentIndex === ROOT_ELEMENTS_COMPONENT_INDEX) {
-          event.cancelBubble = true;
-          onSelect(selection);
-        }
+        event.cancelBubble = true;
+        onSelect(selection);
       }}
       onDblClick={(event) => {
         if (!isEditMode) return;

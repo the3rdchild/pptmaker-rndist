@@ -91,6 +91,7 @@ import {
   insertTableIntoSlide,
   insertImagePlaceholderIntoSlide,
   patchInsertedImage,
+  moveElementInSlide,
 } from "@/components/editor-react/agent-dispatch";
 import type { BackgroundStyle } from "@/components/slide-editor/surface/SlideBackground";
 
@@ -771,6 +772,19 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
         });
 
         return `Generating an image on slide ${slideIndex}…`;
+      }
+      case "move_element": {
+        const slideIndex = Number(action.args.slide_index);
+        const slide = currentSlides[slideIndex];
+        if (!slide || !slide.ui) return `Slide ${slideIndex} doesn't exist.`;
+        const elementIndex = Number(action.args.element_index);
+        const anchor = typeof action.args.position === "string" ? action.args.position : undefined;
+        const x = typeof action.args.x === "number" ? action.args.x : undefined;
+        const y = typeof action.args.y === "number" ? action.args.y : undefined;
+        const newUi = moveElementInSlide(slide.ui as Record<string, unknown>, elementIndex, { anchor, x, y });
+        if (!newUi) return `Couldn't move element ${elementIndex} on slide ${slideIndex}.`;
+        dispatch(updateSlideUi({ index: slideIndex, ui: newUi }));
+        return `Moved the element on slide ${slideIndex}.`;
       }
       default:
         return `Unknown action: ${action.tool}`;

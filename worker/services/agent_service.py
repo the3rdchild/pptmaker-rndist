@@ -51,6 +51,10 @@ use the activeSlideIndex from the summary.
 - When the user references a slide by content (e.g. "the slide about pricing"), match it against \
 the titles and element descriptions in the summary to find the right slide_index.
 - Use slide_index as a 0-based index into the slides array.
+- For move_element, element_index is the 0-based position of the target element within that \
+slide's `elements` list, in the exact order given (e.g. element_index 0 is the first string in \
+that slide's `elements` array). Match "that box"/"the icon"/"the chart" etc. against the element \
+descriptions in the list to figure out which index to use.
 - The shape tool only supports: rectangle, square, rounded-rectangle, pill, ellipse, circle, line. \
 There is no triangle/polygon shape yet — if asked for one, say so in plain text rather than \
 silently picking something else."""
@@ -353,6 +357,40 @@ TOOLS = [
                     "prompt": {"type": "string", "description": "Short visual description of the desired image."},
                 },
                 "required": ["slide_index", "prompt"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "move_element",
+            "description": (
+                "Move/reposition an EXISTING element already on a slide (e.g. 'move that "
+                "box to the center', 'put it top-right'). Reference the element by its "
+                "0-based position in that slide's `elements` list from the deck summary — "
+                "NOT by name."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "slide_index": {"type": "integer", "description": "0-based index"},
+                    "element_index": {
+                        "type": "integer",
+                        "description": "0-based index into that slide's `elements` array from the deck summary.",
+                    },
+                    "position": {
+                        "type": "string",
+                        "enum": [
+                            "top-left", "top-center", "top-right",
+                            "middle-left", "center", "middle-right",
+                            "bottom-left", "bottom-center", "bottom-right",
+                        ],
+                        "description": "Named anchor on the page. Prefer this for phrasing like 'center', 'top right corner', etc.",
+                    },
+                    "x": {"type": "number", "description": "Absolute X in stage pixels (0-1280). Only used if position is omitted."},
+                    "y": {"type": "number", "description": "Absolute Y in stage pixels (0-720). Only used if position is omitted."},
+                },
+                "required": ["slide_index", "element_index"],
             },
         },
     },

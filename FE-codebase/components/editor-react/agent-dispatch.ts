@@ -26,6 +26,7 @@ import { applyBackgroundStyle } from "@/components/editor-react/background-panel
 import type { BackgroundStyle } from "@/components/slide-editor/surface/SlideBackground";
 import { PresentationGenerationApi } from "@/app/(presentation-generator)/services/api/presentation-generation";
 import type { RawUi } from "@/components/slide-editor/model/core";
+import { setComponentPositionsInUi, componentBox } from "@/components/slide-editor/model/model";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -338,4 +339,70 @@ export function patchInsertedImage(
     };
   });
   return { ...ui, components: nextComponents };
+}
+
+// ── move_element: reposition an existing component on the slide. Dragging on
+// canvas always writes to the wrapping COMPONENT's position/size (confirmed
+// via TemplateV2KonvaSlide.tsx's handleComponentDragEnd), never the inner
+// element's own position — so this mutates the same field a manual drag
+// would, via the same setComponentPositionsInUi helper. `element_index` is a
+// flat 0-based index matching ai-assistant-panel.tsx's buildDeckSummary(),
+// which walks `components -> component.elements` with no recursion — this
+// resolves that same flat index back to which component it falls in. ──
+
+const ANCHOR_POSITIONS = [
+  "top-left", "top-center", "top-right",
+  "middle-left", "center", "middle-right",
+  "bottom-left", "bottom-center", "bottom-right",
+] as const;
+export type AnchorPosition = (typeof ANCHOR_POSITIONS)[number];
+
+const ANCHOR_MARGIN = 24;
+
+function anchorToXY(anchor: string, size: { width: number; height: number }): { x: number; y: number } | null {
+  if (!ANCHOR_POSITIONS.includes(anchor as AnchorPosition)) return null;
+  const [vertical, horizontal] = anchor === "center" ? ["middle", "center"] : anchor.split("-");
+  const x =
+    horizontal === "left" ? ANCHOR_MARGIN
+    : horizontal === "right" ? EDITOR_STAGE_WIDTH - size.width - ANCHOR_MARGIN
+    : (EDITOR_STAGE_WIDTH - size.width) / 2;
+  const y =
+    vertical === "top" ? ANCHOR_MARGIN
+    : vertical === "bottom" ? EDITOR_STAGE_HEIGHT - size.height - ANCHOR_MARGIN
+    : (EDITOR_STAGE_HEIGHT - size.height) / 2;
+  return { x, y };
+}
+
+function resolveComponentIndexForFlatElementIndex(ui: AnyRecord, flatIndex: number): number | null {
+  const components = Array.isArray(ui.components) ? (ui.components as AnyRecord[]) : [];
+  let counter = 0;
+  for (let i = 0; i < components.length; i += 1) {
+    const elements = Array.isArray(components[i].elements) ? (components[i].elements as AnyRecord[]) : [];
+    for (let j = 0; j < elements.length; j += 1) {
+      if (counter === flatIndex) return i;
+      counter += 1;
+    }
+  }
+  return null;
+}
+
+export function moveElementInSlide(
+  ui: AnyRecord,
+  flatElementIndex: number,
+  target: { anchor?: string; x?: number; y?: number },
+): AnyRecord | null {
+  const componentIndex = resolveComponentIndexForFlatElementIndex(ui, flatElementIndex);
+  if (componentIndex === null) return null;
+
+  const components = Array.isArray(ui.components) ? (ui.components as AnyRecord[]) : [];
+  const box = componentBox(components[componentIndex] as never);
+
+  const position = target.anchor
+    ? anchorToXY(target.anchor, box)
+    : typeof target.x === "number" && typeof target.y === "number"
+      ? { x: target.x, y: target.y }
+      : null;
+  if (!position) return null;
+
+  return setComponentPositionsInUi(ui as RawUi, [{ componentIndex, position }]) as AnyRecord;
 }

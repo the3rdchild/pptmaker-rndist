@@ -8,6 +8,7 @@ import {
   Check,
   ChevronDown,
   Download,
+  FilePlus2,
   LayoutGrid,
   Loader2,
   Lock,
@@ -150,6 +151,9 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
     language?: string;
   } | null>(null);
   const [presenting, setPresenting] = useState(false);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const titleInputRef = useRef<HTMLInputElement>(null);
   const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false });
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -163,6 +167,24 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
   const resetView = () => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
+  };
+
+  const startEditingTitle = () => {
+    setTitleDraft(presentationData?.title ?? "Untitled Presentation");
+    setIsEditingTitle(true);
+    // Focus+select after the input actually mounts (it's conditionally
+    // rendered), not on this same synchronous pass.
+    requestAnimationFrame(() => {
+      titleInputRef.current?.focus();
+      titleInputRef.current?.select();
+    });
+  };
+
+  const commitTitle = () => {
+    setIsEditingTitle(false);
+    const next = titleDraft.trim();
+    if (!next || !presentationData || next === presentationData.title) return;
+    dispatch(setPresentationData({ ...presentationData, title: next }));
   };
 
   // The active slide's TemplateV2KonvaSlide surface owns the actual undo/redo
@@ -950,9 +972,40 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
           <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[var(--accent)] to-[var(--accent-light)] shadow-[var(--shadow-soft)]">
             <Sparkles className="h-3.5 w-3.5 text-white" />
           </div>
-          <h1 className="truncate text-sm font-medium text-[var(--text-primary)]">
-            {presentationData?.title ?? "Untitled Presentation"}
-          </h1>
+          {isEditingTitle ? (
+            <input
+              ref={titleInputRef}
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onBlur={commitTitle}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commitTitle();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  setIsEditingTitle(false);
+                }
+              }}
+              className="min-w-0 max-w-[240px] rounded-md border border-[var(--accent)]/50 bg-[var(--bg-surface)] px-1.5 py-0.5 text-sm font-medium text-[var(--text-primary)] outline-none"
+            />
+          ) : (
+            <h1
+              onDoubleClick={startEditingTitle}
+              title="Double-click to rename"
+              className="min-w-0 shrink cursor-text truncate text-sm font-medium text-[var(--text-primary)]"
+            >
+              {presentationData?.title ?? "Untitled Presentation"}
+            </h1>
+          )}
+          <button
+            onClick={() => window.open("/editor-react", "_blank")}
+            title="Create new design"
+            className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
+          >
+            <FilePlus2 className="h-3.5 w-3.5" />
+            Create new design
+          </button>
           {saveState !== "idle" && (
             <span
               className={cn(

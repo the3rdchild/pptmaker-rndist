@@ -139,8 +139,14 @@ export class DeckLayoutPicker {
 
 type TextLeaf = { el: Rec; fontSize: number };
 
-/** One "item slot" is a repeated child of a grid/flex (a card, a row, …). */
-type ItemSlot = { leaves: TextLeaf[] };
+/** One "item slot" is a repeated child of a grid/flex (a card, a row, …).
+ * `remove()` splices this slot's own card out of its parent grid/flex's
+ * `children` array (which flowLayout.ts sizes/positions purely from
+ * `children.length`, so removing a card reflows the rest instead of leaving
+ * a gap) — used when there's no AI content to put in it, instead of either
+ * duplicating another card's text into it or leaving the template's literal
+ * "Lorem ipsum" sample copy on screen. */
+type ItemSlot = { leaves: TextLeaf[]; remove: () => void };
 
 function fontSizeOf(el: Rec): number {
   const font = el.font as Rec | undefined;
@@ -186,7 +192,15 @@ function walkElement(el: Rec, global: TextLeaf[], slots: ItemSlot[]): void {
     for (const child of children) {
       const leaves: TextLeaf[] = [];
       collectAllTextLeaves(child, leaves);
-      if (leaves.length) slots.push({ leaves });
+      if (leaves.length) {
+        slots.push({
+          leaves,
+          remove: () => {
+            const idx = children.indexOf(child);
+            if (idx !== -1) children.splice(idx, 1);
+          },
+        });
+      }
     }
     return;
   }
@@ -301,6 +315,26 @@ function fillGlobalText(global: TextLeaf[], values: string[]): void {
  * AIPPTSlide's content. Returns the Ui record ({id, components}) ready to
  * assign to a slide, plus the hero image slot (if any) for the caller to
  * fill asynchronously with a generated image. */
+/** Fills each slot 1:1 with an item, in document order. When there are FEWER
+ * items than slots, the surplus slots are REMOVED (via ItemSlot.remove())
+ * instead of wrapping around and duplicating an earlier item's text into them
+ * — the old `items[i % items.length]` behavior visibly repeated the same card
+ * twice whenever the AI supplied fewer items than the picked layout has card
+ * slots. When there are no items at all (cover/transition/end slide types
+ * never carry an `items` array, yet several layouts' cover-bucketed variants
+ * still contain a decorative card grid), every slot is removed — leaving the
+ * template's literal "Lorem ipsum" sample copy on screen is worse than a
+ * slightly smaller layout. Extra items beyond the slot count are simply
+ * dropped (unchanged from previous behavior). */
+function fillOrTrimSlots(allSlots: ItemSlot[], items: { title: string; text: string }[]): void {
+  if (items.length >= allSlots.length) {
+    allSlots.forEach((slot, i) => fillItemSlot(slot, items[i]));
+    return;
+  }
+  for (let i = allSlots.length - 1; i >= items.length; i--) allSlots[i].remove();
+  allSlots.slice(0, items.length).forEach((slot, i) => fillItemSlot(slot, items[i]));
+}
+
 export function fillLayout(layout: TemplateLayout, slide: AIPPTSlide): FilledSlide {
   const components = JSON.parse(JSON.stringify(layout.components)) as Rec[];
 
@@ -316,6 +350,11 @@ export function fillLayout(layout: TemplateLayout, slide: AIPPTSlide): FilledSli
     case "cover":
     case "transition":
       fillGlobalText(allGlobal, [slide.data.title, slide.data.text]);
+      // Cover/transition slides never carry an items array, so any card grid
+      // a cover-bucketed layout happens to contain (e.g. a decorative
+      // highlight row under the hero title) can never be filled — remove it
+      // rather than leave the template's literal sample copy on screen.
+      fillOrTrimSlots(allSlots, []);
       break;
     case "content": {
       fillGlobalText(allGlobal, [slide.data.title]);
@@ -336,21 +375,18 @@ export function fillLayout(layout: TemplateLayout, slide: AIPPTSlide): FilledSli
         }
       }
 
-      if (items.length && allSlots.length) {
-        allSlots.forEach((slot, i) => fillItemSlot(slot, items[i % items.length]));
-      }
+      fillOrTrimSlots(allSlots, items);
       break;
     }
     case "contents": {
       const items = slide.data.items.map((title) => ({ title, text: "" }));
       fillGlobalText(allGlobal, ["Contents"]);
-      if (items.length && allSlots.length) {
-        allSlots.forEach((slot, i) => fillItemSlot(slot, items[i % items.length]));
-      }
+      fillOrTrimSlots(allSlots, items);
       break;
     }
     case "end":
       fillGlobalText(allGlobal, ["Thank You"]);
+      fillOrTrimSlots(allSlots, []);
       break;
   }
 

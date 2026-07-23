@@ -215,8 +215,11 @@ export default function PresentMode({
         <p className="text-zinc-500">Empty slide</p>
       )}
 
-      {/* Controls */}
-      <div className="absolute right-4 top-4 flex items-center gap-2">
+      {/* Controls — explicit z-index since TemplateV2KonvaSlide renders its
+          own floating toolbars/overlays up to z-[10001] internally, which
+          would otherwise sit on top of these (they're plain DOM siblings,
+          not contained by a stacking context that would cap that). */}
+      <div className="absolute right-4 top-4 z-[10010] flex items-center gap-2">
         {deckId ? (
           <button
             className="rounded-full border border-white/15 bg-white/10 p-2 text-white/90 backdrop-blur transition-colors hover:bg-white/20 hover:text-white"
@@ -234,7 +237,7 @@ export default function PresentMode({
           <X size={18} />
         </button>
       </div>
-      <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-white backdrop-blur">
+      <div className="absolute bottom-5 left-1/2 z-[10010] flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-white backdrop-blur">
         <button
           className="rounded-full p-1 transition-colors hover:bg-white/15 disabled:opacity-30 disabled:hover:bg-transparent"
           onClick={prev}
@@ -257,7 +260,7 @@ export default function PresentMode({
       </div>
 
       {/* Progress bar */}
-      <div className="absolute inset-x-0 bottom-0 h-0.5 bg-white/10">
+      <div className="absolute inset-x-0 bottom-0 z-[10010] h-0.5 bg-white/10">
         <div
           className="h-full bg-[var(--accent)] transition-[width] duration-300"
           style={{ width: `${((position + 1) / Math.max(1, total)) * 100}%` }}

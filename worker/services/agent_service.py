@@ -27,8 +27,19 @@ You do NOT write slide layouts, HTML, or raw content placement yourself. You onl
 tool to call and supply the semantic content (text, a font name, a color). All visual/layout \
 decisions are handled deterministically by the application after your tool call.
 
-If the request doesn't match any tool, or you need clarification, just reply with plain text \
-instead of calling a tool.
+Be decisive. Prefer calling a tool with a reasonable default over asking a clarifying question — \
+every insert/style choice is easy for the user to undo or tweak afterward, so a good guess beats \
+a round of back-and-forth. Only ask a plain-text clarifying question when the request is genuinely \
+ambiguous in a way no default could resolve (e.g. which of several matching slides they mean), and \
+even then ask AT MOST ONE short question before falling back to your best guess. If the request \
+doesn't match any tool at all, reply with plain text instead of calling a tool.
+
+You will be given the recent conversation history — USE IT. If your previous turn asked a \
+clarifying question, the user's next message is almost always the answer to it, not a new, \
+unrelated request — resolve short/referential replies ("the second one", "yes", "rectangle then", \
+"you decide") against what you just asked. If the user says things like "terserah", "you decide", \
+"accept semua saran", or otherwise hands you the decision, immediately call the best-fit tool \
+with sensible defaults instead of asking what they want — that IS their answer.
 
 You will be given a deck summary that includes: the active slide index (activeSlideIndex), and \
 for each slide its index, whether it's the active one (isActive), title, element count, and a \
@@ -39,7 +50,10 @@ IMPORTANT context rules:
 use the activeSlideIndex from the summary.
 - When the user references a slide by content (e.g. "the slide about pricing"), match it against \
 the titles and element descriptions in the summary to find the right slide_index.
-- Use slide_index as a 0-based index into the slides array."""
+- Use slide_index as a 0-based index into the slides array.
+- The shape tool only supports: rectangle, square, rounded-rectangle, pill, ellipse, circle, line. \
+There is no triangle/polygon shape yet — if asked for one, say so in plain text rather than \
+silently picking something else."""
 
 TOOLS = [
     {
@@ -385,14 +399,20 @@ def process(ctx: dict):
     params = ctx["params"]
     user_message = params.get("message", "")
     deck_summary = params.get("deckSummary")
+    history = params.get("history") or []
 
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    for turn in history:
+        role = turn.get("role")
+        content = turn.get("content")
+        if role in ("user", "assistant") and content:
+            messages.append({"role": role, "content": content})
+    messages.append(
         {
             "role": "user",
             "content": f"Current deck: {json.dumps(deck_summary)}\n\nUser request: {user_message}",
-        },
-    ]
+        }
+    )
 
     logger.info("[agent_service] job_id=%s message=%r", ctx["job_id"], user_message[:120])
 

@@ -67,6 +67,27 @@ function describeElement(el: Record<string, unknown>): string {
   }
 }
 
+// Last N chat turns, flattened into plain {role, content} pairs the worker
+// forwards straight into the LLM's messages array — without this the model
+// has no memory of its own clarifying questions or what the user just
+// answered, and re-asks the same question forever.
+const MAX_HISTORY_MESSAGES = 12;
+
+function buildHistory(messages: ChatMessage[]): { role: "user" | "assistant"; content: string }[] {
+  const turns: { role: "user" | "assistant"; content: string }[] = [];
+  for (const m of messages) {
+    if (m.kind === "error") continue;
+    if (m.role === "user") {
+      turns.push({ role: "user", content: m.text });
+    } else if (m.kind === "text") {
+      turns.push({ role: "assistant", content: m.text });
+    } else if (m.kind === "action") {
+      turns.push({ role: "assistant", content: `[called ${m.tool}(${m.argsSummary})] ${m.text}` });
+    }
+  }
+  return turns.slice(-MAX_HISTORY_MESSAGES);
+}
+
 function buildDeckSummary(slides: SlideData[], activeIndex: number) {
   return {
     activeSlideIndex: activeIndex,
@@ -150,13 +171,14 @@ export default function AIAssistantPanel({ slides, activeIndex, onAction, onClos
   const send = async (text?: string) => {
     const msg = (text ?? input).trim();
     if (!msg || !token || busy) return;
+    const history = buildHistory(messages);
     setInput("");
     setMessages((m) => [...m, { role: "user", kind: "text", text: msg }]);
     setBusy(true);
 
     let rawRes: Awaited<ReturnType<typeof streamAgent>>;
     try {
-      rawRes = await streamAgent(token, { message: msg, deckSummary: buildDeckSummary(slides, activeIndex) });
+      rawRes = await streamAgent(token, { message: msg, deckSummary: buildDeckSummary(slides, activeIndex), history });
     } catch {
       setBusy(false);
       setMessages((m) => [...m, { role: "assistant", kind: "error", text: "Sorry, I couldn't reach the server. Please try again." }]);

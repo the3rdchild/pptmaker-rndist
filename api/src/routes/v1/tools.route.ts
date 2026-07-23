@@ -29,6 +29,14 @@ const imageSchema = z.object({
 })
 const agentSchema = z.object({
 	message: z.string(),
+	history: z
+		.array(
+			z.object({
+				role: z.enum(['user', 'assistant']),
+				content: z.string(),
+			}),
+		)
+		.optional(),
 	deckSummary: z.object({
 		activeSlideIndex: z.number().optional(),
 		slideCount: z.number(),
@@ -267,6 +275,7 @@ tools.post('/agent', async (c) => {
 			params: {
 				type: 'agent',
 				message: parsed.data.message,
+				history: parsed.data.history,
 				deckSummary: parsed.data.deckSummary,
 				stream_mode: 'raw',
 			},
@@ -276,6 +285,7 @@ tools.post('/agent', async (c) => {
 			session_id: sessionId,
 			type: 'agent',
 			message: parsed.data.message,
+			history: parsed.data.history,
 			deckSummary: parsed.data.deckSummary,
 			stream_mode: 'raw',
 		})

@@ -115,7 +115,11 @@ export type AgentAction = { tool: string; args: Record<string, unknown> }
 
 export async function streamAgent(
 	token: string,
-	body: { message: string; deckSummary?: unknown },
+	body: {
+		message: string
+		deckSummary?: unknown
+		history?: { role: 'user' | 'assistant'; content: string }[]
+	},
 ): Promise<{ state: -1; message: string } | Response> {
 	const res = await fetch(`${API_BASE}/api/v1/tools/agent`, {
 		method: 'POST',

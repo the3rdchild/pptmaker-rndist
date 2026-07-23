@@ -572,6 +572,11 @@ export function createFormulaInsertElements(kind?: string): SlideElement[] {
   return latex ? [makeFormulaElement(latex)] : [];
 }
 
+export function createCustomFormulaInsertElements(latex: string): SlideElement[] {
+  const trimmed = latex.trim();
+  return trimmed ? [makeFormulaElement(trimmed)] : [];
+}
+
 function makeImageElement({
   x,
   y,

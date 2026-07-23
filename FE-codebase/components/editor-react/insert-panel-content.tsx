@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import {
   BarChart3,
@@ -32,10 +32,16 @@ import {
 } from "@/components/editor-react/element-catalog";
 import {
   createChartInsertElements,
+  createCustomFormulaInsertElements,
   createFormulaInsertElements,
   createTableInsertElements,
   createTextInsertElements,
 } from "@/components/slide-editor/insert/insert-elements";
+import {
+  latexToSvg,
+  sizedColoredSvg,
+} from "@/components/slide-editor/formula/latex-to-svg";
+import { svgToDataUri } from "@/components/slide-editor/surface/exportAssets";
 import { normalizeBackendAssetUrls, resolveBackendAssetSource } from "@/utils/api";
 import { ImagesApi } from "@/app/(presentation-generator)/services/api/images";
 import {
@@ -464,6 +470,70 @@ const FORMULA_KINDS: { kind: string; label: string }[] = [
   { kind: "euler-identity", label: "Euler's Identity" },
 ];
 
+function FormulaPasteBox({
+  onInsertElements,
+}: {
+  onInsertElements: (elements: SlideElement[]) => void;
+}) {
+  const [latex, setLatex] = useState("");
+  const trimmed = latex.trim();
+  const parsed = useMemo(
+    () => (trimmed ? latexToSvg(trimmed) : null),
+    [trimmed],
+  );
+  const previewSrc = useMemo(() => {
+    if (!parsed) return null;
+    return svgToDataUri(
+      sizedColoredSvg(parsed.svg, parsed.width, parsed.height, "#101323"),
+    );
+  }, [parsed]);
+
+  const handleInsert = () => {
+    if (!trimmed) return;
+    onInsertElements(createCustomFormulaInsertElements(trimmed));
+    setLatex("");
+  };
+
+  return (
+    <div className="mb-3 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-surface)] p-2.5">
+      <label className="mb-1.5 block text-[11px] font-medium text-[var(--text-muted)]">
+        Paste LaTeX code
+      </label>
+      <textarea
+        value={latex}
+        onChange={(event) => setLatex(event.target.value)}
+        placeholder={"e.g. x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}"}
+        rows={2}
+        className="w-full resize-none rounded-md border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+      />
+      {trimmed ? (
+        <div className="mt-2 flex min-h-[44px] items-center justify-center rounded-md bg-white px-2 py-1.5">
+          {previewSrc ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={previewSrc}
+              alt="Formula preview"
+              className="max-h-10 max-w-full object-contain"
+            />
+          ) : (
+            <span className="text-[11px] text-red-500">
+              Couldn&apos;t parse this LaTeX
+            </span>
+          )}
+        </div>
+      ) : null}
+      <button
+        onClick={handleInsert}
+        disabled={!parsed}
+        className="mt-2 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--accent)] text-xs font-medium text-white transition-colors hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <Sigma size={13} />
+        Insert formula
+      </button>
+    </div>
+  );
+}
+
 export function FormulaTab({
   search,
   onInsertElements,
@@ -474,6 +544,9 @@ export function FormulaTab({
   const filtered = FORMULA_KINDS.filter((formula) => matches(formula.label, search));
   return (
     <div className="p-1.5">
+      <div className="px-2.5">
+        <FormulaPasteBox onInsertElements={onInsertElements} />
+      </div>
       <PanelLabel>Formula</PanelLabel>
       <div className="grid grid-cols-2 gap-2.5 px-2.5 pb-2">
         {filtered.map((formula) => (

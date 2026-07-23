@@ -198,20 +198,18 @@ function collectComponent(component: Rec): { global: TextLeaf[]; slots: ItemSlot
   return { global, slots };
 }
 
-function truncate(text: string, maxLength?: number): string {
-  if (!maxLength || text.length <= maxLength) return text;
-  const cut = text.slice(0, Math.max(0, maxLength - 1)).trimEnd();
-  return `${cut}…`;
-}
-
+// NOTE: `el.max_length` is a template-authoring hint for the layout's own
+// sample copy — nothing in the actual render/measure/edit path enforces it
+// (no auto-shrink, no wrap-then-clip), so treating it as a hard character
+// cap here just mid-word-truncates real AI titles ("Cara Menggunakan
+// Python" -> "Cara Meng…") for no benefit. Text is written in full; any
+// overflow renders the same way a manually-typed long title already does.
 function setText(el: Rec, text: string): void {
-  const maxLength = typeof el.max_length === "number" ? el.max_length : undefined;
-  const finalText = truncate(text, maxLength);
   if (el.type === "text-list") {
     const items = (el.items as unknown[][]) ?? [];
     const firstRun = items[0]?.[0] as Rec | undefined;
     const font = (firstRun?.font as Rec) ?? (el.font as Rec) ?? {};
-    el.items = finalText
+    el.items = text
       .split(/\n+/)
       .filter(Boolean)
       .map((line) => [{ text: line, font }]);
@@ -219,7 +217,7 @@ function setText(el: Rec, text: string): void {
   }
   const runs = (el.runs as Rec[]) ?? [];
   const font = (runs[0]?.font as Rec) ?? (el.font as Rec) ?? {};
-  el.runs = [{ text: finalText, font }];
+  el.runs = [{ text, font }];
 }
 
 function fillItemSlot(slot: ItemSlot, item: { title: string; text: string }): void {

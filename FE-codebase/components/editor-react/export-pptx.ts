@@ -1,6 +1,12 @@
 "use client";
 
 import pptxgen from "pptxgenjs";
+import {
+  layoutChildren,
+  childArrayInfo,
+  elementBox,
+} from "@/components/slide-editor/model/model";
+import type { RawElement, Box } from "@/components/slide-editor/model/core";
 
 // Presenton canvas is 1280x720 px. PptxGenJS 16:9 slide = 10x5.625 inches.
 const SLIDE_W_PX = 1280;
@@ -31,6 +37,35 @@ function fillAlpha(fill: unknown): number {
   if (!fill || typeof fill !== "object") return 1;
   const f = fill as Rec;
   return typeof f.opacity === "number" ? f.opacity : 1;
+}
+
+// pptxgenjs has no gradient fill support in this version (checked its type
+// defs directly — ShapeFillProps is solid-color only) — a linear/radial
+// backgroundStyle is approximated as the midpoint blend of its two colors
+// rather than dropping the background entirely.
+function blendHex(a: string, b: string): string {
+  const pa = a.replace("#", "");
+  const pb = b.replace("#", "");
+  if (pa.length !== 6 || pb.length !== 6) return pa || pb;
+  const mix = (i: number) => {
+    const av = parseInt(pa.slice(i, i + 2), 16);
+    const bv = parseInt(pb.slice(i, i + 2), 16);
+    return Math.round((av + bv) / 2).toString(16).padStart(2, "0");
+  };
+  return `${mix(0)}${mix(2)}${mix(4)}`;
+}
+
+function resolveBackgroundHex(ui: Rec): string | undefined {
+  const style = ui.backgroundStyle as Rec | undefined;
+  if (style && typeof style === "object") {
+    const from = typeof style.from === "string" ? style.from.replace("#", "") : undefined;
+    const to = typeof style.to === "string" ? style.to.replace("#", "") : undefined;
+    if (from && to && (style.type === "linear" || style.type === "radial")) {
+      return blendHex(from, to);
+    }
+    if (from) return from;
+  }
+  return fillHex(ui.background);
 }
 
 function runsToText(runs: unknown): { text: string; opts: pptxgen.TextPropsOptions } {
@@ -79,6 +114,48 @@ function alignToPptx(align: unknown): "left" | "center" | "right" | undefined {
   return "left";
 }
 
+// PowerPoint OOXML doesn't reliably support arbitrary SVG image embeds via
+// pptxgenjs (its addImage expects a raster image or a data: URI it can
+// re-encode) — a raw .svg path (icons searched from the local icon index,
+// or template decorative assets) produced a corrupt file PowerPoint could
+// only open by "repairing" and dropping the offending media. Real photos
+// (data: URIs from image generation) are unaffected; only non-data-uri .svg
+// paths are skipped here.
+function isSafeImageSrc(src: string): boolean {
+  if (src.startsWith("data:")) return true;
+  return !src.toLowerCase().endsWith(".svg");
+}
+
+type PositionedElement = { el: Rec; x: number; y: number; w: number; h: number };
+
+/** Walks one element and, if it's a container (children/child), every
+ * descendant too — using the SAME layoutChildren/childArrayInfo engine the
+ * real Konva renderer uses, so grid/flex "card" layouts (the majority of an
+ * AI-generated deck's actual content) get their real computed positions
+ * instead of being silently skipped. `offsetX`/`offsetY` is the parent's
+ * already-accumulated absolute position; `box` is this element's own
+ * position/size relative to that parent. */
+function collectPositionedElements(
+  element: Rec,
+  box: Box,
+  offsetX: number,
+  offsetY: number,
+  out: PositionedElement[],
+): void {
+  const x = offsetX + box.x;
+  const y = offsetY + box.y;
+  out.push({ el: element, x, y, w: box.width, h: box.height });
+
+  const childInfo = childArrayInfo(element as RawElement);
+  if (!childInfo) return;
+
+  const laidOut = layoutChildren(element as RawElement, childInfo.items, box);
+  for (const childLayout of laidOut) {
+    const childBox = childLayout.box ?? elementBox(childLayout.child);
+    collectPositionedElements(childLayout.child as Rec, childBox, x, y, out);
+  }
+}
+
 export function exportToPptx(
   title: string,
   slides: { ui?: Record<string, unknown> | null | undefined }[]
@@ -93,8 +170,7 @@ export function exportToPptx(
     const s = pptx.addSlide();
     if (!ui) continue;
 
-    // Background
-    const bgColor = fillHex(ui.background);
+    const bgColor = resolveBackgroundHex(ui);
     if (bgColor) s.background = { color: bgColor };
 
     const components = asArray(ui.components);
@@ -107,16 +183,14 @@ export function exportToPptx(
       const cy = num(cPos?.y);
       const cw = num(cSize?.width);
       const ch = num(cSize?.height);
-      const elements = asArray(comp.elements);
 
-      for (const el of elements) {
+      const positioned: PositionedElement[] = [];
+      for (const el of asArray(comp.elements)) {
+        collectPositionedElements(el, elementBox(el as RawElement), cx, cy, positioned);
+      }
+
+      for (const { el, x: ex, y: ey, w: ew, h: eh } of positioned) {
         const type = el.type;
-        const ePos = el.position as Rec | undefined;
-        const eSize = el.size as Rec | undefined;
-        const ex = cx + num(ePos?.x);
-        const ey = cy + num(ePos?.y);
-        const ew = num(eSize?.width);
-        const eh = num(eSize?.height);
 
         if (type === "rectangle" || type === "rect") {
           s.addShape("rect" as pptxgen.ShapeType, {
@@ -173,7 +247,7 @@ export function exportToPptx(
           }
         } else if (type === "image") {
           const src = typeof el.data === "string" ? el.data : "";
-          if (src) {
+          if (src && isSafeImageSrc(src)) {
             s.addImage({
               data: src.startsWith("data:") ? src : undefined,
               path: src.startsWith("data:") ? undefined : src,
@@ -186,10 +260,10 @@ export function exportToPptx(
         } else if (type === "line") {
           const start = el.start as Rec | undefined;
           const end = el.end as Rec | undefined;
-          const sx = cx + num(start?.x);
-          const sy = cy + num(start?.y);
-          const tx = cx + num(end?.x);
-          const ty = cy + num(end?.y);
+          const sx = ex + num(start?.x);
+          const sy = ey + num(start?.y);
+          const tx = ex + num(end?.x);
+          const ty = ey + num(end?.y);
           s.addShape("line" as pptxgen.ShapeType, {
             x: Math.min(sx, tx) * PX_TO_IN_X,
             y: Math.min(sy, ty) * PX_TO_IN_Y,
@@ -199,6 +273,9 @@ export function exportToPptx(
           });
         }
       }
+
+      void cw;
+      void ch;
     }
   }
 

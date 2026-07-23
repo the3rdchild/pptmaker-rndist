@@ -44,8 +44,14 @@ import {
   setSlideLocked,
   setSlideHidden,
   setSlideNotes,
+  applyAccentBackground,
 } from "@/store/presentationGeneration";
 import type { SlideData } from "@/store/presentationGeneration";
+import {
+  extractDominantColors,
+  pickVividColor,
+  tintTowardWhite,
+} from "@/components/slide-editor/utils/extract-image-colors";
 import { adaptDeckToPresentation } from "@/components/editor-react/deck-adapt";
 import { useSessionStore } from "@/store/session.store";
 import { getDeck, saveDeck, streamAipptDeck, generateImage, type AgentAction } from "@/lib/api";
@@ -452,6 +458,19 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
         if (!dataUrl) return;
         const patched = patchHeroImage(ui, marker, dataUrl);
         dispatch(updateSlideUi({ index, ui: patched }));
+
+        // Tie the whole deck's background to its own cover photo instead of
+        // leaving every layout's plain white canvas untouched — same idea as
+        // the manual "extract color from image" palette feature, just
+        // auto-applied once per generated deck. Cover slide only (index 0):
+        // one cohesive wash for the deck, not a different tint per slide.
+        if (index === 0) {
+          void extractDominantColors(dataUrl, 5).then((colors) => {
+            const accent = pickVividColor(colors);
+            if (!accent) return;
+            dispatch(applyAccentBackground(tintTowardWhite(accent, 0.88)));
+          });
+        }
       });
     };
 

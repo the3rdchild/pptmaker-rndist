@@ -1,4 +1,5 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
+import { hexLightness } from "@/components/slide-editor/utils/extract-image-colors";
 
 export interface SlideData {
   ui?: Record<string, unknown> | null;
@@ -37,6 +38,44 @@ interface PresentationGenerationState {
 
   function reindex(slides: SlideData[]): SlideData[] {
     return slides.map((s, i) => ({ ...s, index: i }));
+  }
+
+  // Tints every slide's full-stage background rectangle to `color`, but only
+  // if it's currently white/near-white — a cover/section layout that already
+  // ships with an intentionally-colored full-bleed background is left alone.
+  const STAGE_W = 1280;
+  const STAGE_H = 720;
+
+  function withBackgroundTint(
+    ui: Record<string, unknown> | null | undefined,
+    color: string,
+  ): Record<string, unknown> | null | undefined {
+    const components = Array.isArray(ui?.components) ? (ui.components as Record<string, unknown>[]) : null;
+    if (!components) return ui;
+
+    let changedAny = false;
+    const nextComponents = components.map((component) => {
+      const elements = Array.isArray(component.elements)
+        ? (component.elements as Record<string, unknown>[])
+        : [];
+      let changed = false;
+      const nextElements = elements.map((el) => {
+        if (el.type !== "rectangle") return el;
+        const size = el.size as { width?: number; height?: number } | undefined;
+        const isFullStage =
+          size && Math.abs((size.width ?? 0) - STAGE_W) < 4 && Math.abs((size.height ?? 0) - STAGE_H) < 4;
+        if (!isFullStage) return el;
+        const fill = (el.fill as { color?: string } | undefined) ?? {};
+        const currentLightness = fill.color ? hexLightness(fill.color) : 1;
+        if (currentLightness < 0.92) return el;
+        changed = true;
+        return { ...el, fill: { ...fill, color } };
+      });
+      if (!changed) return component;
+      changedAny = true;
+      return { ...component, elements: nextElements };
+    });
+    return changedAny ? { ...ui, components: nextComponents } : ui;
   }
 
   const presentationSlice = createSlice({
@@ -132,6 +171,13 @@ interface PresentationGenerationState {
           state.presentationData.slides[index].notes = notes;
         }
       },
+      applyAccentBackground: (state, action: PayloadAction<string>) => {
+        if (!state.presentationData) return;
+        const color = action.payload;
+        state.presentationData.slides = state.presentationData.slides.map((slide) =>
+          slide.ui ? { ...slide, ui: withBackgroundTint(slide.ui, color) } : slide,
+        );
+      },
     },
   });
 
@@ -145,5 +191,6 @@ interface PresentationGenerationState {
     setSlideLocked,
     setSlideHidden,
     setSlideNotes,
+    applyAccentBackground,
   } = presentationSlice.actions;
 export default presentationSlice.reducer;

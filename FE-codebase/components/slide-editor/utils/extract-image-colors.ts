@@ -76,6 +76,52 @@ function kMeans(points: Rgb[], k: number): { centroid: Rgb; count: number }[] {
   return centroids.map((centroid, i) => ({ centroid, count: counts[i] }));
 }
 
+function hexToRgb(hex: string): Rgb {
+  const clean = hex.replace("#", "");
+  return [
+    parseInt(clean.slice(0, 2), 16),
+    parseInt(clean.slice(2, 4), 16),
+    parseInt(clean.slice(4, 6), 16),
+  ];
+}
+
+// 0 (black) .. 1 (white) — used to skip/guard near-white or near-black colors.
+export function hexLightness(hex: string): number {
+  const [r, g, b] = hexToRgb(hex);
+  return (Math.max(r, g, b) + Math.min(r, g, b)) / 2 / 255;
+}
+
+// Blends a color toward white — amount 0 = unchanged, 1 = pure white. Used to
+// turn a photo's raw dominant color into a soft background wash instead of a
+// full-saturation slab that would fight with existing text/decoration colors.
+export function tintTowardWhite(hex: string, amount: number): string {
+  const [r, g, b] = hexToRgb(hex);
+  const mix = (channel: number) => channel + (255 - channel) * amount;
+  return rgbToHex([mix(r), mix(g), mix(b)]);
+}
+
+// Picks the most saturated color from a dominant-color list — a photo's
+// near-white/near-black pixels (background, shadow) are usually the most
+// "common" cluster but the least useful as an accent color.
+export function pickVividColor(colors: string[]): string | null {
+  let best: string | null = null;
+  let bestSaturation = -1;
+  for (const hex of colors) {
+    const [r, g, b] = hexToRgb(hex);
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const lightness = (max + min) / 2 / 255;
+    if (lightness > 0.92 || lightness < 0.08) continue;
+    const denom = 255 - Math.abs(max + min - 255);
+    const saturation = denom === 0 ? 0 : (max - min) / denom;
+    if (saturation > bestSaturation) {
+      bestSaturation = saturation;
+      best = hex;
+    }
+  }
+  return best;
+}
+
 // Returns up to `count` dominant hex colors, most-common first. Skips
 // near-transparent pixels so a PNG icon's padding doesn't dominate.
 export async function extractDominantColors(src: string, count = 5): Promise<string[]> {

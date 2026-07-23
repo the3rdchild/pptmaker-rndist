@@ -12,6 +12,7 @@ import {
   Table as TableIcon,
   Type,
   Upload as UploadIcon,
+  Video,
   X,
 } from "lucide-react";
 import { PanelLabel, RailTabButton, SearchField } from "@/components/editor-react/ui";
@@ -23,6 +24,7 @@ import {
   ChartTab,
   ElementsTab,
   FormulaTab,
+  MediaTab,
   PlaceholderTab,
   TableTab,
   TemplatesTab,
@@ -59,6 +61,7 @@ type TabId =
   | "chart"
   | "table"
   | "formula"
+  | "media"
   | "uploads"
   | "magic-media"
   | "palette"
@@ -76,6 +79,7 @@ const TABS: {
   { id: "chart", label: "Chart", icon: BarChart3, searchPlaceholder: "Search charts" },
   { id: "table", label: "Table", icon: TableIcon },
   { id: "formula", label: "Formula", icon: Sigma, searchPlaceholder: "Search formulas" },
+  { id: "media", label: "Media", icon: Video, searchPlaceholder: "Paste a media URL" },
   { id: "palette", label: "Palette", icon: Palette },
   { id: "uploads", label: "Uploads", icon: UploadIcon, searchPlaceholder: "Search uploads" },
   { id: "magic-media", label: "Magic Media", icon: Sparkles },
@@ -210,6 +214,7 @@ export default function InsertToolbar({
             {openTab === "formula" && (
               <FormulaTab search={search} onInsertElements={runInsert} />
             )}
+            {openTab === "media" && <MediaTab onInsertElements={runInsert} />}
             {openTab === "palette" && (
               <ColorPalettePanel
                 onApplyColorToSelection={onApplyColorToSelection}

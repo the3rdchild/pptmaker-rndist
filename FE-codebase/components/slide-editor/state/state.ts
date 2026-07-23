@@ -13,6 +13,7 @@ export type TableSlideElement = Extract<SlideElement, { type: "table" }>;
 export type ChartSlideElement = Extract<SlideElement, { type: "chart" }>;
 export type SvgSlideElement = Extract<SlideElement, { type: "svg" }>;
 export type FormulaSlideElement = Extract<SlideElement, { type: "formula" }>;
+export type MediaSlideElement = Extract<SlideElement, { type: "media" }>;
 export type TableCellCoord = { rowIndex: number; colIndex: number };
 
 export type TableCellSelection = {

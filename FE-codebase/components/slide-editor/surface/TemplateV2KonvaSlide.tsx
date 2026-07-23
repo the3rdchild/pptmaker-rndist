@@ -47,6 +47,7 @@ import {
   type TableSlideElement,
 } from "@/components/slide-editor/state/state";
 import { ElementToolbar } from "@/components/slide-editor/toolbar/ElementToolbar";
+import { MediaToolbar } from "@/components/slide-editor/media/MediaToolbar";
 import { ChartDataEditorPopover } from "@/components/slide-editor/charts/ChartEditorContent";
 import { TableInlineEditor } from "@/components/slide-editor/tables/TableInlineEditor";
 import type { TableSelectModifiers } from "@/components/slide-editor/tables/TemplateV2TableElement";
@@ -88,6 +89,7 @@ import {
   getTemplateV2SelectionChartToolbarTarget,
   getTemplateV2SelectionEditorToolbarTarget,
   getTemplateV2SelectionFormulaToolbarTarget,
+  getTemplateV2SelectionMediaToolbarTarget,
   getTemplateV2SelectionTableToolbarTarget,
   getTemplateV2SelectionToolbarTarget,
 } from "@/components/slide-editor/selection/toolbarTarget";
@@ -490,12 +492,40 @@ function TemplateV2KonvaSlideComponent({
       uiDraft,
     ],
   );
-  const editorToolbarTarget = useMemo(
+  const mediaToolbarTarget = useMemo(
     () =>
       layoutToolbarTarget ||
       chartToolbarTarget ||
       tableToolbarTarget ||
       formulaToolbarTarget
+        ? null
+        : getTemplateV2SelectionMediaToolbarTarget({
+            selection,
+            selectedBox,
+            selectedComponent,
+            selectedElement,
+            absoluteBoxForSelection: (targetSelection) =>
+              absoluteBoxForSelection(uiDraft, targetSelection),
+          }),
+    [
+      chartToolbarTarget,
+      formulaToolbarTarget,
+      layoutToolbarTarget,
+      selectedBox,
+      selectedComponent,
+      selectedElement,
+      selection,
+      tableToolbarTarget,
+      uiDraft,
+    ],
+  );
+  const editorToolbarTarget = useMemo(
+    () =>
+      layoutToolbarTarget ||
+      chartToolbarTarget ||
+      tableToolbarTarget ||
+      formulaToolbarTarget ||
+      mediaToolbarTarget
         ? null
         : getTemplateV2SelectionEditorToolbarTarget({
             selection,
@@ -509,6 +539,7 @@ function TemplateV2KonvaSlideComponent({
       chartToolbarTarget,
       formulaToolbarTarget,
       layoutToolbarTarget,
+      mediaToolbarTarget,
       selectedBox,
       selectedComponent,
       selectedElement,
@@ -2557,6 +2588,16 @@ function TemplateV2KonvaSlideComponent({
           onDistribute={distributeSelectedComponents}
         />
       ) : null}
+      {isEditMode && mediaToolbarTarget ? (
+        <MediaToolbar
+          anchorBox={mediaToolbarTarget.box}
+          element={mediaToolbarTarget.element}
+          scale={1}
+          onChange={(next) =>
+            updateElement(mediaToolbarTarget.selection, () => next)
+          }
+        />
+      ) : null}
       {isEditMode &&
         selection?.kind === "element" &&
         selectedElement &&
@@ -2564,6 +2605,7 @@ function TemplateV2KonvaSlideComponent({
         toolbarElement &&
         !chartToolbarTarget &&
         !tableToolbarTarget &&
+        !mediaToolbarTarget &&
         !isTemplateV2LayoutElement(selectedElement) &&
         !isTemplateV2GroupElement(selectedElement) &&
         !isRawIconElement(selectedElement) &&

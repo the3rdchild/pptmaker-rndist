@@ -13,11 +13,13 @@ import {
   List,
   ListOrdered,
   Loader2,
+  Music,
   PieChart,
   Quote,
   Sigma,
   Table as TableIcon,
   Type,
+  Video,
   Wand2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -34,6 +36,7 @@ import {
   createChartInsertElements,
   createCustomFormulaInsertElements,
   createFormulaInsertElements,
+  createMediaInsertElements,
   createTableInsertElements,
   createTextInsertElements,
 } from "@/components/slide-editor/insert/insert-elements";
@@ -561,6 +564,107 @@ export function FormulaTab({
             <Sigma size={22} />
           </GridCard>
         ))}
+      </div>
+    </div>
+  );
+}
+
+export function MediaTab({
+  onInsertElements,
+}: {
+  onInsertElements: (elements: SlideElement[]) => void;
+}) {
+  const [mediaType, setMediaType] = useState<"video" | "audio">("video");
+  const [src, setSrc] = useState("");
+  const [caption, setCaption] = useState("");
+  const trimmed = src.trim();
+
+  const handleInsert = () => {
+    if (!trimmed) return;
+    onInsertElements(
+      createMediaInsertElements(
+        mediaType,
+        trimmed,
+        caption.trim() || undefined,
+      ),
+    );
+    setSrc("");
+    setCaption("");
+  };
+
+  return (
+    <div className="p-1.5">
+      <div className="px-2.5">
+        <div className="mb-3 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-surface)] p-2.5">
+          <div className="mb-2 flex gap-1.5">
+            {(["video", "audio"] as const).map((kind) => (
+              <button
+                key={kind}
+                onClick={() => setMediaType(kind)}
+                className={cn(
+                  "flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg text-xs font-medium transition-colors",
+                  mediaType === kind
+                    ? "bg-[var(--accent)] text-white"
+                    : "border border-[var(--border-strong)] text-[var(--text-muted)] hover:text-[var(--text-primary)]",
+                )}
+              >
+                {kind === "video" ? <Video size={13} /> : <Music size={13} />}
+                {kind === "video" ? "Video" : "Audio"}
+              </button>
+            ))}
+          </div>
+          <label className="mb-1.5 block text-[11px] font-medium text-[var(--text-muted)]">
+            Media URL
+          </label>
+          <input
+            value={src}
+            onChange={(event) => setSrc(event.target.value)}
+            placeholder="https://… or paste a hosted mp4/mp3 link"
+            className="w-full rounded-md border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+          />
+          <label className="mb-1.5 mt-2 block text-[11px] font-medium text-[var(--text-muted)]">
+            Caption (optional)
+          </label>
+          <input
+            value={caption}
+            onChange={(event) => setCaption(event.target.value)}
+            placeholder="Shown beneath the player"
+            className="w-full rounded-md border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+          />
+          <button
+            onClick={handleInsert}
+            disabled={!trimmed}
+            className="mt-2 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--accent)] text-xs font-medium text-white transition-colors hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {mediaType === "video" ? <Video size={13} /> : <Music size={13} />}
+            Insert {mediaType}
+          </button>
+        </div>
+      </div>
+      <PanelLabel>Media</PanelLabel>
+      <div className="grid grid-cols-2 gap-2.5 px-2.5 pb-2">
+        <GridCard
+          label="Video"
+          aspect="wide"
+          onClick={() =>
+            onInsertElements(
+              createMediaInsertElements("video", "https://example.com/clip.mp4"),
+            )
+          }
+        >
+          <Video size={22} />
+        </GridCard>
+        <GridCard
+          label="Audio"
+          aspect="wide"
+          onClick={() =>
+            onInsertElements(
+              createMediaInsertElements("audio", "https://example.com/track.mp3"),
+            )
+          }
+        >
+          <Music size={22} />
+        </GridCard>
       </div>
     </div>
   );

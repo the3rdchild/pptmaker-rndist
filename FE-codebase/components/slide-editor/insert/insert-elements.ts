@@ -706,6 +706,38 @@ export function createCustomFormulaInsertElements(latex: string): SlideElement[]
   return trimmed ? [makeFormulaElement(trimmed)] : [];
 }
 
+const DEFAULT_MEDIA_INSERT_POSITION = { x: 240, y: 180 };
+const DEFAULT_VIDEO_INSERT_SIZE = { width: 640, height: 360 };
+const DEFAULT_AUDIO_INSERT_SIZE = { width: 480, height: 120 };
+
+function makeMediaElement(
+  mediaType: "video" | "audio",
+  src: string,
+  caption?: string,
+): SlideElement {
+  const isAudio = mediaType === "audio";
+  return {
+    type: "media",
+    position: { ...DEFAULT_MEDIA_INSERT_POSITION },
+    size: {
+      ...(isAudio ? DEFAULT_AUDIO_INSERT_SIZE : DEFAULT_VIDEO_INSERT_SIZE),
+    },
+    src,
+    media_type: mediaType,
+    poster: null,
+    caption: caption ?? null,
+  };
+}
+
+export function createMediaInsertElements(
+  mediaType: "video" | "audio",
+  src: string,
+  caption?: string,
+): SlideElement[] {
+  const trimmed = src.trim();
+  return trimmed ? [makeMediaElement(mediaType, trimmed, caption)] : [];
+}
+
 function makeImageElement({
   x,
   y,

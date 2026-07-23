@@ -9,6 +9,7 @@ import { rawElementForEditorToolbar } from "@/components/slide-editor/model/mode
 import type {
   ChartSlideElement,
   FormulaSlideElement,
+  MediaSlideElement,
   TableSlideElement,
 } from "@/components/slide-editor/state/state";
 import type { SlideElement } from "@/components/slide-editor/types";
@@ -41,6 +42,12 @@ export type TemplateV2TableSelectionToolbarTarget = {
 export type TemplateV2FormulaSelectionToolbarTarget = {
   selection: TemplateV2ToolbarElementSelection;
   element: FormulaSlideElement;
+  box: TemplateV2ToolbarBox;
+};
+
+export type TemplateV2MediaSelectionToolbarTarget = {
+  selection: TemplateV2ToolbarElementSelection;
+  element: MediaSlideElement;
   box: TemplateV2ToolbarBox;
 };
 
@@ -225,6 +232,48 @@ export function getTemplateV2SelectionFormulaToolbarTarget({
     : null;
 }
 
+export function getTemplateV2SelectionMediaToolbarTarget({
+  selection,
+  selectedBox,
+  selectedComponent,
+  selectedElement,
+  absoluteBoxForSelection,
+}: SelectionToolbarTargetOptions): TemplateV2MediaSelectionToolbarTarget | null {
+  if (
+    selection?.kind === "element" &&
+    selectedElement &&
+    selectedBox &&
+    isTemplateV2MediaElement(selectedElement)
+  ) {
+    return {
+      selection,
+      element: mediaToolbarElement(selectedElement, selectedBox),
+      box: selectedBox,
+    };
+  }
+
+  if (selection?.kind !== "component" || !selectedComponent) return null;
+
+  const mediaRoot = findFirstComponentMediaElement(
+    readArray(selectedComponent.elements),
+  );
+  if (!mediaRoot) return null;
+
+  const elementSelection: TemplateV2ToolbarElementSelection = {
+    kind: "element",
+    componentIndex: selection.componentIndex,
+    elementPath: mediaRoot.elementPath,
+  };
+  const box = absoluteBoxForSelection(elementSelection);
+  return box
+    ? {
+        selection: elementSelection,
+        element: mediaToolbarElement(mediaRoot.element, box),
+        box,
+      }
+    : null;
+}
+
 export function getTemplateV2SelectionEditorToolbarTarget({
   selection,
   selectedComponent,
@@ -286,6 +335,12 @@ function isTemplateV2FormulaElement(
   element: RawRecord | null | undefined,
 ): element is RawRecord {
   return element?.type === "formula";
+}
+
+function isTemplateV2MediaElement(
+  element: RawRecord | null | undefined,
+): element is RawRecord {
+  return element?.type === "media";
 }
 
 function isTemplateV2EditorToolbarElement(
@@ -357,6 +412,24 @@ function formulaToolbarElement(
   };
 }
 
+function mediaToolbarElement(
+  element: RawRecord,
+  box: TemplateV2ToolbarBox,
+): MediaSlideElement {
+  const mediaType =
+    element.media_type === "audio" ? "audio" : "video";
+  return {
+    ...element,
+    type: "media",
+    src: typeof element.src === "string" ? element.src : "",
+    media_type: mediaType,
+    poster: typeof element.poster === "string" ? element.poster : null,
+    caption: typeof element.caption === "string" ? element.caption : null,
+    position: { x: box.x, y: box.y },
+    size: { width: box.width, height: box.height },
+  };
+}
+
 function findFirstComponentFormulaElement(
   elements: unknown[],
   parentPath: number[] = [],
@@ -369,6 +442,26 @@ function findFirstComponentFormulaElement(
       return { element, elementPath };
     }
     const nested = findFirstComponentFormulaElement(
+      childElements(element),
+      elementPath,
+    );
+    if (nested) return nested;
+  }
+  return null;
+}
+
+function findFirstComponentMediaElement(
+  elements: unknown[],
+  parentPath: number[] = [],
+): { element: RawRecord; elementPath: number[] } | null {
+  for (let index = 0; index < elements.length; index += 1) {
+    const element = asRecord(elements[index]);
+    if (!element) continue;
+    const elementPath = [...parentPath, index];
+    if (isTemplateV2MediaElement(element)) {
+      return { element, elementPath };
+    }
+    const nested = findFirstComponentMediaElement(
       childElements(element),
       elementPath,
     );

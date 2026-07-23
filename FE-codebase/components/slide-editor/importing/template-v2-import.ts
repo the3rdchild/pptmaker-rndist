@@ -679,6 +679,8 @@ function adaptElement(value: unknown): SlideElement | null {
       return adaptChart(raw);
     case "infographic":
       return adaptInfographic(raw);
+    case "media":
+      return adaptMedia(raw);
     case "flex":
       return adaptFlex(raw);
     case "grid":
@@ -761,6 +763,20 @@ function adaptImage(raw: UnknownRecord): SlideElement {
     clippath: readString(raw.clippath ?? raw.clipPath ?? raw.clip_path),
     color: readString(raw.color),
     is_icon: readBoolean(raw, "is_icon"),
+  };
+}
+
+function adaptMedia(raw: UnknownRecord): SlideElement {
+  const src = readString(raw.src);
+  const poster = readString(raw.poster);
+  const mediaType = readEnum(raw, ["video", "audio"], "media_type") ?? "video";
+  return {
+    ...baseElement(raw),
+    type: "media",
+    src: src ? resolveBackendAssetUrl(src) : "",
+    media_type: mediaType,
+    poster: poster ? resolveBackendAssetUrl(poster) : null,
+    caption: truncateString(readString(raw.caption) ?? "", 200) || null,
   };
 }
 

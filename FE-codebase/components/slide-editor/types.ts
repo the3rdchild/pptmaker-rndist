@@ -285,6 +285,19 @@ export type FormulaElement = ElementBase & {
   color?: string | null;
 };
 
+export type MediaKind = "video" | "audio";
+
+export type MediaElement = ElementBase & {
+  type: "media";
+  /** Source URL or data URL of the media file. */
+  src: string;
+  media_type: MediaKind;
+  /** Optional poster image URL/data URL for video (shown before playback). */
+  poster?: string | null;
+  /** Optional caption displayed beneath the player chrome. */
+  caption?: string | null;
+};
+
 export type ChartElement = ElementBase & {
   type: "chart";
   chart_type: ChartType;
@@ -368,6 +381,7 @@ export type SlideElement =
   | FormulaElement
   | ChartElement
   | InfographicElement
+  | MediaElement
   | FlexElement
   | GridElement
   | GroupElement;

@@ -695,6 +695,10 @@ async function pickDecorFallbackIcon(): Promise<string | null> {
 interface IconScope {
   icons: Rec[];
   text: string;
+  /** Present when this scope's card has NO existing icon slot at all — the
+   *  card node to synthesize+inject a new icon element into (see injectIcon).
+   *  Nil for cards that already had a placeholder icon (swap-only path). */
+  injectCard?: Rec;
 }
 
 function collectPlaceholderIcons(node: Rec, out: Rec[]): void {
@@ -731,26 +735,45 @@ function firstTextUnder(node: Rec): string {
 /** Splits a component element into icon "scopes" so each card in a grid gets
  * its OWN title as the icon query, instead of every card in the grid sharing
  * card #1's title (the old bug). A card grid (grid/flex with >1 children) →
- * one scope per card; anything else → one scope for the whole element. */
+ * one scope per card; anything else → one scope for the whole element.
+ *
+ * Cards that have NO placeholder icon at all still get a scope (with
+ * `injectCard` set) so fillPlaceholderIcons can synthesize a new icon for
+ * them — otherwise whole packs (e.g. `standard`, ~0 icon slots per layout)
+ * would render decks with zero icons forever. */
 function collectIconScopes(el: Rec, scopes: IconScope[]): void {
   const children = el.children as Rec[] | undefined;
   if ((el.type === "grid" || el.type === "flex") && Array.isArray(children) && children.length > 1) {
     for (const card of children) {
+      const text = firstTextUnder(card);
       const icons: Rec[] = [];
       collectPlaceholderIcons(card, icons);
-      if (icons.length) scopes.push({ icons, text: firstTextUnder(card) });
+      if (icons.length) {
+        scopes.push({ icons, text });
+      } else if (text) {
+        scopes.push({ icons, text, injectCard: card });
+      }
     }
     return;
   }
+  const text = firstTextUnder(el);
   const icons: Rec[] = [];
   collectPlaceholderIcons(el, icons);
-  if (icons.length) scopes.push({ icons, text: firstTextUnder(el) });
+  if (icons.length) {
+    scopes.push({ icons, text });
+  } else if (text) {
+    scopes.push({ icons, text, injectCard: el });
+  }
 }
 
 /** Replaces every placeholder icon in `ui` with a real, content-relevant icon
  * (per-card title as the query), falling back to `fallbackQuery` (the slide's
  * title) and then to a rotating decorative icon so NO slot is left as the
- * bland placeholder box. */
+ * bland placeholder box.
+ *
+ * Also SYNTHESIZES a new icon element for cards that never had one (whole
+ * packs like `standard` ship with ~0 icon slots, so without this their decks
+ * render with no icons at all). */
 async function fillPlaceholderIcons(ui: Rec, fallbackQuery: string): Promise<Rec> {
   const components = (ui.components as Rec[]) ?? [];
   const scopes: IconScope[] = [];
@@ -761,6 +784,8 @@ async function fillPlaceholderIcons(ui: Rec, fallbackQuery: string): Promise<Rec
   if (!scopes.length) return ui;
 
   const urlByIcon = new Map<Rec, string>();
+  // injectCard → resolved icon URL to synthesize for that card.
+  const injectByCard = new Map<Rec, string>();
   await Promise.all(
     scopes.map(async (scope) => {
       const relevant = await pickIconUrl(scope.text || fallbackQuery);
@@ -768,9 +793,18 @@ async function fillPlaceholderIcons(ui: Rec, fallbackQuery: string): Promise<Rec
         const url = relevant ?? (await pickDecorFallbackIcon());
         if (url) urlByIcon.set(icon, url);
       }
+      if (scope.injectCard) {
+        const url = relevant ?? (await pickDecorFallbackIcon());
+        if (url) injectByCard.set(scope.injectCard, url);
+      }
     }),
   );
-  if (!urlByIcon.size) return ui;
+  if (!urlByIcon.size && !injectByCard.size) return ui;
+
+  // Inject synthesized icon elements into card nodes first (mutating the
+  // captured card objects in place), so the patch walk below then sees them
+  // as ordinary children to clone.
+  injectByCard.forEach((url, card) => injectIconIntoCard(card, url));
 
   // fillLayout mutates elements in place (setText etc.) rather than cloning,
   // so the node references captured above are still the exact objects that
@@ -796,6 +830,109 @@ async function fillPlaceholderIcons(ui: Rec, fallbackQuery: string): Promise<Rec
       elements: ((component.elements as Rec[]) ?? []).map(patch),
     })),
   };
+}
+
+/** Minimum card size (area) before we bother injecting an icon — tiny rows
+ *  (e.g. a tight comparison bullet) would just get cluttered. */
+const ICON_INJECT_MIN_AREA = 18000;
+const ICON_TILE_SIZE = 36;
+
+/** True if the card contains a text element whose box width is at least 75%
+ *  of the card width AND sits in the card's top half (where the injected
+ *  top-corner tile would land). Used to avoid overlapping a centered/wide
+ *  heading. */
+function hasWideText(card: Rec, cardWidth: number): boolean {
+  let found = false;
+  const visit = (node: Rec | undefined): void => {
+    if (!node) return;
+    const type = node.type;
+    if (type === "text" || type === "text-list") {
+      const sz = node.size as { width?: number } | undefined;
+      const pos = node.position as { y?: number } | undefined;
+      const w = typeof sz?.width === "number" ? sz.width : 0;
+      const y = typeof pos?.y === "number" ? pos.y : 0;
+      const cardH = (card.size as { height?: number } | undefined)?.height ?? 0;
+      if (w >= cardWidth * 0.75 && y < cardH / 2) found = true;
+      return;
+    }
+    const children = node.children as Rec[] | undefined;
+    if (Array.isArray(children)) {
+      for (const c of children) visit(c);
+      return;
+    }
+    if (node.child && typeof node.child === "object") visit(node.child as Rec);
+  };
+  visit(card);
+  return found;
+}
+
+/** Synthesizes a rounded accent tile + tinted icon and appends it to the
+ *  card's children (positioned in the card's top-right corner). Mutates the
+ *  card node in place. No-op if the card has no readable size, is too small,
+ *  or already carries a wide/centered title that the tile would overlap —
+ *  overlapping a full-width centered heading is worse than having no icon.
+ *  The tile's rectangle fill + the icon's tint both get recolored later by
+ *  applyPaletteToUi (rectangle → shape, is_icon image → icon hue). */
+function injectIconIntoCard(card: Rec, iconUrl: string): void {
+  const size = card.size as { width?: number; height?: number } | undefined;
+  const width = typeof size?.width === "number" ? size.width : 0;
+  const height = typeof size?.height === "number" ? size.height : 0;
+  if (!width || !height || width * height < ICON_INJECT_MIN_AREA) return;
+
+  // Skip when a text element already spans most of the card width — its
+  // rendered glyph run would collide with a top-corner tile. Cards like
+  // `centered_card_row`'s portrait cards (centered full-width name) sit here.
+  if (hasWideText(card, width)) return;
+
+  const margin = Math.max(16, Math.round(Math.min(width, height) * 0.08));
+  const tileSize = Math.min(ICON_TILE_SIZE, Math.round(Math.min(width, height) * 0.16));
+  const iconSize = Math.round(tileSize * 0.6);
+  const tileX = width - tileSize - margin;
+  const tileY = margin;
+
+  const tile = {
+    type: "rectangle",
+    position: { x: tileX, y: tileY },
+    size: { width: tileSize, height: tileSize },
+    fill: { color: "#9333EA", opacity: 1 },
+    border_radius: {
+      tl: tileSize / 2,
+      tr: tileSize / 2,
+      bl: tileSize / 2,
+      br: tileSize / 2,
+    },
+    decorative: true,
+    name: "injected_icon_tile",
+  };
+  const icon = {
+    type: "image",
+    position: {
+      x: tileX + (tileSize - iconSize) / 2,
+      y: tileY + (tileSize - iconSize) / 2,
+    },
+    size: { width: iconSize, height: iconSize },
+    data: iconUrl,
+    fit: "contain",
+    color: "#FFFFFF",
+    decorative: true,
+    name: "injected_icon",
+    is_icon: true,
+  };
+
+  // Card node is either a group/container with a `children` array, or a
+  // container with a single `child`. Promote single-child containers to a
+  // children array so the injected icon renders as a sibling.
+  const children = (card.children as Rec[] | undefined) ?? [];
+  if (Array.isArray(card.children)) {
+    card.children = [...children, tile, icon];
+    return;
+  }
+  if (card.child && typeof card.child === "object") {
+    card.children = [card.child as Rec, tile, icon];
+    delete card.child;
+    return;
+  }
+  card.children = [tile, icon];
 }
 
 function slideTitleForIconFallback(slide: AIPPTSlide): string {

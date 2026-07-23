@@ -13,6 +13,12 @@
 // when the flat hardcoded layouts in map-slide.ts were written as a stub.
 
 import { PresentationGenerationApi } from "@/app/(presentation-generator)/services/api/presentation-generation";
+import {
+  rawFont,
+  layoutRenderTextRuns,
+  lineRenderHeight,
+  type RenderTextRun,
+} from "@/components/slide-editor/text/template-v2-text";
 
 export type AIPPTSlide =
   | { type: "cover"; data: { title: string; text: string } }
@@ -207,8 +213,47 @@ function collectComponent(component: Rec): { global: TextLeaf[]; slots: ItemSlot
 // sample copy — nothing in the actual render/measure/edit path enforces it
 // (no auto-shrink, no wrap-then-clip), so treating it as a hard character
 // cap here just mid-word-truncates real AI titles ("Cara Menggunakan
-// Python" -> "Cara Meng…") for no benefit. Text is written in full; any
-// overflow renders the same way a manually-typed long title already does.
+// Python" -> "Cara Meng…") for no benefit. Text is written in full instead;
+// see fittedFontSize below for how overflow is actually handled now.
+
+const MIN_FONT_SCALE = 0.55;
+const FIT_ITERATIONS = 6;
+
+/** AI-generated text is routinely much longer than the template's own tiny
+ * sample copy the box was originally sized for — written at full size with
+ * no adjustment, it wraps to more lines than the box height allows and
+ * visibly overflows into whatever sits below it (title text bleeding into
+ * the next card, etc). Shrinks the font size (down to a floor) until the
+ * text's ACTUAL wrapped height — measured with the same layoutRenderTextRuns/
+ * lineRenderHeight functions the real renderer uses, not a rough guess —
+ * fits within the element's own box height. Returns null if no box size is
+ * known or the text already fits at the original size (leaves it alone). */
+function fittedFontSize(text: string, el: Rec): number | null {
+  const size = el.size as Rec | undefined;
+  const width = typeof size?.width === "number" ? size.width : undefined;
+  const height = typeof size?.height === "number" ? size.height : undefined;
+  if (!width || !height || !text.trim()) return null;
+
+  const baseFont = rawFont(el as never);
+  let scale = 1;
+  let fittedSize = baseFont.size;
+
+  for (let i = 0; i < FIT_ITERATIONS; i++) {
+    const testFont = { ...baseFont, size: baseFont.size * scale };
+    const runs: RenderTextRun[] = [{ text, font: testFont }];
+    const lines = layoutRenderTextRuns(runs, width, undefined);
+    const totalHeight = lines.reduce(
+      (sum, line) => sum + lineRenderHeight(line, testFont.lineHeight),
+      0,
+    );
+    fittedSize = testFont.size;
+    if (totalHeight <= height || scale <= MIN_FONT_SCALE) break;
+    scale = Math.max(MIN_FONT_SCALE, scale * (height / totalHeight));
+  }
+
+  return fittedSize < baseFont.size - 0.5 ? fittedSize : null;
+}
+
 function setText(el: Rec, text: string): void {
   if (el.type === "text-list") {
     const items = (el.items as unknown[][]) ?? [];
@@ -222,7 +267,12 @@ function setText(el: Rec, text: string): void {
   }
   const runs = (el.runs as Rec[]) ?? [];
   const font = (runs[0]?.font as Rec) ?? (el.font as Rec) ?? {};
-  el.runs = [{ text, font }];
+  const fitted = fittedFontSize(text, el);
+  const finalFont = fitted !== null ? { ...font, size: fitted } : font;
+  el.runs = [{ text, font: finalFont }];
+  if (fitted !== null) {
+    el.font = { ...((el.font as Rec) ?? {}), size: fitted };
+  }
 }
 
 function fillItemSlot(slot: ItemSlot, item: { title: string; text: string }): void {
@@ -270,18 +320,24 @@ export function fillLayout(layout: TemplateLayout, slide: AIPPTSlide): FilledSli
     case "content": {
       fillGlobalText(allGlobal, [slide.data.title]);
       const items = slide.data.items;
+
+      // Any OTHER global text slot beyond the title (subtitle/tagline/
+      // description) must never be left as the template's own literal
+      // sample copy ("Lorem ipsum dolor sit amet...") — fill every one of
+      // them with a summary of the items. Previously this only ran when the
+      // layout had NO repeated item slots at all, so a layout with BOTH a
+      // secondary global tagline AND a card grid (very common) orphaned the
+      // tagline forever, leaking real placeholder text into the deck.
+      if (items.length) {
+        const sorted = [...allGlobal].sort((a, b) => b.fontSize - a.fontSize);
+        const combined = items.map((i) => (i.title ? `${i.title}: ${i.text}` : i.text)).join(" ");
+        for (let i = 1; i < sorted.length; i++) {
+          setText(sorted[i].el, combined);
+        }
+      }
+
       if (items.length && allSlots.length) {
         allSlots.forEach((slot, i) => fillItemSlot(slot, items[i % items.length]));
-      } else if (items.length) {
-        // Layout has no repeated item slots — fold the item content into
-        // whatever secondary global text slot exists instead of leaving the
-        // template's own placeholder paragraph behind.
-        const sorted = [...allGlobal].sort((a, b) => b.fontSize - a.fontSize);
-        const secondary = sorted[1];
-        if (secondary) {
-          const combined = items.map((i) => (i.title ? `${i.title}: ${i.text}` : i.text)).join(" ");
-          setText(secondary.el, combined);
-        }
       }
       break;
     }

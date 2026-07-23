@@ -16344,6 +16344,1754 @@
           ]
         }
       ]
+    },
+    {
+      "id": "stat_row_layout_4821",
+      "description": "Three big-number stat cards in a horizontal row, each with an icon tile, a large figure, and a short label. Good for metrics and KPIs.",
+      "components": [
+        {
+          "id": "background_canvas",
+          "description": "Full-slide neutral white background.",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 1280,
+            "height": 720
+          },
+          "elements": [
+            {
+              "type": "rectangle",
+              "position": {
+                "x": 0,
+                "y": 0
+              },
+              "size": {
+                "width": 1280,
+                "height": 720
+              },
+              "fill": {
+                "color": "#FFFFFF",
+                "opacity": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "header_area",
+          "description": "Slide heading with a short accent rule.",
+          "position": {
+            "x": 96,
+            "y": 72
+          },
+          "size": {
+            "width": 1088,
+            "height": 120
+          },
+          "elements": [
+            {
+              "type": "text",
+              "position": {
+                "x": 0,
+                "y": 0
+              },
+              "size": {
+                "width": 1088,
+                "height": 64
+              },
+              "font": {
+                "size": 44,
+                "family": "Poppins",
+                "color": "#111827",
+                "bold": true,
+                "line_height": 1.05,
+                "wrap": "word"
+              },
+              "alignment": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "runs": [
+                {
+                  "text": "Key Metrics"
+                }
+              ],
+              "decorative": false,
+              "name": "slide_title"
+            },
+            {
+              "type": "rectangle",
+              "position": {
+                "x": 0,
+                "y": 80
+              },
+              "size": {
+                "width": 64,
+                "height": 6
+              },
+              "fill": {
+                "color": "#9333EA",
+                "opacity": 1
+              },
+              "border_radius": {
+                "tl": 3,
+                "tr": 3,
+                "bl": 3,
+                "br": 3
+              },
+              "decorative": true,
+              "name": "accent_rule"
+            }
+          ]
+        },
+        {
+          "id": "stat_grid",
+          "description": "Row of three stat cards.",
+          "position": {
+            "x": 96,
+            "y": 280
+          },
+          "size": {
+            "width": 1088,
+            "height": 300
+          },
+          "elements": [
+            {
+              "type": "grid",
+              "position": {
+                "x": 0,
+                "y": 0
+              },
+              "size": {
+                "width": 1088,
+                "height": 300
+              },
+              "columns": 3,
+              "rows": 1,
+              "column_gap": 32,
+              "align_items": "stretch",
+              "justify_items": "stretch",
+              "children": [
+                {
+                  "type": "container",
+                  "size": {
+                    "width": 352,
+                    "height": 300
+                  },
+                  "alignment": {
+                    "horizontal": "left",
+                    "vertical": "top"
+                  },
+                  "fill": {
+                    "color": "#FFFFFF",
+                    "opacity": 1
+                  },
+                  "border_radius": {
+                    "tl": 16,
+                    "tr": 16,
+                    "bl": 16,
+                    "br": 16
+                  },
+                  "shadow": {
+                    "color": "#000000",
+                    "blur": 20,
+                    "opacity": 0.06,
+                    "offset_x": 0,
+                    "offset_y": 6
+                  },
+                  "border": {
+                    "color": "#E5E7EB",
+                    "width": 1,
+                    "opacity": 1
+                  },
+                  "padding": {
+                    "top": 32,
+                    "right": 32,
+                    "bottom": 32,
+                    "left": 32
+                  },
+                  "child": {
+                    "type": "group",
+                    "children": [
+                      {
+                        "type": "container",
+                        "position": {
+                          "x": 0,
+                          "y": 0
+                        },
+                        "size": {
+                          "width": 56,
+                          "height": 56
+                        },
+                        "alignment": {
+                          "horizontal": "center",
+                          "vertical": "middle"
+                        },
+                        "fill": {
+                          "color": "#9333EA",
+                          "opacity": 1
+                        },
+                        "border_radius": {
+                          "tl": 12,
+                          "tr": 12,
+                          "bl": 12,
+                          "br": 12
+                        },
+                        "padding": {
+                          "top": 16,
+                          "right": 16,
+                          "bottom": 16,
+                          "left": 16
+                        },
+                        "child": {
+                          "type": "image",
+                          "size": {
+                            "width": 24,
+                            "height": 24
+                          },
+                          "data": "/static/icons/placeholder.svg",
+                          "fit": "contain",
+                          "color": "#FFFFFF",
+                          "decorative": false,
+                          "name": "stat_icon",
+                          "is_icon": true
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "position": {
+                          "x": 0,
+                          "y": 88
+                        },
+                        "size": {
+                          "width": 288,
+                          "height": 84
+                        },
+                        "font": {
+                          "size": 56,
+                          "family": "Poppins",
+                          "color": "#9333EA",
+                          "bold": true,
+                          "line_height": 1.0,
+                          "wrap": "none"
+                        },
+                        "alignment": {
+                          "horizontal": "left",
+                          "vertical": "top"
+                        },
+                        "runs": [
+                          {
+                            "text": "92%"
+                          }
+                        ],
+                        "decorative": false,
+                        "name": "stat_value"
+                      },
+                      {
+                        "type": "text",
+                        "position": {
+                          "x": 0,
+                          "y": 188
+                        },
+                        "size": {
+                          "width": 288,
+                          "height": 60
+                        },
+                        "font": {
+                          "size": 16,
+                          "family": "Poppins",
+                          "color": "#4B5563",
+                          "line_height": 1.3,
+                          "wrap": "word"
+                        },
+                        "alignment": {
+                          "horizontal": "left",
+                          "vertical": "top"
+                        },
+                        "runs": [
+                          {
+                            "text": "Customer retention this year"
+                          }
+                        ],
+                        "decorative": false,
+                        "name": "stat_label"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "container",
+                  "size": {
+                    "width": 352,
+                    "height": 300
+                  },
+                  "alignment": {
+                    "horizontal": "left",
+                    "vertical": "top"
+                  },
+                  "fill": {
+                    "color": "#FFFFFF",
+                    "opacity": 1
+                  },
+                  "border_radius": {
+                    "tl": 16,
+                    "tr": 16,
+                    "bl": 16,
+                    "br": 16
+                  },
+                  "shadow": {
+                    "color": "#000000",
+                    "blur": 20,
+                    "opacity": 0.06,
+                    "offset_x": 0,
+                    "offset_y": 6
+                  },
+                  "border": {
+                    "color": "#E5E7EB",
+                    "width": 1,
+                    "opacity": 1
+                  },
+                  "padding": {
+                    "top": 32,
+                    "right": 32,
+                    "bottom": 32,
+                    "left": 32
+                  },
+                  "child": {
+                    "type": "group",
+                    "children": [
+                      {
+                        "type": "container",
+                        "position": {
+                          "x": 0,
+                          "y": 0
+                        },
+                        "size": {
+                          "width": 56,
+                          "height": 56
+                        },
+                        "alignment": {
+                          "horizontal": "center",
+                          "vertical": "middle"
+                        },
+                        "fill": {
+                          "color": "#9333EA",
+                          "opacity": 1
+                        },
+                        "border_radius": {
+                          "tl": 12,
+                          "tr": 12,
+                          "bl": 12,
+                          "br": 12
+                        },
+                        "padding": {
+                          "top": 16,
+                          "right": 16,
+                          "bottom": 16,
+                          "left": 16
+                        },
+                        "child": {
+                          "type": "image",
+                          "size": {
+                            "width": 24,
+                            "height": 24
+                          },
+                          "data": "/static/icons/placeholder.svg",
+                          "fit": "contain",
+                          "color": "#FFFFFF",
+                          "decorative": false,
+                          "name": "stat_icon",
+                          "is_icon": true
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "position": {
+                          "x": 0,
+                          "y": 88
+                        },
+                        "size": {
+                          "width": 288,
+                          "height": 84
+                        },
+                        "font": {
+                          "size": 56,
+                          "family": "Poppins",
+                          "color": "#9333EA",
+                          "bold": true,
+                          "line_height": 1.0,
+                          "wrap": "none"
+                        },
+                        "alignment": {
+                          "horizontal": "left",
+                          "vertical": "top"
+                        },
+                        "runs": [
+                          {
+                            "text": "3.4x"
+                          }
+                        ],
+                        "decorative": false,
+                        "name": "stat_value"
+                      },
+                      {
+                        "type": "text",
+                        "position": {
+                          "x": 0,
+                          "y": 188
+                        },
+                        "size": {
+                          "width": 288,
+                          "height": 60
+                        },
+                        "font": {
+                          "size": 16,
+                          "family": "Poppins",
+                          "color": "#4B5563",
+                          "line_height": 1.3,
+                          "wrap": "word"
+                        },
+                        "alignment": {
+                          "horizontal": "left",
+                          "vertical": "top"
+                        },
+                        "runs": [
+                          {
+                            "text": "Faster delivery than industry avg"
+                          }
+                        ],
+                        "decorative": false,
+                        "name": "stat_label"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "container",
+                  "size": {
+                    "width": 352,
+                    "height": 300
+                  },
+                  "alignment": {
+                    "horizontal": "left",
+                    "vertical": "top"
+                  },
+                  "fill": {
+                    "color": "#FFFFFF",
+                    "opacity": 1
+                  },
+                  "border_radius": {
+                    "tl": 16,
+                    "tr": 16,
+                    "bl": 16,
+                    "br": 16
+                  },
+                  "shadow": {
+                    "color": "#000000",
+                    "blur": 20,
+                    "opacity": 0.06,
+                    "offset_x": 0,
+                    "offset_y": 6
+                  },
+                  "border": {
+                    "color": "#E5E7EB",
+                    "width": 1,
+                    "opacity": 1
+                  },
+                  "padding": {
+                    "top": 32,
+                    "right": 32,
+                    "bottom": 32,
+                    "left": 32
+                  },
+                  "child": {
+                    "type": "group",
+                    "children": [
+                      {
+                        "type": "container",
+                        "position": {
+                          "x": 0,
+                          "y": 0
+                        },
+                        "size": {
+                          "width": 56,
+                          "height": 56
+                        },
+                        "alignment": {
+                          "horizontal": "center",
+                          "vertical": "middle"
+                        },
+                        "fill": {
+                          "color": "#9333EA",
+                          "opacity": 1
+                        },
+                        "border_radius": {
+                          "tl": 12,
+                          "tr": 12,
+                          "bl": 12,
+                          "br": 12
+                        },
+                        "padding": {
+                          "top": 16,
+                          "right": 16,
+                          "bottom": 16,
+                          "left": 16
+                        },
+                        "child": {
+                          "type": "image",
+                          "size": {
+                            "width": 24,
+                            "height": 24
+                          },
+                          "data": "/static/icons/placeholder.svg",
+                          "fit": "contain",
+                          "color": "#FFFFFF",
+                          "decorative": false,
+                          "name": "stat_icon",
+                          "is_icon": true
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "position": {
+                          "x": 0,
+                          "y": 88
+                        },
+                        "size": {
+                          "width": 288,
+                          "height": 84
+                        },
+                        "font": {
+                          "size": 56,
+                          "family": "Poppins",
+                          "color": "#9333EA",
+                          "bold": true,
+                          "line_height": 1.0,
+                          "wrap": "none"
+                        },
+                        "alignment": {
+                          "horizontal": "left",
+                          "vertical": "top"
+                        },
+                        "runs": [
+                          {
+                            "text": "150K"
+                          }
+                        ],
+                        "decorative": false,
+                        "name": "stat_value"
+                      },
+                      {
+                        "type": "text",
+                        "position": {
+                          "x": 0,
+                          "y": 188
+                        },
+                        "size": {
+                          "width": 288,
+                          "height": 60
+                        },
+                        "font": {
+                          "size": 16,
+                          "family": "Poppins",
+                          "color": "#4B5563",
+                          "line_height": 1.3,
+                          "wrap": "word"
+                        },
+                        "alignment": {
+                          "horizontal": "left",
+                          "vertical": "top"
+                        },
+                        "runs": [
+                          {
+                            "text": "Monthly active users"
+                          }
+                        ],
+                        "decorative": false,
+                        "name": "stat_label"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "quote_feature_layout_6193",
+      "description": "A large centered pull-quote with a big quotation mark and an attribution line beneath. Ideal for testimonials and key statements.",
+      "components": [
+        {
+          "id": "background_canvas",
+          "description": "Full-slide neutral white background.",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 1280,
+            "height": 720
+          },
+          "elements": [
+            {
+              "type": "rectangle",
+              "position": {
+                "x": 0,
+                "y": 0
+              },
+              "size": {
+                "width": 1280,
+                "height": 720
+              },
+              "fill": {
+                "color": "#FFFFFF",
+                "opacity": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "quote_panel",
+          "description": "Centered quote block with decorative mark and attribution.",
+          "position": {
+            "x": 144,
+            "y": 120
+          },
+          "size": {
+            "width": 992,
+            "height": 480
+          },
+          "elements": [
+            {
+              "type": "text",
+              "position": {
+                "x": 0,
+                "y": 0
+              },
+              "size": {
+                "width": 120,
+                "height": 120
+              },
+              "font": {
+                "size": 160,
+                "family": "Playfair Display",
+                "color": "#C084FC",
+                "bold": true,
+                "line_height": 0.8,
+                "wrap": "none"
+              },
+              "alignment": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "runs": [
+                {
+                  "text": "“"
+                }
+              ],
+              "decorative": true,
+              "name": "quote_mark"
+            },
+            {
+              "type": "text",
+              "position": {
+                "x": 16,
+                "y": 120
+              },
+              "size": {
+                "width": 960,
+                "height": 240
+              },
+              "font": {
+                "size": 40,
+                "family": "Poppins",
+                "color": "#111827",
+                "line_height": 1.3,
+                "wrap": "word"
+              },
+              "alignment": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "runs": [
+                {
+                  "text": "This product completely transformed how our team collaborates and ships work."
+                }
+              ],
+              "decorative": false,
+              "name": "quote_body"
+            },
+            {
+              "type": "rectangle",
+              "position": {
+                "x": 16,
+                "y": 392
+              },
+              "size": {
+                "width": 48,
+                "height": 4
+              },
+              "fill": {
+                "color": "#9333EA",
+                "opacity": 1
+              },
+              "border_radius": {
+                "tl": 2,
+                "tr": 2,
+                "bl": 2,
+                "br": 2
+              },
+              "decorative": true,
+              "name": "attribution_rule"
+            },
+            {
+              "type": "text",
+              "position": {
+                "x": 16,
+                "y": 408
+              },
+              "size": {
+                "width": 960,
+                "height": 32
+              },
+              "font": {
+                "size": 20,
+                "family": "Poppins",
+                "color": "#4B5563",
+                "bold": true,
+                "line_height": 1.2,
+                "wrap": "none"
+              },
+              "alignment": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "runs": [
+                {
+                  "text": "Maya Putri · Head of Product, Nusantara Tech"
+                }
+              ],
+              "decorative": false,
+              "name": "quote_attribution"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "comparison_layout_2257",
+      "description": "Side-by-side two-column comparison, each column a card with a colored header bar and a body paragraph. Good for pros vs cons and before vs after.",
+      "components": [
+        {
+          "id": "background_canvas",
+          "description": "Full-slide neutral white background.",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 1280,
+            "height": 720
+          },
+          "elements": [
+            {
+              "type": "rectangle",
+              "position": {
+                "x": 0,
+                "y": 0
+              },
+              "size": {
+                "width": 1280,
+                "height": 720
+              },
+              "fill": {
+                "color": "#FFFFFF",
+                "opacity": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "header_area",
+          "description": "Slide heading with a short accent rule.",
+          "position": {
+            "x": 96,
+            "y": 72
+          },
+          "size": {
+            "width": 1088,
+            "height": 120
+          },
+          "elements": [
+            {
+              "type": "text",
+              "position": {
+                "x": 0,
+                "y": 0
+              },
+              "size": {
+                "width": 1088,
+                "height": 64
+              },
+              "font": {
+                "size": 44,
+                "family": "Poppins",
+                "color": "#111827",
+                "bold": true,
+                "line_height": 1.05,
+                "wrap": "word"
+              },
+              "alignment": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "runs": [
+                {
+                  "text": "Comparison"
+                }
+              ],
+              "decorative": false,
+              "name": "slide_title"
+            },
+            {
+              "type": "rectangle",
+              "position": {
+                "x": 0,
+                "y": 80
+              },
+              "size": {
+                "width": 64,
+                "height": 6
+              },
+              "fill": {
+                "color": "#9333EA",
+                "opacity": 1
+              },
+              "border_radius": {
+                "tl": 3,
+                "tr": 3,
+                "bl": 3,
+                "br": 3
+              },
+              "decorative": true,
+              "name": "accent_rule"
+            }
+          ]
+        },
+        {
+          "id": "comparison_grid",
+          "description": "Two comparison columns.",
+          "position": {
+            "x": 96,
+            "y": 232
+          },
+          "size": {
+            "width": 1088,
+            "height": 400
+          },
+          "elements": [
+            {
+              "type": "grid",
+              "position": {
+                "x": 0,
+                "y": 0
+              },
+              "size": {
+                "width": 1088,
+                "height": 400
+              },
+              "columns": 2,
+              "rows": 1,
+              "column_gap": 64,
+              "align_items": "flex-start",
+              "justify_items": "center",
+              "children": [
+                {
+                  "type": "container",
+                  "size": {
+                    "width": 480,
+                    "height": 400
+                  },
+                  "alignment": {
+                    "horizontal": "left",
+                    "vertical": "top"
+                  },
+                  "fill": {
+                    "color": "#FFFFFF",
+                    "opacity": 1
+                  },
+                  "border_radius": {
+                    "tl": 16,
+                    "tr": 16,
+                    "bl": 16,
+                    "br": 16
+                  },
+                  "shadow": {
+                    "color": "#000000",
+                    "blur": 20,
+                    "opacity": 0.06,
+                    "offset_x": 0,
+                    "offset_y": 6
+                  },
+                  "border": {
+                    "color": "#E5E7EB",
+                    "width": 1,
+                    "opacity": 1
+                  },
+                  "padding": {
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 0,
+                    "left": 0
+                  },
+                  "child": {
+                    "type": "group",
+                    "children": [
+                      {
+                        "type": "container",
+                        "position": {
+                          "x": 0,
+                          "y": 0
+                        },
+                        "size": {
+                          "width": 480,
+                          "height": 72
+                        },
+                        "alignment": {
+                          "horizontal": "left",
+                          "vertical": "middle"
+                        },
+                        "fill": {
+                          "color": "#9333EA",
+                          "opacity": 1
+                        },
+                        "border_radius": {
+                          "tl": 16,
+                          "tr": 16,
+                          "bl": 0,
+                          "br": 0
+                        },
+                        "padding": {
+                          "top": 0,
+                          "right": 28,
+                          "bottom": 0,
+                          "left": 28
+                        },
+                        "child": {
+                          "type": "text",
+                          "size": {
+                            "width": 424,
+                            "height": 36
+                          },
+                          "font": {
+                            "size": 26,
+                            "family": "Poppins",
+                            "color": "#FFFFFF",
+                            "bold": true,
+                            "line_height": 1.1,
+                            "wrap": "none"
+                          },
+                          "alignment": {
+                            "horizontal": "left",
+                            "vertical": "middle"
+                          },
+                          "runs": [
+                            {
+                              "text": "Option A"
+                            }
+                          ],
+                          "decorative": false,
+                          "name": "comparison_title"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "position": {
+                          "x": 28,
+                          "y": 104
+                        },
+                        "size": {
+                          "width": 424,
+                          "height": 264
+                        },
+                        "font": {
+                          "size": 17,
+                          "family": "Poppins",
+                          "color": "#374151",
+                          "line_height": 1.6,
+                          "wrap": "word"
+                        },
+                        "alignment": {
+                          "horizontal": "left",
+                          "vertical": "top"
+                        },
+                        "runs": [
+                          {
+                            "text": "Lower upfront cost and faster to deploy, with a wide ecosystem of integrations and a simpler learning curve for new users."
+                          }
+                        ],
+                        "decorative": false,
+                        "name": "comparison_body"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "container",
+                  "size": {
+                    "width": 480,
+                    "height": 400
+                  },
+                  "alignment": {
+                    "horizontal": "left",
+                    "vertical": "top"
+                  },
+                  "fill": {
+                    "color": "#FFFFFF",
+                    "opacity": 1
+                  },
+                  "border_radius": {
+                    "tl": 16,
+                    "tr": 16,
+                    "bl": 16,
+                    "br": 16
+                  },
+                  "shadow": {
+                    "color": "#000000",
+                    "blur": 20,
+                    "opacity": 0.06,
+                    "offset_x": 0,
+                    "offset_y": 6
+                  },
+                  "border": {
+                    "color": "#E5E7EB",
+                    "width": 1,
+                    "opacity": 1
+                  },
+                  "padding": {
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 0,
+                    "left": 0
+                  },
+                  "child": {
+                    "type": "group",
+                    "children": [
+                      {
+                        "type": "container",
+                        "position": {
+                          "x": 0,
+                          "y": 0
+                        },
+                        "size": {
+                          "width": 480,
+                          "height": 72
+                        },
+                        "alignment": {
+                          "horizontal": "left",
+                          "vertical": "middle"
+                        },
+                        "fill": {
+                          "color": "#6D28D9",
+                          "opacity": 1
+                        },
+                        "border_radius": {
+                          "tl": 16,
+                          "tr": 16,
+                          "bl": 0,
+                          "br": 0
+                        },
+                        "padding": {
+                          "top": 0,
+                          "right": 28,
+                          "bottom": 0,
+                          "left": 28
+                        },
+                        "child": {
+                          "type": "text",
+                          "size": {
+                            "width": 424,
+                            "height": 36
+                          },
+                          "font": {
+                            "size": 26,
+                            "family": "Poppins",
+                            "color": "#FFFFFF",
+                            "bold": true,
+                            "line_height": 1.1,
+                            "wrap": "none"
+                          },
+                          "alignment": {
+                            "horizontal": "left",
+                            "vertical": "middle"
+                          },
+                          "runs": [
+                            {
+                              "text": "Option B"
+                            }
+                          ],
+                          "decorative": false,
+                          "name": "comparison_title"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "position": {
+                          "x": 28,
+                          "y": 104
+                        },
+                        "size": {
+                          "width": 424,
+                          "height": 264
+                        },
+                        "font": {
+                          "size": 17,
+                          "family": "Poppins",
+                          "color": "#374151",
+                          "line_height": 1.6,
+                          "wrap": "word"
+                        },
+                        "alignment": {
+                          "horizontal": "left",
+                          "vertical": "top"
+                        },
+                        "runs": [
+                          {
+                            "text": "Higher long-term scalability ceiling, fine-grained control over configuration, and stronger data residency guarantees for regulated industries."
+                          }
+                        ],
+                        "decorative": false,
+                        "name": "comparison_body"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "process_steps_layout_7842",
+      "description": "Four numbered process steps arranged in a horizontal row, each a circled number with a title and short description. Good for workflows and how-it-works.",
+      "components": [
+        {
+          "id": "background_canvas",
+          "description": "Full-slide neutral white background.",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 1280,
+            "height": 720
+          },
+          "elements": [
+            {
+              "type": "rectangle",
+              "position": {
+                "x": 0,
+                "y": 0
+              },
+              "size": {
+                "width": 1280,
+                "height": 720
+              },
+              "fill": {
+                "color": "#FFFFFF",
+                "opacity": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "header_area",
+          "description": "Slide heading with a short accent rule.",
+          "position": {
+            "x": 96,
+            "y": 72
+          },
+          "size": {
+            "width": 1088,
+            "height": 120
+          },
+          "elements": [
+            {
+              "type": "text",
+              "position": {
+                "x": 0,
+                "y": 0
+              },
+              "size": {
+                "width": 1088,
+                "height": 64
+              },
+              "font": {
+                "size": 44,
+                "family": "Poppins",
+                "color": "#111827",
+                "bold": true,
+                "line_height": 1.05,
+                "wrap": "word"
+              },
+              "alignment": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "runs": [
+                {
+                  "text": "How It Works"
+                }
+              ],
+              "decorative": false,
+              "name": "slide_title"
+            },
+            {
+              "type": "rectangle",
+              "position": {
+                "x": 0,
+                "y": 80
+              },
+              "size": {
+                "width": 64,
+                "height": 6
+              },
+              "fill": {
+                "color": "#9333EA",
+                "opacity": 1
+              },
+              "border_radius": {
+                "tl": 3,
+                "tr": 3,
+                "bl": 3,
+                "br": 3
+              },
+              "decorative": true,
+              "name": "accent_rule"
+            }
+          ]
+        },
+        {
+          "id": "steps_row",
+          "description": "Row of four numbered step cards.",
+          "position": {
+            "x": 96,
+            "y": 264
+          },
+          "size": {
+            "width": 1088,
+            "height": 320
+          },
+          "elements": [
+            {
+              "type": "grid",
+              "position": {
+                "x": 0,
+                "y": 0
+              },
+              "size": {
+                "width": 1088,
+                "height": 320
+              },
+              "columns": 4,
+              "rows": 1,
+              "column_gap": 32,
+              "align_items": "flex-start",
+              "justify_items": "center",
+              "children": [
+                {
+                  "type": "group",
+                  "children": [
+                    {
+                      "type": "container",
+                      "position": {
+                        "x": 0,
+                        "y": 0
+                      },
+                      "size": {
+                        "width": 64,
+                        "height": 64
+                      },
+                      "alignment": {
+                        "horizontal": "center",
+                        "vertical": "middle"
+                      },
+                      "fill": {
+                        "color": "#9333EA",
+                        "opacity": 1
+                      },
+                      "border_radius": {
+                        "tl": 32,
+                        "tr": 32,
+                        "bl": 32,
+                        "br": 32
+                      },
+                      "padding": {
+                        "top": 0,
+                        "right": 0,
+                        "bottom": 0,
+                        "left": 0
+                      },
+                      "child": {
+                        "type": "text",
+                        "size": {
+                          "width": 64,
+                          "height": 40
+                        },
+                        "font": {
+                          "size": 30,
+                          "family": "Poppins",
+                          "color": "#FFFFFF",
+                          "bold": true,
+                          "line_height": 1.0,
+                          "wrap": "none"
+                        },
+                        "alignment": {
+                          "horizontal": "center",
+                          "vertical": "middle"
+                        },
+                        "runs": [
+                          {
+                            "text": "1"
+                          }
+                        ],
+                        "decorative": true,
+                        "name": "step_number"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 0,
+                        "y": 88
+                      },
+                      "size": {
+                        "width": 224,
+                        "height": 32
+                      },
+                      "font": {
+                        "size": 20,
+                        "family": "Poppins",
+                        "color": "#111827",
+                        "bold": true,
+                        "line_height": 1.15,
+                        "wrap": "word"
+                      },
+                      "alignment": {
+                        "horizontal": "center",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "Discover"
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "step_title"
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 0,
+                        "y": 128
+                      },
+                      "size": {
+                        "width": 224,
+                        "height": 96
+                      },
+                      "font": {
+                        "size": 15,
+                        "family": "Poppins",
+                        "color": "#4B5563",
+                        "line_height": 1.4,
+                        "wrap": "word"
+                      },
+                      "alignment": {
+                        "horizontal": "center",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "Audit current process and gather requirements from stakeholders."
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "step_body"
+                    }
+                  ]
+                },
+                {
+                  "type": "group",
+                  "children": [
+                    {
+                      "type": "container",
+                      "position": {
+                        "x": 0,
+                        "y": 0
+                      },
+                      "size": {
+                        "width": 64,
+                        "height": 64
+                      },
+                      "alignment": {
+                        "horizontal": "center",
+                        "vertical": "middle"
+                      },
+                      "fill": {
+                        "color": "#9333EA",
+                        "opacity": 1
+                      },
+                      "border_radius": {
+                        "tl": 32,
+                        "tr": 32,
+                        "bl": 32,
+                        "br": 32
+                      },
+                      "padding": {
+                        "top": 0,
+                        "right": 0,
+                        "bottom": 0,
+                        "left": 0
+                      },
+                      "child": {
+                        "type": "text",
+                        "size": {
+                          "width": 64,
+                          "height": 40
+                        },
+                        "font": {
+                          "size": 30,
+                          "family": "Poppins",
+                          "color": "#FFFFFF",
+                          "bold": true,
+                          "line_height": 1.0,
+                          "wrap": "none"
+                        },
+                        "alignment": {
+                          "horizontal": "center",
+                          "vertical": "middle"
+                        },
+                        "runs": [
+                          {
+                            "text": "2"
+                          }
+                        ],
+                        "decorative": true,
+                        "name": "step_number"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 0,
+                        "y": 88
+                      },
+                      "size": {
+                        "width": 224,
+                        "height": 32
+                      },
+                      "font": {
+                        "size": 20,
+                        "family": "Poppins",
+                        "color": "#111827",
+                        "bold": true,
+                        "line_height": 1.15,
+                        "wrap": "word"
+                      },
+                      "alignment": {
+                        "horizontal": "center",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "Design"
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "step_title"
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 0,
+                        "y": 128
+                      },
+                      "size": {
+                        "width": 224,
+                        "height": 96
+                      },
+                      "font": {
+                        "size": 15,
+                        "family": "Poppins",
+                        "color": "#4B5563",
+                        "line_height": 1.4,
+                        "wrap": "word"
+                      },
+                      "alignment": {
+                        "horizontal": "center",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "Map the solution architecture and validate with prototypes."
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "step_body"
+                    }
+                  ]
+                },
+                {
+                  "type": "group",
+                  "children": [
+                    {
+                      "type": "container",
+                      "position": {
+                        "x": 0,
+                        "y": 0
+                      },
+                      "size": {
+                        "width": 64,
+                        "height": 64
+                      },
+                      "alignment": {
+                        "horizontal": "center",
+                        "vertical": "middle"
+                      },
+                      "fill": {
+                        "color": "#9333EA",
+                        "opacity": 1
+                      },
+                      "border_radius": {
+                        "tl": 32,
+                        "tr": 32,
+                        "bl": 32,
+                        "br": 32
+                      },
+                      "padding": {
+                        "top": 0,
+                        "right": 0,
+                        "bottom": 0,
+                        "left": 0
+                      },
+                      "child": {
+                        "type": "text",
+                        "size": {
+                          "width": 64,
+                          "height": 40
+                        },
+                        "font": {
+                          "size": 30,
+                          "family": "Poppins",
+                          "color": "#FFFFFF",
+                          "bold": true,
+                          "line_height": 1.0,
+                          "wrap": "none"
+                        },
+                        "alignment": {
+                          "horizontal": "center",
+                          "vertical": "middle"
+                        },
+                        "runs": [
+                          {
+                            "text": "3"
+                          }
+                        ],
+                        "decorative": true,
+                        "name": "step_number"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 0,
+                        "y": 88
+                      },
+                      "size": {
+                        "width": 224,
+                        "height": 32
+                      },
+                      "font": {
+                        "size": 20,
+                        "family": "Poppins",
+                        "color": "#111827",
+                        "bold": true,
+                        "line_height": 1.15,
+                        "wrap": "word"
+                      },
+                      "alignment": {
+                        "horizontal": "center",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "Deliver"
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "step_title"
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 0,
+                        "y": 128
+                      },
+                      "size": {
+                        "width": 224,
+                        "height": 96
+                      },
+                      "font": {
+                        "size": 15,
+                        "family": "Poppins",
+                        "color": "#4B5563",
+                        "line_height": 1.4,
+                        "wrap": "word"
+                      },
+                      "alignment": {
+                        "horizontal": "center",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "Build, test, and ship in iterative two-week cycles."
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "step_body"
+                    }
+                  ]
+                },
+                {
+                  "type": "group",
+                  "children": [
+                    {
+                      "type": "container",
+                      "position": {
+                        "x": 0,
+                        "y": 0
+                      },
+                      "size": {
+                        "width": 64,
+                        "height": 64
+                      },
+                      "alignment": {
+                        "horizontal": "center",
+                        "vertical": "middle"
+                      },
+                      "fill": {
+                        "color": "#9333EA",
+                        "opacity": 1
+                      },
+                      "border_radius": {
+                        "tl": 32,
+                        "tr": 32,
+                        "bl": 32,
+                        "br": 32
+                      },
+                      "padding": {
+                        "top": 0,
+                        "right": 0,
+                        "bottom": 0,
+                        "left": 0
+                      },
+                      "child": {
+                        "type": "text",
+                        "size": {
+                          "width": 64,
+                          "height": 40
+                        },
+                        "font": {
+                          "size": 30,
+                          "family": "Poppins",
+                          "color": "#FFFFFF",
+                          "bold": true,
+                          "line_height": 1.0,
+                          "wrap": "none"
+                        },
+                        "alignment": {
+                          "horizontal": "center",
+                          "vertical": "middle"
+                        },
+                        "runs": [
+                          {
+                            "text": "4"
+                          }
+                        ],
+                        "decorative": true,
+                        "name": "step_number"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 0,
+                        "y": 88
+                      },
+                      "size": {
+                        "width": 224,
+                        "height": 32
+                      },
+                      "font": {
+                        "size": 20,
+                        "family": "Poppins",
+                        "color": "#111827",
+                        "bold": true,
+                        "line_height": 1.15,
+                        "wrap": "word"
+                      },
+                      "alignment": {
+                        "horizontal": "center",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "Scale"
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "step_title"
+                    },
+                    {
+                      "type": "text",
+                      "position": {
+                        "x": 0,
+                        "y": 128
+                      },
+                      "size": {
+                        "width": 224,
+                        "height": 96
+                      },
+                      "font": {
+                        "size": 15,
+                        "family": "Poppins",
+                        "color": "#4B5563",
+                        "line_height": 1.4,
+                        "wrap": "word"
+                      },
+                      "alignment": {
+                        "horizontal": "center",
+                        "vertical": "top"
+                      },
+                      "runs": [
+                        {
+                          "text": "Monitor, optimize, and expand to new teams and regions."
+                        }
+                      ],
+                      "decorative": false,
+                      "name": "step_body"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
     }
   ],
   "fonts": {

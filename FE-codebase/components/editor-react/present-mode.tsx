@@ -149,7 +149,14 @@ export default function PresentMode({
   return (
     <div
       ref={containerRef}
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black"
+      // z-index this high (not just on the controls) is deliberate: any
+      // floating toolbar TemplateV2KonvaSlide renders internally uses
+      // createPortal(..., document.body) — it becomes a *sibling* of this
+      // whole container at the body level, not a descendant, so no z-index
+      // on a child button here could ever out-rank it. Only raising the
+      // root's own z-index fixes that, since z-index only resolves against
+      // other elements within the same stacking context.
+      className="fixed inset-0 z-[100000] flex items-center justify-center bg-black"
     >
       {ui ? (
         <div
@@ -215,14 +222,15 @@ export default function PresentMode({
         <p className="text-zinc-500">Empty slide</p>
       )}
 
-      {/* Controls — explicit z-index since TemplateV2KonvaSlide renders its
-          own floating toolbars/overlays up to z-[10001] internally, which
-          would otherwise sit on top of these (they're plain DOM siblings,
-          not contained by a stacking context that would cap that). */}
+      {/* Controls. Solid-ish dark background (not translucent white) is
+          deliberate: these float over whatever the current slide looks
+          like, and a light/white slide showing through a bg-white/10 tint
+          made a button effectively invisible — white-on-white. A dark chip
+          keeps the white icon readable regardless of what's under it. */}
       <div className="absolute right-4 top-4 z-[10010] flex items-center gap-2">
         {deckId ? (
           <button
-            className="rounded-full border border-white/15 bg-white/10 p-2 text-white/90 backdrop-blur transition-colors hover:bg-white/20 hover:text-white"
+            className="rounded-full border border-white/10 bg-black/70 p-2 text-white shadow-lg backdrop-blur transition-colors hover:bg-black/85"
             onClick={openPresenterView}
             title="Open Presenter View"
           >
@@ -230,14 +238,14 @@ export default function PresentMode({
           </button>
         ) : null}
         <button
-          className="rounded-full border border-white/15 bg-white/10 p-2 text-white/90 backdrop-blur transition-colors hover:bg-white/20 hover:text-white"
+          className="rounded-full border border-white/10 bg-black/70 p-2 text-white shadow-lg backdrop-blur transition-colors hover:bg-black/85"
           onClick={onClose}
           title="Exit (Esc)"
         >
           <X size={18} />
         </button>
       </div>
-      <div className="absolute bottom-5 left-1/2 z-[10010] flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-white backdrop-blur">
+      <div className="absolute bottom-5 left-1/2 z-[10010] flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-black/70 px-3 py-1.5 text-white shadow-lg backdrop-blur">
         <button
           className="rounded-full p-1 transition-colors hover:bg-white/15 disabled:opacity-30 disabled:hover:bg-transparent"
           onClick={prev}

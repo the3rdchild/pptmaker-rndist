@@ -53,7 +53,11 @@ import {
   pickVividColor,
 } from "@/components/slide-editor/utils/extract-image-colors";
 import { buildPaletteFromSeed, type GeneratedPalette } from "@/components/slide-editor/utils/color-theory";
-import { applyPaletteToUi, type IconCounter } from "@/components/slide-editor/utils/ai-palette";
+import {
+  applyPaletteToUi,
+  type IconCounter,
+  type ShapeCounter,
+} from "@/components/slide-editor/utils/ai-palette";
 import { adaptDeckToPresentation } from "@/components/editor-react/deck-adapt";
 import { useSessionStore } from "@/store/session.store";
 import { getDeck, saveDeck, streamAipptDeck, generateImage, type AgentAction } from "@/lib/api";
@@ -487,9 +491,10 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
     // instead of every icon in the deck landing on the same one.
     let pendingPalette: GeneratedPalette | null = null;
     const iconCounter: IconCounter = { current: 0 };
+    const shapeCounter: ShapeCounter = { current: 0 };
     const tintIfThemed = (ui: Record<string, unknown>): Record<string, unknown> =>
       pendingPalette
-        ? (applyPaletteToUi(ui, pendingPalette, iconCounter) as Record<string, unknown>)
+        ? (applyPaletteToUi(ui, pendingPalette, iconCounter, shapeCounter) as Record<string, unknown>)
         : ui;
 
     // Generates a photo for ONE slot on an already-added slide and patches it

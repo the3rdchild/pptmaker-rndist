@@ -8,7 +8,7 @@
 // component doesn't get miscolored just because its sibling has a shape.
 
 import { hexLightness } from "@/components/slide-editor/utils/extract-image-colors";
-import type { GeneratedPalette } from "@/components/slide-editor/utils/color-theory";
+import { contrastColor, type GeneratedPalette } from "@/components/slide-editor/utils/color-theory";
 
 type Rec = Record<string, unknown>;
 
@@ -17,6 +17,21 @@ const NEAR_WHITE_LIGHTNESS = 0.92;
 
 export interface IconCounter {
   current: number;
+}
+
+/** Rotates the deck's scheme colors across sibling cards. Shared/mutated
+ * across the WHOLE deck (like IconCounter) so consecutive slides don't all
+ * start their card grids on the same color. */
+export interface ShapeCounter {
+  current: number;
+}
+
+function isCardGrid(el: Rec): boolean {
+  return (
+    (el.type === "grid" || el.type === "flex") &&
+    Array.isArray(el.children) &&
+    (el.children as Rec[]).length > 1
+  );
 }
 
 function isTextLike(type: unknown): boolean {
@@ -85,8 +100,10 @@ function recolorTextElement(el: Rec, color: string): Rec {
 function recolorTree(
   el: Rec,
   palette: GeneratedPalette,
+  shapeColor: string,
   textColor: string,
   iconCounter: IconCounter,
+  shapeCounter: ShapeCounter,
 ): Rec {
   let next = el;
 
@@ -100,7 +117,7 @@ function recolorTree(
     next = { ...next, fill: { ...fill, opacity: 0 } };
   } else if (rectRole === "shape") {
     const fill = (next.fill as Rec | undefined) ?? {};
-    next = { ...next, fill: { ...fill, color: palette.shape } };
+    next = { ...next, fill: { ...fill, color: shapeColor } };
   } else if (isTextLike(next.type)) {
     next = recolorTextElement(next, textColor);
   } else if (isIconElement(next)) {
@@ -109,16 +126,36 @@ function recolorTree(
     next = { ...next, color: hue };
   }
 
+  // A card grid: give each sibling card its own scheme color (and matching
+  // contrast text) so a feature row reads as a designed set rather than a wall
+  // of one accent tone. Non-grid subtrees keep the inherited shapeColor.
+  if (isCardGrid(next)) {
+    next = {
+      ...next,
+      children: (next.children as Rec[]).map((card) => {
+        const cardShape = palette.shapes[shapeCounter.current % palette.shapes.length];
+        shapeCounter.current += 1;
+        const cls = walkForClassification(card);
+        const cardText = cls.hasShape ? contrastColor(cardShape) : palette.textOnBackground;
+        return recolorTree(card, palette, cardShape, cardText, iconCounter, shapeCounter);
+      }),
+    };
+    return next;
+  }
+
   if (Array.isArray(next.children)) {
     next = {
       ...next,
       children: (next.children as Rec[]).map((child) =>
-        recolorTree(child, palette, textColor, iconCounter),
+        recolorTree(child, palette, shapeColor, textColor, iconCounter, shapeCounter),
       ),
     };
   }
   if (next.child && typeof next.child === "object") {
-    next = { ...next, child: recolorTree(next.child as Rec, palette, textColor, iconCounter) };
+    next = {
+      ...next,
+      child: recolorTree(next.child as Rec, palette, shapeColor, textColor, iconCounter, shapeCounter),
+    };
   }
 
   return next;
@@ -128,6 +165,7 @@ export function applyPaletteToUi(
   ui: Rec | null | undefined,
   palette: GeneratedPalette,
   iconCounter: IconCounter = { current: 0 },
+  shapeCounter: ShapeCounter = { current: 0 },
 ): Rec | null | undefined {
   const components = Array.isArray(ui?.components) ? (ui!.components as Rec[]) : null;
   if (!components) return ui;
@@ -139,7 +177,7 @@ export function applyPaletteToUi(
       const classification = walkForClassification(el);
       if (classification.hasBackground) foundBackgroundRect = true;
       const textColor = classification.hasShape ? palette.textOnShape : palette.textOnBackground;
-      return recolorTree(el, palette, textColor, iconCounter);
+      return recolorTree(el, palette, palette.shape, textColor, iconCounter, shapeCounter);
     });
     return { ...component, elements: nextElements };
   });

@@ -69,11 +69,53 @@ export function contrastColor(hex: string): "#000000" | "#FFFFFF" {
   return luminance > 0.35 ? "#000000" : "#FFFFFF";
 }
 
+// A deck picks ONE harmony scheme for its cards so sibling cards in a grid
+// vary within a coherent color family (like Canva) instead of every card being
+// the same single accent tone. "monochrome" varies lightness at the base hue;
+// the rest fan hues off the base by the classic harmony offsets.
+export type CardScheme =
+  | "monochrome"
+  | "analogous"
+  | "complementary"
+  | "triadic"
+  | "tetradic"
+  | "split";
+
+const SCHEME_HUE_OFFSETS: Record<Exclude<CardScheme, "monochrome">, number[]> = {
+  analogous: [0, 28, -28, 56, -56],
+  complementary: [0, 180],
+  triadic: [0, 120, 240],
+  tetradic: [0, 90, 180, 270],
+  split: [0, 150, 210],
+};
+
+const CARD_SCHEMES: CardScheme[] = [
+  "monochrome",
+  "analogous",
+  "complementary",
+  "triadic",
+  "tetradic",
+  "split",
+];
+
+function hashStr(s: string): number {
+  let hash = 5381;
+  for (let i = 0; i < s.length; i++) hash = (hash * 33) ^ s.charCodeAt(i);
+  return hash >>> 0;
+}
+
 export interface GeneratedPalette {
   /** Very light wash — the slide's own page background. */
   background: string;
-  /** Vivid mid-dark tone — card/shape accents. */
+  /** Vivid mid-dark tone — the default card/shape accent (== shapes[0]). */
   shape: string;
+  /** The deck's harmony scheme card colors, at the same lightness as `shape`
+   * but varied by hue (or lightness, for monochrome) — rotated across sibling
+   * cards in a grid so a feature row reads as a designed set, not a wall of
+   * one color. shapes[0] equals `shape` for continuity. */
+  shapes: string[];
+  /** Which harmony scheme `shapes` was built from (for reference/debug). */
+  scheme: CardScheme;
   /** Black or white, whichever reads on `background`. */
   textOnBackground: string;
   /** Black or white, whichever reads on `shape`. */
@@ -84,17 +126,35 @@ export interface GeneratedPalette {
 }
 
 const RAMP_LIGHTNESS = [0.15, 0.325, 0.5, 0.675, 0.85];
+// The lightness the base `shape` sits at — scheme cards share it so they read
+// as one weight of color, only the hue changing.
+const SHAPE_LIGHTNESS = RAMP_LIGHTNESS[1];
 
-export function buildPaletteFromSeed(seedHex: string): GeneratedPalette {
+function buildSchemeShapes(h: number, scheme: CardScheme): string[] {
+  if (scheme === "monochrome") {
+    // Same hue, stepped lightness around the base shape tone.
+    return [0, 0.09, -0.07, 0.16, -0.02].map((d) =>
+      hslToHex(h, 1, Math.max(0.18, Math.min(0.52, SHAPE_LIGHTNESS + d))),
+    );
+  }
+  return SCHEME_HUE_OFFSETS[scheme].map((offset) => hslToHex(h + offset, 1, SHAPE_LIGHTNESS));
+}
+
+export function buildPaletteFromSeed(seedHex: string, scheme?: CardScheme): GeneratedPalette {
   const { h } = hexToHsl(seedHex);
   const ramp = RAMP_LIGHTNESS.map((l) => hslToHex(h, 1, l));
-  const shape = ramp[1];
   const background = ramp[ramp.length - 1];
   const iconHues = [90, 180, 270].map((offset) => hslToHex(h + offset, 1, 0.5));
+
+  const chosenScheme = scheme ?? CARD_SCHEMES[hashStr(seedHex) % CARD_SCHEMES.length];
+  const shapes = buildSchemeShapes(h, chosenScheme);
+  const shape = shapes[0];
 
   return {
     background,
     shape,
+    shapes,
+    scheme: chosenScheme,
     textOnBackground: contrastColor(background),
     textOnShape: contrastColor(shape),
     iconHues,

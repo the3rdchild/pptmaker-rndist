@@ -494,63 +494,229 @@ function isPlaceholderIcon(el: Rec): boolean {
   return el.type === "image" && el.is_icon === true && el.data === PLACEHOLDER_ICON_SRC;
 }
 
-/** Collects every placeholder icon AND every text run found under `node`,
- * within the SAME subtree — used to pair each icon with its nearest card
- * title/label as a search query (a card's icon+title+body are siblings
- * under one item-slot node, per walkElement's own grouping above). */
-function collectPlaceholderIconsAndText(node: Rec, icons: Rec[], texts: string[]): void {
-  if (isPlaceholderIcon(node)) {
-    icons.push(node);
-    return;
+// The icon index is a small (~120) curated set of single-word Tabler icons
+// (see searchIcons in presentation-generation.ts). Its matcher is AND-based —
+// EVERY whitespace-separated term in the query must be a substring of an
+// icon's "name category" haystack (hyphens flattened to spaces). A real card
+// title like "Responsible Tourism Practices" therefore matches NOTHING, which
+// is why the placeholder icons were never getting swapped in practice: the
+// old code searched the full title verbatim. So instead we tokenize the title,
+// map each keyword to a concept icon (below), and fall back to searching the
+// individual words. Synonym VALUES must be space-separated words that appear
+// in an icon's name/category (never hyphenated — the matcher won't find
+// "trending-up" but will find "trending up").
+const ICON_STOPWORDS = new Set([
+  "the", "a", "an", "and", "or", "of", "to", "for", "in", "on", "with", "at", "by",
+  "your", "our", "their", "its", "is", "are", "be", "how", "what", "why", "when",
+  "this", "that", "these", "those", "as", "we", "you", "it", "from", "into",
+  "dan", "atau", "yang", "di", "ke", "untuk", "dengan", "pada", "adalah", "cara",
+  "kita", "kami", "para", "akan", "agar", "serta", "juga", "ini", "itu",
+]);
+
+const ICON_SYNONYMS: Record<string, string> = {
+  growth: "trending up", grow: "trending up", growing: "trending up", increase: "trending up",
+  scale: "trending up", scaling: "trending up", revenue: "report money", profit: "coin",
+  income: "coin", money: "wallet", finance: "wallet", financial: "wallet", cost: "credit card",
+  price: "credit card", pricing: "credit card", budget: "receipt", invoice: "receipt",
+  sales: "shopping cart", sell: "shopping cart", ecommerce: "shopping cart", shop: "shopping cart",
+  store: "building bank", bank: "building bank", banking: "building bank",
+  market: "chart bar", marketing: "speakerphone", advertising: "speakerphone",
+  analytics: "chart line", analysis: "chart line", metric: "gauge", metrics: "gauge",
+  statistics: "chart bar", stats: "chart bar", performance: "gauge", measure: "gauge",
+  report: "file text", reporting: "file text", dashboard: "gauge",
+  strategy: "target", strategic: "target", goal: "target", goals: "target", objective: "target",
+  target: "target", mission: "flag", vision: "bulb", plan: "checklist", planning: "checklist",
+  roadmap: "route", journey: "route", path: "route", direction: "route", step: "checklist",
+  steps: "checklist", process: "refresh", cycle: "refresh", workflow: "refresh",
+  team: "users", teams: "users", teamwork: "users group", people: "users", staff: "users",
+  collaboration: "users group", collaborate: "users group", partner: "users group",
+  partnership: "users group", community: "users group", audience: "users", member: "user",
+  members: "users", customer: "user circle", customers: "users", client: "user circle",
+  clients: "users", user: "user", users: "users", leadership: "crown", leader: "crown",
+  ceo: "crown", founder: "crown", idea: "bulb", ideas: "bulb", innovation: "bulb",
+  innovative: "bulb", creative: "brush", creativity: "brush", design: "palette",
+  branding: "palette", solution: "puzzle", solutions: "puzzle", integration: "puzzle",
+  technology: "cpu", tech: "cpu", digital: "cpu", software: "code", develop: "code",
+  development: "code", developer: "code", coding: "code", programming: "code",
+  engineering: "settings", ai: "robot", automation: "robot", machine: "robot", robot: "robot",
+  cloud: "cloud", hosting: "cloud", security: "shield lock", secure: "shield lock",
+  privacy: "lock", protection: "shield check", safety: "shield check", compliance: "shield check",
+  device: "device laptop", laptop: "device laptop", computer: "device laptop",
+  mobile: "device mobile", phone: "phone", app: "device mobile", application: "device mobile",
+  network: "wifi", internet: "wifi", connection: "wifi", connectivity: "wifi",
+  infrastructure: "server", server: "server", hardware: "cpu", database: "database",
+  data: "database", storage: "database", communication: "message", communicate: "message",
+  chat: "message circle", messaging: "message", message: "message", email: "mail",
+  contact: "mail", inbox: "mail", call: "phone", social: "share", sharing: "share",
+  share: "share", global: "world", world: "world", international: "world", worldwide: "world",
+  reach: "world", time: "clock", schedule: "calendar", timing: "clock", deadline: "alarm",
+  timeline: "calendar event", event: "calendar event", events: "calendar event",
+  history: "hourglass", duration: "hourglass", speed: "bolt", energy: "bolt", power: "bolt",
+  fast: "rocket", launch: "rocket", startup: "rocket", start: "rocket", boost: "rocket",
+  accelerate: "rocket", quality: "award", award: "award", achievement: "award",
+  achieve: "award", success: "star", successful: "star", win: "star", winning: "star",
+  best: "star", excellence: "star", premium: "star", rating: "star", review: "star",
+  feedback: "star", document: "file text", documentation: "file text", file: "file",
+  files: "folder", folder: "folder", content: "clipboard", checklist: "checklist",
+  task: "clipboard check", tasks: "clipboard check", todo: "clipboard check",
+  note: "notebook", notes: "notebook", book: "book", education: "book", learning: "book",
+  learn: "book", knowledge: "book", training: "book", course: "book", study: "book",
+  research: "book", guide: "book", location: "map pin", place: "map pin", travel: "map pin",
+  tourism: "map pin", tourist: "map pin", trip: "map pin", map: "map pin",
+  destination: "map pin", region: "map pin", area: "map pin", health: "heart",
+  healthcare: "heart", care: "heart", wellness: "heart", love: "heart", passion: "heart",
+  environment: "leaf", environmental: "leaf", nature: "leaf", natural: "leaf", green: "leaf",
+  sustainability: "leaf", sustainable: "leaf", eco: "leaf", climate: "leaf", ocean: "world",
+  marine: "world", benefit: "thumb up", benefits: "thumb up", advantage: "thumb up",
+  pros: "thumb up", feature: "star", features: "star", value: "star", values: "heart",
+  service: "headset", services: "headset", support: "headset", help: "headset",
+  assistance: "headset", info: "info circle", information: "info circle", detail: "info circle",
+  details: "info circle", about: "info circle", overview: "info circle", warning: "alert triangle",
+  risk: "alert triangle", risks: "alert triangle", problem: "alert triangle",
+  challenge: "alert triangle", challenges: "alert triangle", issue: "alert triangle",
+  photo: "photo", image: "photo", picture: "photo", gallery: "photo", video: "video",
+  media: "movie", music: "music", audio: "music", camera: "camera", product: "gift",
+  products: "gift", gift: "gift", offer: "gift", company: "building skyscraper",
+  business: "briefcase", corporate: "building skyscraper", office: "briefcase",
+  enterprise: "building skyscraper", organization: "building skyscraper", industry: "building skyscraper",
+  presentation: "presentation", meeting: "users group", conference: "users group",
+  chart: "chart bar", graph: "chart line", trend: "trending up", percent: "percentage",
+  percentage: "percentage", conversion: "percentage", productivity: "gauge",
+  efficiency: "gauge", flexible: "puzzle", scalable: "trending up", secure2: "lock",
+};
+
+// Guaranteed-nonempty decorative pool: when a card's title maps to no concept
+// icon, we still drop in one of these (rotated across the deck) so the slot is
+// a real icon rather than the bland placeholder box. Same "space-separated,
+// must exist in the index" rule as synonym values.
+const ICON_DECOR_FALLBACK = [
+  "bulb", "target", "star", "rocket", "checklist", "chart bar",
+  "puzzle", "award", "leaf", "flag", "bolt", "thumb up",
+];
+let decorFallbackCursor = 0;
+
+function iconQueryTokens(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !ICON_STOPWORDS.has(w));
+}
+
+async function searchOneIcon(term: string): Promise<string | null> {
+  const r = await PresentationGenerationApi.searchIcons({ query: term, limit: 1 }).catch(
+    () => [] as string[],
+  );
+  return r[0] ?? null;
+}
+
+/** Best content-relevant icon URL for a card title/label: concept synonyms
+ * first (so "growth" → a trending-up icon, not a literal "growth" search that
+ * matches nothing), then the individual words. Null if the title yields no
+ * match at all (caller then uses the decorative fallback). */
+async function pickIconUrl(query: string): Promise<string | null> {
+  const tokens = iconQueryTokens(query);
+  for (const t of tokens) {
+    const syn = ICON_SYNONYMS[t];
+    if (syn) {
+      const url = await searchOneIcon(syn);
+      if (url) return url;
+    }
   }
-  if (isTextLike(node)) {
-    const runs = (node.runs as Rec[] | undefined) ?? [];
-    const text = runs.map((r) => String(r.text ?? "")).join("");
-    if (text) texts.push(text);
+  for (const t of tokens) {
+    const url = await searchOneIcon(t);
+    if (url) return url;
+  }
+  return null;
+}
+
+async function pickDecorFallbackIcon(): Promise<string | null> {
+  for (let i = 0; i < ICON_DECOR_FALLBACK.length; i++) {
+    const name = ICON_DECOR_FALLBACK[decorFallbackCursor++ % ICON_DECOR_FALLBACK.length];
+    const url = await searchOneIcon(name);
+    if (url) return url;
+  }
+  return null;
+}
+
+interface IconScope {
+  icons: Rec[];
+  text: string;
+}
+
+function collectPlaceholderIcons(node: Rec, out: Rec[]): void {
+  if (isPlaceholderIcon(node)) {
+    out.push(node);
     return;
   }
   const children = node.children as Rec[] | undefined;
   if (Array.isArray(children)) {
-    for (const child of children) collectPlaceholderIconsAndText(child, icons, texts);
+    for (const child of children) collectPlaceholderIcons(child, out);
     return;
   }
   const child = node.child as Rec | undefined;
-  if (child) collectPlaceholderIconsAndText(child, icons, texts);
+  if (child) collectPlaceholderIcons(child, out);
 }
 
-/** Replaces every placeholder icon in `ui` with a real icon searched via the
- * existing (client-side, no network round trip) icon index, using the
- * nearest sibling text as the search query, falling back to `fallbackQuery`
- * (the slide's own title) for an icon with no text nearby. No-op if there
- * are no placeholder icons or every search comes up empty. */
+function firstTextUnder(node: Rec): string {
+  if (isTextLike(node)) {
+    const runs = (node.runs as Rec[] | undefined) ?? [];
+    return runs.map((r) => String(r.text ?? "")).join("");
+  }
+  const children = node.children as Rec[] | undefined;
+  if (Array.isArray(children)) {
+    for (const child of children) {
+      const t = firstTextUnder(child);
+      if (t) return t;
+    }
+    return "";
+  }
+  const child = node.child as Rec | undefined;
+  return child ? firstTextUnder(child) : "";
+}
+
+/** Splits a component element into icon "scopes" so each card in a grid gets
+ * its OWN title as the icon query, instead of every card in the grid sharing
+ * card #1's title (the old bug). A card grid (grid/flex with >1 children) →
+ * one scope per card; anything else → one scope for the whole element. */
+function collectIconScopes(el: Rec, scopes: IconScope[]): void {
+  const children = el.children as Rec[] | undefined;
+  if ((el.type === "grid" || el.type === "flex") && Array.isArray(children) && children.length > 1) {
+    for (const card of children) {
+      const icons: Rec[] = [];
+      collectPlaceholderIcons(card, icons);
+      if (icons.length) scopes.push({ icons, text: firstTextUnder(card) });
+    }
+    return;
+  }
+  const icons: Rec[] = [];
+  collectPlaceholderIcons(el, icons);
+  if (icons.length) scopes.push({ icons, text: firstTextUnder(el) });
+}
+
+/** Replaces every placeholder icon in `ui` with a real, content-relevant icon
+ * (per-card title as the query), falling back to `fallbackQuery` (the slide's
+ * title) and then to a rotating decorative icon so NO slot is left as the
+ * bland placeholder box. */
 async function fillPlaceholderIcons(ui: Rec, fallbackQuery: string): Promise<Rec> {
   const components = (ui.components as Rec[]) ?? [];
-  const searchTasks: { icon: Rec; query: string }[] = [];
-
+  const scopes: IconScope[] = [];
   for (const component of components) {
     const elements = (component.elements as Rec[]) ?? [];
-    for (const el of elements) {
-      const icons: Rec[] = [];
-      const texts: string[] = [];
-      collectPlaceholderIconsAndText(el, icons, texts);
-      if (!icons.length) continue;
-      const query = texts[0] || fallbackQuery;
-      for (const icon of icons) searchTasks.push({ icon, query });
-    }
+    for (const el of elements) collectIconScopes(el, scopes);
   }
-  if (!searchTasks.length) return ui;
-
-  const results = await Promise.all(
-    searchTasks.map(({ query }) =>
-      PresentationGenerationApi.searchIcons({ query, limit: 1 }).catch(() => [] as string[]),
-    ),
-  );
+  if (!scopes.length) return ui;
 
   const urlByIcon = new Map<Rec, string>();
-  searchTasks.forEach(({ icon }, i) => {
-    const url = results[i]?.[0];
-    if (url) urlByIcon.set(icon, url);
-  });
+  await Promise.all(
+    scopes.map(async (scope) => {
+      const relevant = await pickIconUrl(scope.text || fallbackQuery);
+      for (const icon of scope.icons) {
+        const url = relevant ?? (await pickDecorFallbackIcon());
+        if (url) urlByIcon.set(icon, url);
+      }
+    }),
+  );
   if (!urlByIcon.size) return ui;
 
   // fillLayout mutates elements in place (setText etc.) rather than cloning,

@@ -1756,6 +1756,10 @@ export function recolorRawElement(element: RawElement, color: string): RawElemen
     return { ...element, highlight_color: color };
   }
 
+  if (type === "formula") {
+    return { ...element, color };
+  }
+
   const childInfo = childArrayInfo(element);
   if (childInfo) {
     // A wrapper that paints its own background is "the shape" the user

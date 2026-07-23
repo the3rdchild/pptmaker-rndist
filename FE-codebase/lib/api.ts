@@ -135,7 +135,7 @@ export async function streamAgent(
 
 export async function streamAipptDeck(
 	token: string,
-	body: { content: string; language?: string; style?: string },
+	body: { content: string; language?: string; style?: string; colorPreference?: string },
 ): Promise<{ state: -1; message: string } | Response> {
 	const res = await fetch(`${API_BASE}/api/v1/tools/aippt`, {
 		method: 'POST',

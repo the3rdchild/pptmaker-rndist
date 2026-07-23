@@ -46,10 +46,21 @@ def process(ctx: dict):
     params = ctx["params"]
     outline = params.get("outline") or params.get("content") or ""
     language = params.get("language", "English")
+    color_preference = params.get("colorPreference")
 
-    logger.info("[deck_service] job_id=%s lang=%s", ctx["job_id"], language)
+    logger.info("[deck_service] job_id=%s lang=%s color_pref=%r", ctx["job_id"], language, color_preference)
 
-    user_msg = f"Language: {language}\n\nOutline:\n{outline}\n\nGenerate the JSONL slides now."
+    color_instruction = (
+        f"\n\nThe user explicitly asked for a '{color_preference}' color theme — the theme "
+        f"line's color MUST be a hex shade that reads as '{color_preference}', overriding "
+        f"whatever you'd have picked from the topic's mood alone."
+        if color_preference
+        else ""
+    )
+    user_msg = (
+        f"Language: {language}\n\nOutline:\n{outline}{color_instruction}\n\n"
+        "Generate the JSONL slides now."
+    )
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": user_msg},

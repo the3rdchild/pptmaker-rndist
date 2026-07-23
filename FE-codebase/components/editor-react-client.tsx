@@ -418,9 +418,9 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
   // auto-generate-on-open flow (?prompt= from the homepage). Throws on real
   // failure (bad response, dead stream) so callers can show a graceful
   // error + retry (PRD #19) instead of silently ending up with 0 slides.
-  const generateDeckFromTopic = async (topic: string, language?: string): Promise<number> => {
+  const generateDeckFromTopic = async (topic: string, language?: string, colorPreference?: string): Promise<number> => {
     if (!token) return 0;
-    const res = await streamAipptDeck(token, { content: topic, language });
+    const res = await streamAipptDeck(token, { content: topic, language, colorPreference });
     if (!(res instanceof Response) || !res.body) {
       const message =
         res && typeof res === "object" && "message" in res
@@ -650,11 +650,12 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
       case "create_deck": {
         const topic = String(action.args.topic || action.args.content || "");
         const language = action.args.language ? String(action.args.language) : undefined;
+        const colorPreference = action.args.color_preference ? String(action.args.color_preference) : undefined;
         if (!topic) return "Please specify a topic to generate a deck about.";
         if (!token) return "Session not ready — try again in a moment.";
 
         try {
-          const count = await generateDeckFromTopic(topic, language);
+          const count = await generateDeckFromTopic(topic, language, colorPreference);
           return count > 0
             ? `Generated ${count} slides about "${topic}".`
             : `No slides generated for "${topic}". Try a different prompt.`;

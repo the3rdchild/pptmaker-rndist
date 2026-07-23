@@ -18,6 +18,7 @@ const aipptSchema = z.object({
 	language: z.string().optional().default('English'),
 	style: z.string().optional(),
 	model: z.string().optional(),
+	colorPreference: z.string().optional(),
 })
 const writingSchema = z.object({
 	content: z.string(),
@@ -184,7 +185,13 @@ tools.post('/aippt', async (c) => {
 			job_id: jobId,
 			session_id: sessionId,
 			status: 'pending',
-			params: { type: 'deck', outline: parsed.data.content, language: parsed.data.language, stream_mode: 'raw' },
+			params: {
+				type: 'deck',
+				outline: parsed.data.content,
+				language: parsed.data.language,
+				colorPreference: parsed.data.colorPreference,
+				stream_mode: 'raw',
+			},
 		})
 		await QueueClient.enqueueJob(jobId, {
 			request_id: request.id,
@@ -192,6 +199,7 @@ tools.post('/aippt', async (c) => {
 			type: 'deck',
 			outline: parsed.data.content,
 			language: parsed.data.language,
+			colorPreference: parsed.data.colorPreference,
 			stream_mode: 'raw',
 		})
 

@@ -175,7 +175,20 @@ TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "topic": {"type": "string"},
+                    "topic": {
+                        "type": "string",
+                        "description": "The deck's subject ONLY — do not fold style/color requests in here.",
+                    },
+                    "color_preference": {
+                        "type": "string",
+                        "description": (
+                            "If the user explicitly asked for a color/theme (e.g. 'tema warna "
+                            "hijau', 'blue theme', 'pake warna navy'), put that color here "
+                            "verbatim (e.g. 'hijau', 'navy'). Omit entirely if they didn't ask "
+                            "for a specific color — the generator picks one automatically based "
+                            "on the topic in that case."
+                        ),
+                    },
                 },
                 "required": ["topic"],
             },

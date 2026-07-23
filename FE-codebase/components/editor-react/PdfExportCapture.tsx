@@ -18,9 +18,34 @@ const CaptureSlide = dynamic(
 );
 
 const CAPTURE_PIXEL_RATIO = 2;
+const STAGE_READY_TIMEOUT_MS = 15000;
+const STAGE_READY_POLL_MS = 50;
 
 async function nextFrame() {
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+function delay(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+// `CaptureSlide` is a next/dynamic(..., { ssr: false }) component — on its
+// first use in a session it renders null until the chunk finishes loading,
+// which is a network+parse delay a fixed number of requestAnimationFrame
+// waits doesn't reliably cover (confirmed by logging stageRefs.current at
+// capture time: it was still all-null on the first export attempt).
+// Poll until every stage ref is actually attached instead of guessing.
+async function waitForAllStages(
+  stageRefs: { current: (Konva.Stage | null)[] },
+  isCancelled: () => boolean,
+): Promise<boolean> {
+  const start = Date.now();
+  while (!isCancelled()) {
+    if (stageRefs.current.every((stage) => stage !== null)) return true;
+    if (Date.now() - start > STAGE_READY_TIMEOUT_MS) return false;
+    await delay(STAGE_READY_POLL_MS);
+  }
+  return false;
 }
 
 export type PdfExportSlide = { ui?: Record<string, unknown> | null };
@@ -48,8 +73,14 @@ export function PdfExportCapture({
     stageRefs.current = new Array(slides.length).fill(null);
 
     const run = async () => {
+      const ready = await waitForAllStages(stageRefs, () => cancelled);
+      if (cancelled) return;
+      if (!ready) {
+        onCaptureRef.current(null);
+        return;
+      }
+
       // Let mount effects (image/formula loads, chart construction) run.
-      await nextFrame();
       await Promise.all(pendingKonvaImageLoads());
       // Give Konva a couple of frames to actually paint the now-resolved
       // images before we rasterize.

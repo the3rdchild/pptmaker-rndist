@@ -45,7 +45,7 @@ export const inlineStyles = {
     cursor: "pointer",
   },
   iconButtonActive: {
-    borderColor: editorTheme.primary,
+    border: `1px solid ${editorTheme.primary}`,
     background: editorTheme.primarySoft,
     color: editorTheme.primary,
   },

@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, MonitorPlay, X } from "lucide-react";
+import {
+  usePresenterChannel,
+  type PresenterPoint,
+} from "@/components/editor-react/presenter-sync";
 
 const TemplateV2KonvaSlide = dynamic(
   () =>
@@ -18,6 +22,7 @@ const SLIDE_H = 720;
 export default function PresentMode({
   slides,
   startIndex,
+  deckId,
   onClose,
 }: {
   slides: {
@@ -25,6 +30,7 @@ export default function PresentMode({
     isHidden?: boolean;
   }[];
   startIndex: number;
+  deckId?: string | null;
   onClose: () => void;
 }) {
   // Hidden slides (#24) are skipped during presentation but stay in the
@@ -43,6 +49,9 @@ export default function PresentMode({
   const [index, setIndex] = useState(resolveStart);
   const containerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
+  const [laser, setLaser] = useState<{ x: number; y: number } | null>(null);
+  const [strokes, setStrokes] = useState<PresenterPoint[][]>([]);
+  const [liveStroke, setLiveStroke] = useState<PresenterPoint[] | null>(null);
 
   const position = Math.max(0, visibleIndexes.indexOf(index));
   const total = visibleIndexes.length;
@@ -61,6 +70,47 @@ export default function PresentMode({
       return visibleIndexes[prevPos] ?? i;
     });
   }, [visibleIndexes]);
+
+  // Cross-window sync with a separate Presenter View window (#50): reply to
+  // its "where are we" ping, follow slide-change requests it sends, and
+  // render the laser pointer / freehand annotations it broadcasts (#41).
+  // Re-broadcasting our own index below whenever it changes — even when
+  // that change originated from a message we just received — is harmless:
+  // the Presenter View window only reacts to a *different* index, so
+  // echoing the same value back settles immediately with no feedback loop.
+  const postToPresenter = usePresenterChannel(deckId, (message) => {
+    if (message.type === "ping") {
+      postToPresenter({ type: "state", index, total: visibleIndexes.length });
+    } else if (message.type === "slide-change") {
+      if (visibleIndexes.includes(message.index)) setIndex(message.index);
+    } else if (message.type === "laser") {
+      setLaser(message.visible ? { x: message.x, y: message.y } : null);
+    } else if (message.type === "annotation-stroke") {
+      if (message.done) {
+        setLiveStroke(null);
+        if (message.points.length > 1) {
+          setStrokes((prev) => [...prev, message.points]);
+        }
+      } else {
+        setLiveStroke(message.points);
+      }
+    } else if (message.type === "annotation-clear") {
+      setStrokes([]);
+      setLiveStroke(null);
+    }
+  });
+
+  useEffect(() => {
+    postToPresenter({ type: "slide-change", index });
+  }, [index, postToPresenter]);
+
+  // Annotations and the laser dot are tied to "this moment", not the slide
+  // itself — clear them whenever the slide changes, from either window.
+  useEffect(() => {
+    setStrokes([]);
+    setLiveStroke(null);
+    setLaser(null);
+  }, [index]);
 
   // Compute fit scale based on viewport
   useEffect(() => {
@@ -87,6 +137,14 @@ export default function PresentMode({
   }, [next, prev, onClose]);
 
   const ui = slides[index]?.ui;
+  const openPresenterView = () => {
+    if (!deckId) return;
+    window.open(
+      `/editor-react/${deckId}/present`,
+      `presenter-view-${deckId}`,
+      "width=960,height=680",
+    );
+  };
 
   return (
     <div
@@ -115,19 +173,67 @@ export default function PresentMode({
               slideIndex={index}
             />
           </div>
+
+          {/* Live tools overlay (#41): laser pointer + freehand annotations
+              broadcast from the Presenter View window. Pure CSS/SVG on top
+              of the Konva stage — never intercepts pointer events here. */}
+          <svg
+            className="pointer-events-none absolute inset-0"
+            width={SLIDE_W * scale}
+            height={SLIDE_H * scale}
+            viewBox={`0 0 ${SLIDE_W} ${SLIDE_H}`}
+          >
+            {[...strokes, ...(liveStroke ? [liveStroke] : [])].map(
+              (stroke, strokeIndex) =>
+                stroke.length > 1 ? (
+                  <polyline
+                    key={strokeIndex}
+                    points={stroke
+                      .map((p) => `${p.x * SLIDE_W},${p.y * SLIDE_H}`)
+                      .join(" ")}
+                    fill="none"
+                    stroke="#FF5A36"
+                    strokeWidth={4}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                ) : null,
+            )}
+            {laser ? (
+              <circle
+                cx={laser.x * SLIDE_W}
+                cy={laser.y * SLIDE_H}
+                r={10}
+                fill="rgba(255,30,30,0.85)"
+                stroke="rgba(255,255,255,0.9)"
+                strokeWidth={2}
+              />
+            ) : null}
+          </svg>
         </div>
       ) : (
         <p className="text-zinc-500">Empty slide</p>
       )}
 
       {/* Controls */}
-      <button
-        className="absolute right-4 top-4 rounded-full border border-white/15 bg-white/10 p-2 text-white/90 backdrop-blur transition-colors hover:bg-white/20 hover:text-white"
-        onClick={onClose}
-        title="Exit (Esc)"
-      >
-        <X size={18} />
-      </button>
+      <div className="absolute right-4 top-4 flex items-center gap-2">
+        {deckId ? (
+          <button
+            className="rounded-full border border-white/15 bg-white/10 p-2 text-white/90 backdrop-blur transition-colors hover:bg-white/20 hover:text-white"
+            onClick={openPresenterView}
+            title="Open Presenter View"
+          >
+            <MonitorPlay size={18} />
+          </button>
+        ) : null}
+        <button
+          className="rounded-full border border-white/15 bg-white/10 p-2 text-white/90 backdrop-blur transition-colors hover:bg-white/20 hover:text-white"
+          onClick={onClose}
+          title="Exit (Esc)"
+        >
+          <X size={18} />
+        </button>
+      </div>
       <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-white backdrop-blur">
         <button
           className="rounded-full p-1 transition-colors hover:bg-white/15 disabled:opacity-30 disabled:hover:bg-transparent"

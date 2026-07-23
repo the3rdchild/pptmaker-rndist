@@ -45,7 +45,8 @@ import {
   setSlideHidden,
   setSlideNotes,
 } from "@/store/presentationGeneration";
-import type { PresentationData, SlideData } from "@/store/presentationGeneration";
+import type { SlideData } from "@/store/presentationGeneration";
+import { adaptDeckToPresentation } from "@/components/editor-react/deck-adapt";
 import { useSessionStore } from "@/store/session.store";
 import { getDeck, saveDeck, streamAipptDeck, generateImage, type AgentAction } from "@/lib/api";
 import { normalizeBackendAssetUrls } from "@/utils/api";
@@ -97,32 +98,6 @@ async function loadDefaultLayout(): Promise<Record<string, unknown>> {
   const template = await res.json();
   const layouts = (template.layouts ?? []) as Record<string, unknown>[];
   return normalizeBackendAssetUrls(layouts[0] ?? {});
-}
-
-function adaptDeckToPresentation(
-  deckId: string,
-  payload: Record<string, unknown> | null
-): PresentationData | null {
-  if (!payload) return null;
-  const rawSlides = Array.isArray(payload.slides) ? payload.slides : [];
-  const slides = rawSlides
-    .map((s) => {
-      const rec = (s ?? {}) as Record<string, unknown>;
-      const ui = rec.ui ?? null;
-      return {
-        ui: ui as Record<string, unknown> | null,
-        isLocked: rec.isLocked as boolean | undefined,
-        isHidden: rec.isHidden as boolean | undefined,
-        notes: rec.notes as string | undefined,
-      };
-    })
-    .filter((s) => s.ui);
-  if (slides.length === 0) return null;
-  return {
-    id: deckId,
-    title: (payload.title as string) ?? "Untitled",
-    slides,
-  };
 }
 
 export default function EditorReactClient({ deckId }: { deckId: string }) {
@@ -979,6 +954,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
         <PresentMode
           slides={slides}
           startIndex={safeActive}
+          deckId={deckId}
           onClose={() => setPresenting(false)}
         />
       )}

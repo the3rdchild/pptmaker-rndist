@@ -1,7 +1,9 @@
 """
-DeepInfra LLM client (OpenAI-compatible).
+Text-LLM client (OpenAI-compatible). Provider is chosen by LLM_PROVIDER
+("deepinfra" default, or "openai") — see core/configs/env.py. Image
+generation (image_client.py) is unaffected; it always uses DeepInfra.
 
-Endpoint: {DEEPINFRA_BASE_URL}/chat/completions
+Endpoint: {LLM_BASE_URL}/chat/completions
 Supports:
   - chat(messages) → text
   - chat_json(messages, schema_hint) → parsed JSON dict
@@ -11,15 +13,12 @@ import json
 import logging
 
 from openai import OpenAI
-from core.configs.env import (
-    DEEPINFRA_API_KEY,
-    DEEPINFRA_BASE_URL,
-    DEEPINFRA_MODEL,
-)
+from core.configs.env import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, LLM_PROVIDER
 
 logger = logging.getLogger(__name__)
+logger.info("[llm_client] provider=%s model=%s", LLM_PROVIDER, LLM_MODEL)
 
-_client = OpenAI(api_key=DEEPINFRA_API_KEY, base_url=DEEPINFRA_BASE_URL)
+_client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
 
 
 def chat_stream(
@@ -30,7 +29,7 @@ def chat_stream(
 ):
     """Streaming chat completion → yields text chunks as they arrive."""
     stream = _client.chat.completions.create(
-        model=model or DEEPINFRA_MODEL,
+        model=model or LLM_MODEL,
         messages=messages,
         temperature=temperature,
         stream=True,
@@ -50,7 +49,7 @@ def chat(
 ) -> str:
     """Plain chat completion → returns assistant text."""
     resp = _client.chat.completions.create(
-        model=model or DEEPINFRA_MODEL,
+        model=model or LLM_MODEL,
         messages=messages,
         temperature=temperature,
         **({"max_tokens": max_tokens} if max_tokens else {}),
@@ -70,7 +69,7 @@ def chat_json(
     Returns parsed dict.
     """
     resp = _client.chat.completions.create(
-        model=model or DEEPINFRA_MODEL,
+        model=model or LLM_MODEL,
         messages=messages,
         temperature=temperature,
         response_format={"type": "json_object"},
@@ -97,7 +96,7 @@ def chat_tools(
     memutuskan manggil tool).
     """
     resp = _client.chat.completions.create(
-        model=model or DEEPINFRA_MODEL,
+        model=model or LLM_MODEL,
         messages=messages,
         tools=tools,
         tool_choice="auto",

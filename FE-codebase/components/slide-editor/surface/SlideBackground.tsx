@@ -17,6 +17,21 @@ import type { RawUi } from "@/components/slide-editor/model/core";
  * the legacy solid `ui.background` string.
  */
 
+/** Repeating tile patterns (drawn small, tiled) vs full-stage abstract
+ * patterns (drawn once at stage size — flowing lines/arcs/blobs like Canva). */
+export type BackgroundPattern =
+  | "none"
+  | "grid"
+  | "dots"
+  | "waves"
+  | "diagonal"
+  | "arcs"
+  | "blobs";
+
+const TILE_PATTERNS = new Set<BackgroundPattern>(["grid", "dots"]);
+const STAGE_PATTERNS = new Set<BackgroundPattern>(["waves", "diagonal", "arcs", "blobs"]);
+const ALL_PATTERNS = new Set<BackgroundPattern>([...TILE_PATTERNS, ...STAGE_PATTERNS]);
+
 export type BackgroundStyle = {
   type: "solid" | "linear" | "radial" | "image";
   /** Primary color (solid fill, gradient start, or the fallback shown while/if the image fails to load). */
@@ -25,7 +40,7 @@ export type BackgroundStyle = {
   to?: string;
   /** Linear gradient direction in degrees; 0 = left→right, 90 = top→bottom. */
   angle?: number;
-  pattern?: "none" | "grid" | "dots";
+  pattern?: BackgroundPattern;
   /** Uploaded background image URL, used when type === "image". */
   imageUrl?: string;
 };
@@ -45,10 +60,9 @@ export function readBackgroundStyle(ui: RawUi): BackgroundStyle {
         from,
         to: typeof record.to === "string" ? record.to : from,
         angle: typeof record.angle === "number" ? record.angle : 90,
-        pattern:
-          record.pattern === "grid" || record.pattern === "dots"
-            ? record.pattern
-            : "none",
+        pattern: ALL_PATTERNS.has(record.pattern as BackgroundPattern)
+          ? (record.pattern as BackgroundPattern)
+          : "none",
         imageUrl: typeof record.imageUrl === "string" ? record.imageUrl : undefined,
       };
     }
@@ -93,6 +107,82 @@ function makePatternCanvas(
     ctx.beginPath();
     ctx.arc(size / 2, size / 2, 1.6, 0, Math.PI * 2);
     ctx.fill();
+  }
+  return canvas;
+}
+
+/** Draws a full-stage (non-repeating) abstract pattern — flowing wave lines,
+ * diagonal streaks, concentric arcs, or soft blobs — the kind of decorative
+ * motion Canva layers behind a deck. Drawn once at stage size and painted as a
+ * single non-tiled image, so the curves read as one continuous composition
+ * rather than a repeated tile. `color` already carries its (low) alpha. */
+function makeStagePatternCanvas(
+  kind: "waves" | "diagonal" | "arcs" | "blobs",
+  color: string,
+  width: number,
+  height: number,
+): HTMLCanvasElement | null {
+  if (typeof document === "undefined") return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  if (kind === "waves") {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    const rows = 7;
+    const amplitude = height * 0.06;
+    const wavelength = width * 0.55;
+    for (let r = 0; r < rows; r++) {
+      const baseY = (height / (rows - 1)) * r;
+      const phase = r * 0.9;
+      ctx.beginPath();
+      for (let x = 0; x <= width; x += 8) {
+        const y = baseY + Math.sin((x / wavelength) * Math.PI * 2 + phase) * amplitude;
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+  } else if (kind === "diagonal") {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    const gap = 46;
+    const span = width + height;
+    for (let d = -height; d < span; d += gap) {
+      ctx.beginPath();
+      ctx.moveTo(d, 0);
+      ctx.lineTo(d + height, height);
+      ctx.stroke();
+    }
+  } else if (kind === "arcs") {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    // Concentric arcs radiating from the bottom-right corner (topographic feel).
+    const cx = width * 1.02;
+    const cy = height * 1.05;
+    const maxR = Math.hypot(width, height) * 1.05;
+    for (let r = maxR * 0.18; r < maxR; r += 58) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, Math.PI, Math.PI * 1.5);
+      ctx.stroke();
+    }
+  } else {
+    // blobs — a few big soft filled circles for gentle color motion.
+    ctx.fillStyle = color;
+    const blobs = [
+      [width * 0.18, height * 0.24, height * 0.28],
+      [width * 0.82, height * 0.32, height * 0.22],
+      [width * 0.68, height * 0.86, height * 0.34],
+      [width * 0.08, height * 0.9, height * 0.2],
+    ];
+    for (const [x, y, r] of blobs) {
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
   return canvas;
 }
@@ -186,11 +276,27 @@ export function SlideBackground({ ui }: { ui: RawUi }) {
   const { type, from, angle = 90, pattern = "none" } = style;
   const to = style.to ?? from;
 
-  const patternImage = useMemo(() => {
+  const tilePatternImage = useMemo(() => {
     if (pattern !== "grid" && pattern !== "dots") return null;
     const dark = hexLuminance(from) < 0.5;
     const color = dark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.10)";
     return makePatternCanvas(pattern, color);
+  }, [pattern, from]);
+
+  const stagePatternImage = useMemo(() => {
+    if (
+      pattern !== "waves" &&
+      pattern !== "diagonal" &&
+      pattern !== "arcs" &&
+      pattern !== "blobs"
+    ) {
+      return null;
+    }
+    const dark = hexLuminance(from) < 0.5;
+    // Blobs are filled areas — keep them fainter than the line patterns.
+    const alpha = pattern === "blobs" ? (dark ? 0.1 : 0.07) : dark ? 0.16 : 0.11;
+    const color = dark ? `rgba(255,255,255,${alpha})` : `rgba(0,0,0,${alpha})`;
+    return makeStagePatternCanvas(pattern, color, EDITOR_STAGE_WIDTH, EDITOR_STAGE_HEIGHT);
   }, [pattern, from]);
 
   const gradient = type === "linear" ? linearGradientPoints(angle) : null;
@@ -232,13 +338,21 @@ export function SlideBackground({ ui }: { ui: RawUi }) {
           fillRadialGradientColorStops={[0, from, 1, to]}
         />
       )}
-      {patternImage ? (
+      {tilePatternImage ? (
         <Rect
           width={EDITOR_STAGE_WIDTH}
           height={EDITOR_STAGE_HEIGHT}
           // Konva accepts a canvas for fillPatternImage at runtime; its types only name HTMLImageElement.
-          fillPatternImage={patternImage as unknown as HTMLImageElement}
+          fillPatternImage={tilePatternImage as unknown as HTMLImageElement}
           fillPatternRepeat="repeat"
+          listening={false}
+        />
+      ) : null}
+      {stagePatternImage ? (
+        <KonvaImage
+          image={stagePatternImage as unknown as HTMLImageElement}
+          width={EDITOR_STAGE_WIDTH}
+          height={EDITOR_STAGE_HEIGHT}
           listening={false}
         />
       ) : null}

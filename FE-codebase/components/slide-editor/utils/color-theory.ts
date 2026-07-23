@@ -123,7 +123,23 @@ export interface GeneratedPalette {
   /** Tetradic (h+90, h+180, h+270) hues at a vivid lightness — rotated
    * across a deck's icons so they read as a deliberate accent color. */
   iconHues: string[];
+  /** Decorative background pattern for the deck (a SlideBackground pattern
+   * name). Picked per seed so a deck gets flowing lines/arcs/etc. instead of
+   * always the same dots. */
+  backgroundPattern: string;
 }
+
+// Weighted toward the flowing abstract patterns (the Canva-like look) over the
+// plainer dots/grid. Kept as strings here to avoid a util→React import;
+// SlideBackground.readBackgroundStyle whitelists the accepted values.
+const BACKGROUND_PATTERNS = [
+  "waves",
+  "waves",
+  "diagonal",
+  "arcs",
+  "blobs",
+  "dots",
+];
 
 const RAMP_LIGHTNESS = [0.15, 0.325, 0.5, 0.675, 0.85];
 // The lightness the base `shape` sits at — scheme cards share it so they read
@@ -146,9 +162,12 @@ export function buildPaletteFromSeed(seedHex: string, scheme?: CardScheme): Gene
   const background = ramp[ramp.length - 1];
   const iconHues = [90, 180, 270].map((offset) => hslToHex(h + offset, 1, 0.5));
 
-  const chosenScheme = scheme ?? CARD_SCHEMES[hashStr(seedHex) % CARD_SCHEMES.length];
+  const seedHash = hashStr(seedHex);
+  const chosenScheme = scheme ?? CARD_SCHEMES[seedHash % CARD_SCHEMES.length];
   const shapes = buildSchemeShapes(h, chosenScheme);
   const shape = shapes[0];
+  const backgroundPattern =
+    BACKGROUND_PATTERNS[(seedHash >>> 3) % BACKGROUND_PATTERNS.length];
 
   return {
     background,
@@ -158,5 +177,6 @@ export function buildPaletteFromSeed(seedHex: string, scheme?: CardScheme): Gene
     textOnBackground: contrastColor(background),
     textOnShape: contrastColor(shape),
     iconHues,
+    backgroundPattern,
   };
 }

@@ -67,6 +67,10 @@ const PATTERNS: { id: NonNullable<BackgroundStyle["pattern"]>; label: string }[]
   { id: "none", label: "None" },
   { id: "grid", label: "Grid" },
   { id: "dots", label: "Dots" },
+  { id: "waves", label: "Waves" },
+  { id: "diagonal", label: "Diagonal" },
+  { id: "arcs", label: "Arcs" },
+  { id: "blobs", label: "Blobs" },
 ];
 
 /**

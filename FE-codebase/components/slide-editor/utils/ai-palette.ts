@@ -189,7 +189,7 @@ export function applyPaletteToUi(
       from: palette.shape,
       to: palette.background,
       angle: 135,
-      pattern: "dots",
+      pattern: palette.backgroundPattern,
     };
   }
   return next;

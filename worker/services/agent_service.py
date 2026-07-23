@@ -165,6 +165,87 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "insert_formula",
+            "description": "Insert a math/LaTeX formula onto an existing slide.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "slide_index": {"type": "integer", "description": "0-based index"},
+                    "latex": {
+                        "type": "string",
+                        "description": "TeX source, e.g. 'E = mc^2' or 'x = \\\\frac{-b \\\\pm \\\\sqrt{b^2-4ac}}{2a}'.",
+                    },
+                },
+                "required": ["slide_index", "latex"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "insert_shape",
+            "description": "Insert a basic shape onto an existing slide.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "slide_index": {"type": "integer", "description": "0-based index"},
+                    "shape": {
+                        "type": "string",
+                        "enum": [
+                            "rectangle",
+                            "square",
+                            "rounded-rectangle",
+                            "pill",
+                            "ellipse",
+                            "circle",
+                            "line",
+                        ],
+                    },
+                },
+                "required": ["slide_index", "shape"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "insert_icon",
+            "description": (
+                "Insert an icon onto an existing slide, picked by searching the icon "
+                "library for a keyword (e.g. 'rocket', 'chart', 'lightbulb')."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "slide_index": {"type": "integer", "description": "0-based index"},
+                    "query": {"type": "string", "description": "Search keyword, e.g. 'rocket'."},
+                },
+                "required": ["slide_index", "query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_background",
+            "description": "Set a slide's background to a solid color or a gradient.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "slide_index": {"type": "integer", "description": "0-based index — ignored if apply_to_all is true."},
+                    "apply_to_all": {"type": "boolean", "description": "Apply to every slide in the deck."},
+                    "style": {"type": "string", "enum": ["solid", "linear", "radial"]},
+                    "color": {"type": "string", "description": "Hex color, e.g. '#1a1b2e'."},
+                    "color_to": {"type": "string", "description": "Second hex color for a gradient (ignored for solid)."},
+                    "angle": {"type": "integer", "description": "Linear gradient angle in degrees (0=left-to-right, 90=top-to-bottom)."},
+                },
+                "required": ["style", "color"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "regenerate_slide",
             "description": (
                 "Replace one existing slide's content and hero image based on a new "

@@ -82,7 +82,12 @@ import {
   applyThemeToAllSlides,
   buildAddSlideUi,
   updateSlideText,
+  insertFormulaIntoSlide,
+  insertShapeIntoSlide,
+  insertIconIntoSlide,
+  setSlideBackground,
 } from "@/components/editor-react/agent-dispatch";
+import type { BackgroundStyle } from "@/components/slide-editor/surface/SlideBackground";
 
 // Konva is client-only — must not SSR.
 const TemplateV2KonvaSlide = dynamic(
@@ -638,6 +643,60 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
         }
 
         return `Updated slide ${slideIndex}: "${title}"${filled.heroImage ? " (generating a new hero image…)" : ""}.`;
+      }
+      case "insert_formula": {
+        const slideIndex = Number(action.args.slide_index);
+        const slide = currentSlides[slideIndex];
+        if (!slide || !slide.ui) return `Slide ${slideIndex} doesn't exist.`;
+        const latex = String(action.args.latex || "");
+        if (!latex) return "No LaTeX provided.";
+        const newUi = insertFormulaIntoSlide(slide.ui as Record<string, unknown>, latex);
+        if (!newUi) return "Couldn't render that formula.";
+        dispatch(updateSlideUi({ index: slideIndex, ui: newUi }));
+        return `Inserted a formula on slide ${slideIndex}.`;
+      }
+      case "insert_shape": {
+        const slideIndex = Number(action.args.slide_index);
+        const slide = currentSlides[slideIndex];
+        if (!slide || !slide.ui) return `Slide ${slideIndex} doesn't exist.`;
+        const shape = String(action.args.shape || "");
+        if (!shape) return "No shape specified.";
+        const newUi = insertShapeIntoSlide(slide.ui as Record<string, unknown>, shape);
+        if (!newUi) return `Couldn't insert a "${shape}" shape.`;
+        dispatch(updateSlideUi({ index: slideIndex, ui: newUi }));
+        return `Inserted a ${shape} on slide ${slideIndex}.`;
+      }
+      case "insert_icon": {
+        const slideIndex = Number(action.args.slide_index);
+        const slide = currentSlides[slideIndex];
+        if (!slide || !slide.ui) return `Slide ${slideIndex} doesn't exist.`;
+        const query = String(action.args.query || "");
+        if (!query) return "No icon search query provided.";
+        const newUi = await insertIconIntoSlide(slide.ui as Record<string, unknown>, query);
+        if (!newUi) return `Couldn't find an icon matching "${query}".`;
+        dispatch(updateSlideUi({ index: slideIndex, ui: newUi }));
+        return `Inserted a "${query}" icon on slide ${slideIndex}.`;
+      }
+      case "set_background": {
+        const style: BackgroundStyle = {
+          type: action.args.style === "linear" || action.args.style === "radial" ? action.args.style : "solid",
+          from: String(action.args.color || "#1a1b2e"),
+          to: action.args.color_to ? String(action.args.color_to) : undefined,
+          angle: typeof action.args.angle === "number" ? action.args.angle : undefined,
+        };
+        if (action.args.apply_to_all) {
+          const next = currentSlides.map((slide) =>
+            slide.ui ? { ...slide, ui: setSlideBackground(slide.ui as Record<string, unknown>, style) } : slide,
+          );
+          if (presentationData) dispatch(setPresentationData({ ...presentationData, slides: next }));
+          return "Updated the background on every slide.";
+        }
+        const slideIndex = Number(action.args.slide_index);
+        const slide = currentSlides[slideIndex];
+        if (!slide || !slide.ui) return `Slide ${slideIndex} doesn't exist.`;
+        const newUi = setSlideBackground(slide.ui as Record<string, unknown>, style);
+        dispatch(updateSlideUi({ index: slideIndex, ui: newUi }));
+        return `Updated the background on slide ${slideIndex}.`;
       }
       default:
         return `Unknown action: ${action.tool}`;

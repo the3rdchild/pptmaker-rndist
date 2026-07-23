@@ -11,6 +11,16 @@
 import { mergeFont } from "@/components/slide-editor/model/element-model";
 import type { SlideData } from "@/store/presentationGeneration";
 import { EDITOR_STAGE_WIDTH, EDITOR_STAGE_HEIGHT } from "@/components/slide-editor/types";
+import { appendInsertedContent } from "@/components/slide-editor/model/inserted-content";
+import {
+  createCustomFormulaInsertElements,
+  createElementInsertElements,
+  createIconInsertElement,
+} from "@/components/slide-editor/insert/insert-elements";
+import { applyBackgroundStyle } from "@/components/editor-react/background-panel";
+import type { BackgroundStyle } from "@/components/slide-editor/surface/SlideBackground";
+import { PresentationGenerationApi } from "@/app/(presentation-generator)/services/api/presentation-generation";
+import type { RawUi } from "@/components/slide-editor/model/core";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -215,4 +225,37 @@ export function updateSlideText(
       : candidates.reduce((a, b) => (elementArea(a) >= elementArea(b) ? a : b));
 
   return walkUi(ui, (el) => (el === target_el ? setRunsText(el, newText) : el));
+}
+
+// ── insert_formula / insert_shape / insert_icon (all reuse the exact same
+// factories + merge helper the manual "Insert" panel uses — the agent just
+// supplies the args a human would've picked from that panel) ──
+
+export function insertFormulaIntoSlide(ui: AnyRecord, latex: string): AnyRecord | null {
+  const elements = createCustomFormulaInsertElements(latex);
+  if (!elements.length) return null;
+  return appendInsertedContent(ui as RawUi, elements as AnyRecord[], []) as AnyRecord;
+}
+
+export function insertShapeIntoSlide(ui: AnyRecord, kind: string): AnyRecord | null {
+  const elements = createElementInsertElements(kind);
+  if (!elements.length) return null;
+  return appendInsertedContent(ui as RawUi, elements as AnyRecord[], []) as AnyRecord;
+}
+
+export async function insertIconIntoSlide(
+  ui: AnyRecord,
+  query: string,
+): Promise<AnyRecord | null> {
+  const matches = await PresentationGenerationApi.searchIcons({ query, limit: 1 });
+  const iconUrl = matches[0];
+  if (!iconUrl) return null;
+  const elements = [createIconInsertElement(iconUrl)];
+  return appendInsertedContent(ui as RawUi, elements as AnyRecord[], []) as AnyRecord;
+}
+
+// ── set_background ──
+
+export function setSlideBackground(ui: AnyRecord, style: BackgroundStyle): AnyRecord {
+  return applyBackgroundStyle(ui as RawUi, style) as AnyRecord;
 }

@@ -23,6 +23,7 @@ export default function PresentMode({
   slides,
   startIndex,
   deckId,
+  fonts,
   onClose,
 }: {
   slides: {
@@ -31,6 +32,7 @@ export default function PresentMode({
   }[];
   startIndex: number;
   deckId?: string | null;
+  fonts?: unknown;
   onClose: () => void;
 }) {
   // Hidden slides (#24) are skipped during presentation but stay in the
@@ -178,6 +180,7 @@ export default function PresentMode({
               layout={ui as never}
               isEditMode={false}
               slideIndex={index}
+              fonts={fonts}
             />
           </div>
 

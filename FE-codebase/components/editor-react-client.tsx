@@ -1196,6 +1196,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
                 slideId={null}
                 presentationId={deckId}
                 slideIndex={safeActive}
+                fonts={presentationData?.fonts}
               />
             </div>
           ) : generationError ? (
@@ -1294,6 +1295,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
           slides={slides}
           startIndex={safeActive}
           deckId={deckId}
+          fonts={presentationData?.fonts}
           onClose={() => setPresenting(false)}
         />
       )}

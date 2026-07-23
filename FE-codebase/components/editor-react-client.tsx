@@ -45,12 +45,12 @@ import {
   setSlideHidden,
   setSlideNotes,
   applyAccentBackground,
+  withBackgroundTint,
 } from "@/store/presentationGeneration";
 import type { SlideData } from "@/store/presentationGeneration";
 import {
   extractDominantColors,
   pickVividColor,
-  tintTowardWhite,
 } from "@/components/slide-editor/utils/extract-image-colors";
 import { adaptDeckToPresentation } from "@/components/editor-react/deck-adapt";
 import { useSessionStore } from "@/store/session.store";
@@ -452,6 +452,17 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
       "editorial photograph, cinematic natural lighting, cohesive color grading, " +
       "no text, no watermark, no logo";
 
+    // The deck-generation LLM's own topic-color pick (the JSONL stream's very
+    // first line) arrives BEFORE any slide exists — dispatching a "recolor
+    // every slide in state" action at that point is a no-op (the slides array
+    // is still empty; setPresentationData({slides: []}) ran just above).
+    // So instead of dispatching immediately, remember the raw color here and
+    // tint each slide's `ui` at the moment it's created below, regardless of
+    // whether the theme line or a slide arrives first.
+    let pendingThemeColor: string | null = null;
+    const tintIfThemed = (ui: Record<string, unknown>): Record<string, unknown> =>
+      pendingThemeColor ? (withBackgroundTint(ui, pendingThemeColor) as Record<string, unknown>) : ui;
+
     const requestHeroImage = (index: number, ui: Record<string, unknown>, marker: { componentId: string; elementName: string }, subject: string) => {
       const prompt = `${subject} — related to ${topic}. ${heroStyle}`;
       void generateImage(currentToken, prompt).then((dataUrl) => {
@@ -459,16 +470,19 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
         const patched = patchHeroImage(ui, marker, dataUrl);
         dispatch(updateSlideUi({ index, ui: patched }));
 
-        // Tie the whole deck's background to its own cover photo instead of
-        // leaving every layout's plain white canvas untouched — same idea as
-        // the manual "extract color from image" palette feature, just
-        // auto-applied once per generated deck. Cover slide only (index 0):
-        // one cohesive wash for the deck, not a different tint per slide.
-        if (index === 0) {
+        // Fallback only: if the theme line never arrived/validated, fall back
+        // to the cover photo's own dominant color instead of staying plain
+        // white. Skipped once a theme color is already set — the topic/
+        // color-preference-aware theme line is more informed than whatever a
+        // random generated photo happens to contain (e.g. a portrait's skin
+        // tones), so it should never be overridden by this fallback.
+        if (index === 0 && !pendingThemeColor) {
           void extractDominantColors(dataUrl, 5).then((colors) => {
+            if (pendingThemeColor) return;
             const accent = pickVividColor(colors);
             if (!accent) return;
-            dispatch(applyAccentBackground(tintTowardWhite(accent, 0.88)));
+            pendingThemeColor = accent;
+            dispatch(applyAccentBackground(accent));
           });
         }
       });
@@ -481,28 +495,19 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
         const slide = JSON.parse(line) as AIPPTSlide;
         const filled = await mapAIPPTSlideToTemplateUi(slide, layoutPicker);
         if (!filled) return null;
-        return { ui: filled.ui, heroImage: filled.heroImage, subject: slideSubject(slide) };
+        return { ui: tintIfThemed(filled.ui), heroImage: filled.heroImage, subject: slideSubject(slide) };
       } catch {
         return null;
       }
     };
 
-    // Applies the deck-generation LLM's own topic-color pick (the JSONL
-    // stream's very first line, emitted before any slide) as an immediate
-    // baseline tint — reliable even for topics with no photogenic cover image
-    // or when hero-photo generation fails/yields nothing vivid. The later
-    // cover-photo extraction in requestHeroImage overwrites this once (if)
-    // it finds a better match, so this is purely a "never stay plain white"
-    // floor, not a competing source of truth.
-    let themeApplied = false;
     const tryApplyThemeLine = (line: string): boolean => {
-      if (themeApplied) return false;
+      if (pendingThemeColor) return false;
       try {
         const parsed = JSON.parse(line) as { type?: string; color?: string };
         if (parsed.type !== "theme" || typeof parsed.color !== "string") return false;
         if (!/^#[0-9a-fA-F]{6}$/.test(parsed.color)) return false;
-        themeApplied = true;
-        dispatch(applyAccentBackground(tintTowardWhite(parsed.color, 0.88)));
+        pendingThemeColor = parsed.color;
         return true;
       } catch {
         return false;

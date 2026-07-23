@@ -54,7 +54,7 @@ interface PresentationGenerationState {
   const NEAR_WHITE_LIGHTNESS = 0.92;
   const NEAR_WHITE_TINT_AMOUNT = 0.88;
 
-  function withBackgroundTint(
+  export function withBackgroundTint(
     ui: Record<string, unknown> | null | undefined,
     color: string,
   ): Record<string, unknown> | null | undefined {

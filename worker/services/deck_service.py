@@ -68,6 +68,14 @@ def process(ctx: dict):
 
     # Buffer partial lines (stream may split a JSON across chunks)
     line_buffer = ""
+    first_line_logged = False
+
+    def log_first_line(clean: str) -> None:
+        nonlocal first_line_logged
+        if first_line_logged:
+            return
+        first_line_logged = True
+        logger.info("[deck_service] first_line=%r | job_id=%s", clean, ctx["job_id"])
 
     for chunk in llm_client.chat_stream(messages, temperature=0.5):
         line_buffer += chunk
@@ -79,12 +87,14 @@ def process(ctx: dict):
                 continue
             clean = line.replace("```jsonl", "").replace("```json", "").replace("```", "").strip()
             if clean.startswith("{"):
+                log_first_line(clean)
                 publish(ctx["job_id"], {"type": "chunk", "text": clean})
 
     # Flush remaining buffer
     if line_buffer.strip():
         clean = line_buffer.strip().replace("```jsonl", "").replace("```json", "").replace("```", "").strip()
         if clean.startswith("{"):
+            log_first_line(clean)
             publish(ctx["job_id"], {"type": "chunk", "text": clean})
 
     publish(ctx["job_id"], {"type": "done"})

@@ -227,7 +227,136 @@ export function createTextInsertElements(kind?: string): SlideElement[] {
   }
 }
 
-function chartTypeFromPaletteId(id?: string): ChartType | null {
+// ── AI-driven inserts (real content supplied by the agent, not a canned
+// preset — reuse the exact same element shapes as the presets above) ──
+
+export function createAiTextInsertElements(
+  text: string,
+  style?: "title" | "subtitle" | "body" | "quote",
+): SlideElement[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+  switch (style) {
+    case "title":
+      return [
+        makeTextElement({
+          text: trimmed,
+          x: 109,
+          y: 109,
+          width: 986,
+          height: fittedTextHeight(1, 38, 1.1),
+          size: 38,
+          bold: true,
+        }),
+      ];
+    case "subtitle":
+      return [
+        makeTextElement({
+          text: trimmed,
+          x: 122,
+          y: 154,
+          width: 870,
+          height: fittedTextHeight(2, 24, 1.2),
+          size: 24,
+          color: "344054",
+          lineHeight: 1.2,
+        }),
+      ];
+    case "quote":
+      return [
+        makeTextElement({
+          text: `"${trimmed}"`,
+          x: 122,
+          y: 147,
+          width: 858,
+          height: fittedTextHeight(2, 24, 1.25),
+          size: 24,
+          italic: true,
+          lineHeight: 1.25,
+        }),
+      ];
+    default: {
+      const estimatedLines = Math.max(1, Math.ceil(trimmed.length / 60));
+      return [
+        makeTextElement({
+          text: trimmed,
+          x: 122,
+          y: 154,
+          width: 858,
+          height: fittedTextHeight(estimatedLines, 18, 1.28),
+          size: 18,
+          color: "344054",
+          lineHeight: 1.28,
+        }),
+      ];
+    }
+  }
+}
+
+export function createAiChartInsertElements(
+  chartType: ChartType,
+  title: string,
+  categories: string[],
+  series: { name: string; values: number[] }[],
+): SlideElement[] {
+  if (!categories.length || !series.length) return [];
+  const colors = ["7F22FE", "155DFC", "F59E0B", "12B76A", "EF4444", "06B6D4", "8B5CF6"];
+  return [
+    {
+      type: "chart",
+      position: { ...DEFAULT_CHART_INSERT_POSITION },
+      size: { ...DEFAULT_CHART_INSERT_SIZE },
+      chart_type: chartType,
+      title,
+      color: colors[0],
+      axis_color: "D0D5DD",
+      grid_color: "D0D5DD",
+      data_labels: "top",
+      legend: series.length > 1,
+      x_axis_grid: true,
+      y_axis_grid: true,
+      x_axis: true,
+      y_axis: true,
+      categories,
+      series,
+      colors,
+      data: chartData(categories, series[0].values, colors),
+    },
+  ];
+}
+
+export function createAiTableInsertElements(
+  headers: string[],
+  rows: string[][],
+): SlideElement[] {
+  if (!headers.length) return [];
+  const baseFont: Font = { family: "Inter", size: 14, color: "#344054", line_height: 1.2 };
+  const headerFont: Font = { ...baseFont, color: "#101323", bold: true };
+  const headerFill: Fill = { color: "#F2F4F7", opacity: 1 };
+  const bodyFill: Fill = { color: "#FFFFFF", opacity: 1 };
+  const rowHeight = 40;
+
+  return [
+    {
+      type: "table",
+      position: { x: 122, y: 128 },
+      size: { width: 819, height: rowHeight * (rows.length + 1) },
+      font: baseFont,
+      columns: headers.map((header) =>
+        makeTableCell({ text: header, font: headerFont, color: headerFill }),
+      ),
+      rows: rows.map((row) =>
+        row.map((cell) => makeTableCell({ text: cell, font: baseFont, color: bodyFill })),
+      ),
+      min_columns: 2,
+      max_columns: 6,
+      min_rows: 2,
+      max_rows: 8,
+    },
+  ];
+}
+
+export function chartTypeFromPaletteId(id?: string): ChartType | null {
   const normalized = normalizeChartTypeName(id);
   switch (normalized) {
     case "area":

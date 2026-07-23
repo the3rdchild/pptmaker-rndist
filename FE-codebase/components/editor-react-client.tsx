@@ -86,6 +86,11 @@ import {
   insertShapeIntoSlide,
   insertIconIntoSlide,
   setSlideBackground,
+  insertTextIntoSlide,
+  insertChartIntoSlide,
+  insertTableIntoSlide,
+  insertImagePlaceholderIntoSlide,
+  patchInsertedImage,
 } from "@/components/editor-react/agent-dispatch";
 import type { BackgroundStyle } from "@/components/slide-editor/surface/SlideBackground";
 
@@ -697,6 +702,75 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
         const newUi = setSlideBackground(slide.ui as Record<string, unknown>, style);
         dispatch(updateSlideUi({ index: slideIndex, ui: newUi }));
         return `Updated the background on slide ${slideIndex}.`;
+      }
+      case "insert_text": {
+        const slideIndex = Number(action.args.slide_index);
+        const slide = currentSlides[slideIndex];
+        if (!slide || !slide.ui) return `Slide ${slideIndex} doesn't exist.`;
+        const text = String(action.args.text || "");
+        if (!text) return "No text provided.";
+        const style = action.args.style ? String(action.args.style) : undefined;
+        const newUi = insertTextIntoSlide(slide.ui as Record<string, unknown>, text, style);
+        if (!newUi) return "Couldn't insert that text.";
+        dispatch(updateSlideUi({ index: slideIndex, ui: newUi }));
+        return `Inserted text on slide ${slideIndex}.`;
+      }
+      case "insert_chart": {
+        const slideIndex = Number(action.args.slide_index);
+        const slide = currentSlides[slideIndex];
+        if (!slide || !slide.ui) return `Slide ${slideIndex} doesn't exist.`;
+        const chartType = String(action.args.chart_type || "");
+        const title = String(action.args.title || "");
+        const categories = Array.isArray(action.args.categories) ? (action.args.categories as string[]) : [];
+        const series = Array.isArray(action.args.series)
+          ? (action.args.series as { name: string; values: number[] }[])
+          : [];
+        if (!chartType || !categories.length || !series.length) return "Missing chart data.";
+        const newUi = insertChartIntoSlide(slide.ui as Record<string, unknown>, chartType, title, categories, series);
+        if (!newUi) return `Couldn't insert a "${chartType}" chart.`;
+        dispatch(updateSlideUi({ index: slideIndex, ui: newUi }));
+        return `Inserted a ${chartType} chart on slide ${slideIndex}.`;
+      }
+      case "insert_table": {
+        const slideIndex = Number(action.args.slide_index);
+        const slide = currentSlides[slideIndex];
+        if (!slide || !slide.ui) return `Slide ${slideIndex} doesn't exist.`;
+        const headers = Array.isArray(action.args.headers) ? (action.args.headers as string[]) : [];
+        const rows = Array.isArray(action.args.rows) ? (action.args.rows as string[][]) : [];
+        if (!headers.length) return "Missing table headers.";
+        const newUi = insertTableIntoSlide(slide.ui as Record<string, unknown>, headers, rows);
+        if (!newUi) return "Couldn't insert that table.";
+        dispatch(updateSlideUi({ index: slideIndex, ui: newUi }));
+        return `Inserted a table on slide ${slideIndex}.`;
+      }
+      case "insert_image": {
+        const slideIndex = Number(action.args.slide_index);
+        const slide = currentSlides[slideIndex];
+        if (!slide || !slide.ui) return `Slide ${slideIndex} doesn't exist.`;
+        const prompt = String(action.args.prompt || "");
+        if (!prompt) return "No image prompt provided.";
+        if (!token) return "Session not ready — try again in a moment.";
+
+        const label = `ai-image-${Date.now()}`;
+        const { ui: placeholderUi, componentId } = insertImagePlaceholderIntoSlide(
+          slide.ui as Record<string, unknown>,
+          label,
+        );
+        if (!componentId) return "Couldn't insert an image.";
+        dispatch(updateSlideUi({ index: slideIndex, ui: placeholderUi }));
+
+        const fullPrompt = `${prompt}. editorial photograph, cinematic natural lighting, cohesive color grading, no text, no watermark, no logo`;
+        void generateImage(token, fullPrompt).then((dataUrl) => {
+          if (!dataUrl) return;
+          dispatch(
+            updateSlideUi({
+              index: slideIndex,
+              ui: patchInsertedImage(placeholderUi, componentId, dataUrl),
+            }),
+          );
+        });
+
+        return `Generating an image on slide ${slideIndex}…`;
       }
       default:
         return `Unknown action: ${action.tool}`;

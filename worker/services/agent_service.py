@@ -246,6 +246,105 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "insert_text",
+            "description": "Insert a new text element with real content onto an existing slide.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "slide_index": {"type": "integer", "description": "0-based index"},
+                    "text": {"type": "string"},
+                    "style": {
+                        "type": "string",
+                        "enum": ["title", "subtitle", "body", "quote"],
+                        "description": "Visual style/role of the text. Defaults to body.",
+                    },
+                },
+                "required": ["slide_index", "text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "insert_chart",
+            "description": "Insert a chart with real data onto an existing slide.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "slide_index": {"type": "integer", "description": "0-based index"},
+                    "chart_type": {
+                        "type": "string",
+                        "enum": [
+                            "bar", "line", "area", "pie", "donut", "horizontal_bar",
+                            "polar_area", "radar", "scatter", "stacked_bar",
+                            "horizontal_stacked_bar",
+                        ],
+                    },
+                    "title": {"type": "string"},
+                    "categories": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "X-axis / slice labels.",
+                    },
+                    "series": {
+                        "type": "array",
+                        "description": "One or more data series, each with a name and one value per category.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "values": {"type": "array", "items": {"type": "number"}},
+                            },
+                            "required": ["name", "values"],
+                        },
+                    },
+                },
+                "required": ["slide_index", "chart_type", "title", "categories", "series"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "insert_table",
+            "description": "Insert a table with real data onto an existing slide.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "slide_index": {"type": "integer", "description": "0-based index"},
+                    "headers": {"type": "array", "items": {"type": "string"}},
+                    "rows": {
+                        "type": "array",
+                        "items": {"type": "array", "items": {"type": "string"}},
+                        "description": "Each inner array is one row, same length as headers.",
+                    },
+                },
+                "required": ["slide_index", "headers", "rows"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "insert_image",
+            "description": (
+                "Generate an AI image (Magic Media) from a prompt and insert it onto an "
+                "existing slide. Triggers image generation automatically — no separate "
+                "user confirmation step."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "slide_index": {"type": "integer", "description": "0-based index"},
+                    "prompt": {"type": "string", "description": "Short visual description of the desired image."},
+                },
+                "required": ["slide_index", "prompt"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "regenerate_slide",
             "description": (
                 "Replace one existing slide's content and hero image based on a new "

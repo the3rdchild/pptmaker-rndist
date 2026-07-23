@@ -16,6 +16,11 @@ import {
   createCustomFormulaInsertElements,
   createElementInsertElements,
   createIconInsertElement,
+  createAiTextInsertElements,
+  createAiChartInsertElements,
+  createAiTableInsertElements,
+  createImageInsertContent,
+  chartTypeFromPaletteId,
 } from "@/components/slide-editor/insert/insert-elements";
 import { applyBackgroundStyle } from "@/components/editor-react/background-panel";
 import type { BackgroundStyle } from "@/components/slide-editor/surface/SlideBackground";
@@ -258,4 +263,79 @@ export async function insertIconIntoSlide(
 
 export function setSlideBackground(ui: AnyRecord, style: BackgroundStyle): AnyRecord {
   return applyBackgroundStyle(ui as RawUi, style) as AnyRecord;
+}
+
+// ── insert_text / insert_chart / insert_table (real AI-supplied content,
+// unlike the manual Insert panel's canned presets) ──
+
+export function insertTextIntoSlide(
+  ui: AnyRecord,
+  text: string,
+  style?: string,
+): AnyRecord | null {
+  const validStyle =
+    style === "title" || style === "subtitle" || style === "quote" || style === "body"
+      ? style
+      : undefined;
+  const elements = createAiTextInsertElements(text, validStyle);
+  if (!elements.length) return null;
+  return appendInsertedContent(ui as RawUi, elements as AnyRecord[], []) as AnyRecord;
+}
+
+export function insertChartIntoSlide(
+  ui: AnyRecord,
+  chartTypeRaw: string,
+  title: string,
+  categories: string[],
+  series: { name: string; values: number[] }[],
+): AnyRecord | null {
+  const chartType = chartTypeFromPaletteId(chartTypeRaw);
+  if (!chartType) return null;
+  const elements = createAiChartInsertElements(chartType, title, categories, series);
+  if (!elements.length) return null;
+  return appendInsertedContent(ui as RawUi, elements as AnyRecord[], []) as AnyRecord;
+}
+
+export function insertTableIntoSlide(
+  ui: AnyRecord,
+  headers: string[],
+  rows: string[][],
+): AnyRecord | null {
+  const elements = createAiTableInsertElements(headers, rows);
+  if (!elements.length) return null;
+  return appendInsertedContent(ui as RawUi, elements as AnyRecord[], []) as AnyRecord;
+}
+
+// ── insert_image (Magic Media): insert a placeholder immediately, then
+// patch its `data` once the async DeepInfra generation call resolves —
+// mirrors the exact heroImage placeholder-then-patch pattern regenerate_slide
+// already uses in editor-react-client.tsx. ──
+
+export function insertImagePlaceholderIntoSlide(
+  ui: AnyRecord,
+  label: string,
+): { ui: AnyRecord; componentId: string } {
+  const elements = createImageInsertContent("image").elements ?? [];
+  if (!elements.length) return { ui, componentId: "" };
+  const newUi = appendInsertedContent(ui as RawUi, elements as AnyRecord[], [], label) as AnyRecord;
+  const components = Array.isArray(newUi.components) ? (newUi.components as AnyRecord[]) : [];
+  const last = components[components.length - 1];
+  return { ui: newUi, componentId: String((last as AnyRecord | undefined)?.id ?? "") };
+}
+
+export function patchInsertedImage(
+  ui: AnyRecord,
+  componentId: string,
+  dataUrl: string,
+): AnyRecord {
+  const components = Array.isArray(ui.components) ? (ui.components as AnyRecord[]) : [];
+  const nextComponents = components.map((component) => {
+    if (component.id !== componentId) return component;
+    const elements = Array.isArray(component.elements) ? (component.elements as AnyRecord[]) : [];
+    return {
+      ...component,
+      elements: elements.map((el) => (el.type === "image" ? { ...el, data: dataUrl } : el)),
+    };
+  });
+  return { ...ui, components: nextComponents };
 }

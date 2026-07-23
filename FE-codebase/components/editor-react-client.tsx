@@ -470,11 +470,26 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
         ? (applyPaletteToUi(ui, pendingPalette, iconCounter) as Record<string, unknown>)
         : ui;
 
-    const requestHeroImage = (index: number, ui: Record<string, unknown>, marker: { componentId: string; elementName: string }, subject: string) => {
+    // Generates a photo for ONE slot on an already-added slide and patches it
+    // in once ready. `currentUi` accumulates across every slot on this same
+    // slide (hero + every secondary photo) — each patch starts from the
+    // LATEST known ui for this slide, not the original, so multiple async
+    // photos resolving in any order never clobber each other (JS's single
+    // -threaded event loop makes the read-modify-write here safe as long as
+    // it isn't split across an await).
+    const requestPhotoForSlot = (
+      index: number,
+      getUi: () => Record<string, unknown>,
+      setUi: (ui: Record<string, unknown>) => void,
+      marker: { componentId: string; elementName: string; occurrenceIndex: number },
+      subject: string,
+      isHero: boolean,
+    ) => {
       const prompt = `${subject} — related to ${topic}. ${heroStyle}`;
       void generateImage(currentToken, prompt).then((dataUrl) => {
         if (!dataUrl) return;
-        const patched = patchHeroImage(ui, marker, dataUrl);
+        const patched = patchHeroImage(getUi(), marker, dataUrl) as Record<string, unknown>;
+        setUi(patched);
         dispatch(updateSlideUi({ index, ui: patched }));
 
         // Fallback only: if the theme line never arrived/validated, fall back
@@ -483,7 +498,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
         // color-preference-aware theme line is more informed than whatever a
         // random generated photo happens to contain (e.g. a portrait's skin
         // tones), so it should never be overridden by this fallback.
-        if (index === 0 && !pendingPalette) {
+        if (isHero && index === 0 && !pendingPalette) {
           void extractDominantColors(dataUrl, 5).then((colors) => {
             if (pendingPalette) return;
             const accent = pickVividColor(colors);
@@ -495,14 +510,46 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
       });
     };
 
+    // Kicks off a photo generation for the hero slot AND every secondary
+    // photo slot the layout has (team-grid portraits, multi-card rows, ...)
+    // instead of leaving anything besides the single largest slot on the
+    // generic placeholder image.
+    const requestSlidePhotos = (
+      index: number,
+      ui: Record<string, unknown>,
+      heroImage: { componentId: string; elementName: string; occurrenceIndex: number } | null,
+      secondaryImages: { componentId: string; elementName: string; occurrenceIndex: number }[],
+      subject: string,
+    ) => {
+      let currentUi = ui;
+      const getUi = () => currentUi;
+      const setUi = (next: Record<string, unknown>) => {
+        currentUi = next;
+      };
+      if (heroImage) requestPhotoForSlot(index, getUi, setUi, heroImage, subject, true);
+      for (const marker of secondaryImages) {
+        requestPhotoForSlot(index, getUi, setUi, marker, subject, false);
+      }
+    };
+
     const mapLine = async (
       line: string
-    ): Promise<{ ui: Record<string, unknown>; heroImage: { componentId: string; elementName: string } | null; subject: string } | null> => {
+    ): Promise<{
+      ui: Record<string, unknown>;
+      heroImage: { componentId: string; elementName: string; occurrenceIndex: number } | null;
+      secondaryImages: { componentId: string; elementName: string; occurrenceIndex: number }[];
+      subject: string;
+    } | null> => {
       try {
         const slide = JSON.parse(line) as AIPPTSlide;
         const filled = await mapAIPPTSlideToTemplateUi(slide, layoutPicker);
         if (!filled) return null;
-        return { ui: tintIfThemed(filled.ui), heroImage: filled.heroImage, subject: slideSubject(slide) };
+        return {
+          ui: tintIfThemed(filled.ui),
+          heroImage: filled.heroImage,
+          secondaryImages: filled.secondaryImages,
+          subject: slideSubject(slide),
+        };
       } catch {
         return null;
       }
@@ -539,7 +586,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
             const index = count;
             dispatch(addSlide({ ui: filled.ui }));
             count++;
-            if (filled.heroImage) requestHeroImage(index, filled.ui, filled.heroImage, filled.subject);
+            requestSlidePhotos(index, filled.ui, filled.heroImage, filled.secondaryImages, filled.subject);
           }
         }
         break;
@@ -556,7 +603,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
           dispatch(addSlide({ ui: filled.ui }));
           count++;
           setActiveIndex(0);
-          if (filled.heroImage) requestHeroImage(index, filled.ui, filled.heroImage, filled.subject);
+          requestSlidePhotos(index, filled.ui, filled.heroImage, filled.secondaryImages, filled.subject);
         }
       }
     }

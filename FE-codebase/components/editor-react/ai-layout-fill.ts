@@ -298,26 +298,33 @@ export function fillLayout(layout: TemplateLayout, slide: AIPPTSlide): FilledSli
       break;
   }
 
-  const heroImage = findHeroImage(components);
+  const photoSlots = findAllPhotoSlots(components);
+  const heroImage = findHeroImage(photoSlots);
+  const secondaryImages = findSecondaryImages(photoSlots, heroImage);
 
-  return { ui: { id: layout.id, components }, heroImage };
+  return { ui: { id: layout.id, components }, heroImage, secondaryImages };
 }
 
-/* --------------------------- Hero image slot ------------------------------ */
+/* --------------------------- Photo slots ------------------------------ */
 
+// `occurrenceIndex` matters because several layouts repeat the SAME element
+// name multiple times (e.g. a 4-portrait team grid has 4 elements all named
+// "portrait_image") — componentId+elementName alone can't tell them apart,
+// so patchHeroImage would always hit the first one and leave the other 3
+// pointing at the placeholder forever.
 export interface HeroImageMarker {
   componentId: string;
   elementName: string;
+  occurrenceIndex: number;
 }
 
-/** Finds the largest non-icon, non-decorative image element in the layout —
- * almost always the template's "hero photo" slot (main_photo, header_photo,
- * background_photo, ...). Used to drop an AI-generated image in without
- * flattening the slide — the image stays its own editable element. */
-type HeroCandidate = { area: number; componentId: string; elementName: string };
+type PhotoCandidate = HeroImageMarker & { area: number };
 
-function findHeroImage(components: Rec[]): HeroImageMarker | null {
-  const candidates: HeroCandidate[] = [];
+/** Finds every non-icon, non-decorative image element in the layout still
+ * pointing at a real (fillable) photo slot. */
+function findAllPhotoSlots(components: Rec[]): PhotoCandidate[] {
+  const candidates: PhotoCandidate[] = [];
+  const occurrenceCounters = new Map<string, number>();
 
   const visit = (el: Rec, componentId: string) => {
     if (el.type === "image" && el.is_icon !== true && el.decorative !== true && el.name) {
@@ -325,8 +332,11 @@ function findHeroImage(components: Rec[]): HeroImageMarker | null {
       const w = typeof size?.width === "number" ? (size.width as number) : 0;
       const h = typeof size?.height === "number" ? (size.height as number) : 0;
       const area = w * h;
+      const key = `${componentId}::${el.name}`;
+      const occurrenceIndex = occurrenceCounters.get(key) ?? 0;
+      occurrenceCounters.set(key, occurrenceIndex + 1);
       if (area > 20000) {
-        candidates.push({ area, componentId, elementName: String(el.name) });
+        candidates.push({ area, componentId, elementName: String(el.name), occurrenceIndex });
       }
       return;
     }
@@ -344,23 +354,58 @@ function findHeroImage(components: Rec[]): HeroImageMarker | null {
     for (const el of elements) visit(el, component.id as string);
   }
 
-  candidates.sort((a, b) => b.area - a.area);
-  const best = candidates[0];
-  return best ? { componentId: best.componentId, elementName: best.elementName } : null;
+  return candidates;
 }
 
-/** Deep-clones `ui` and swaps the hero image slot's `data` for a generated
- * image URL/data-URL. No-ops if the marker no longer matches anything. */
+/** The largest photo slot — almost always the template's "hero photo"
+ * (main_photo, header_photo, background_photo, ...). Used to drop an
+ * AI-generated image in without flattening the slide — the image stays its
+ * own editable element. */
+function findHeroImage(candidates: PhotoCandidate[]): HeroImageMarker | null {
+  const sorted = [...candidates].sort((a, b) => b.area - a.area);
+  const best = sorted[0];
+  if (!best) return null;
+  const { componentId, elementName, occurrenceIndex } = best;
+  return { componentId, elementName, occurrenceIndex };
+}
+
+/** Every OTHER real photo slot in the layout besides the hero — e.g. the
+ * remaining 3 portraits in a 4-person team grid, or the 2nd/3rd card photo
+ * in a 3-card row. Each one gets its own AI-generated image too instead of
+ * being left on the generic placeholder file (which used to blend into a
+ * flat white background but now stands out against a colored theme). */
+function findSecondaryImages(candidates: PhotoCandidate[], hero: HeroImageMarker | null): HeroImageMarker[] {
+  return candidates
+    .filter(
+      (c) =>
+        !(
+          hero &&
+          c.componentId === hero.componentId &&
+          c.elementName === hero.elementName &&
+          c.occurrenceIndex === hero.occurrenceIndex
+        ),
+    )
+    .map(({ componentId, elementName, occurrenceIndex }) => ({ componentId, elementName, occurrenceIndex }));
+}
+
+/** Deep-clones `ui` and swaps ONE photo slot's `data` for a generated image
+ * URL/data-URL, using occurrenceIndex to pick out the right element among
+ * same-named siblings. No-ops if the marker no longer matches anything. */
 export function patchHeroImage(ui: Rec, marker: HeroImageMarker, dataUrl: string): Rec {
   const cloned = JSON.parse(JSON.stringify(ui)) as Rec;
   const components = (cloned.components as Rec[]) ?? [];
   const component = components.find((c) => c.id === marker.componentId);
   if (!component) return cloned;
 
+  let seen = 0;
   const visit = (el: Rec): boolean => {
     if (el.type === "image" && el.name === marker.elementName) {
-      el.data = dataUrl;
-      return true;
+      if (seen === marker.occurrenceIndex) {
+        el.data = dataUrl;
+        return true;
+      }
+      seen += 1;
+      return false;
     }
     const children = el.children as Rec[] | undefined;
     if (Array.isArray(children)) return children.some(visit);
@@ -377,6 +422,7 @@ export function patchHeroImage(ui: Rec, marker: HeroImageMarker, dataUrl: string
 export interface FilledSlide {
   ui: Rec;
   heroImage: HeroImageMarker | null;
+  secondaryImages: HeroImageMarker[];
 }
 
 /* ---------------------------- Icon auto-fill ------------------------------ */

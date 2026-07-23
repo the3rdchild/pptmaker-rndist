@@ -92,6 +92,9 @@ import {
   insertImagePlaceholderIntoSlide,
   patchInsertedImage,
   moveElementInSlide,
+  recolorElementInSlide,
+  setElementShadowInSlide,
+  type ShadowPatch,
 } from "@/components/editor-react/agent-dispatch";
 import type { BackgroundStyle } from "@/components/slide-editor/surface/SlideBackground";
 
@@ -785,6 +788,36 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
         if (!newUi) return `Couldn't move element ${elementIndex} on slide ${slideIndex}.`;
         dispatch(updateSlideUi({ index: slideIndex, ui: newUi }));
         return `Moved the element on slide ${slideIndex}.`;
+      }
+      case "recolor_element": {
+        const slideIndex = Number(action.args.slide_index);
+        const slide = currentSlides[slideIndex];
+        if (!slide || !slide.ui) return `Slide ${slideIndex} doesn't exist.`;
+        const elementIndex = Number(action.args.element_index);
+        const color = String(action.args.color || "");
+        if (!color) return "No color provided.";
+        const newUi = recolorElementInSlide(slide.ui as Record<string, unknown>, elementIndex, color);
+        if (!newUi) return `Couldn't find element ${elementIndex} on slide ${slideIndex}.`;
+        dispatch(updateSlideUi({ index: slideIndex, ui: newUi }));
+        return `Recolored the element on slide ${slideIndex}.`;
+      }
+      case "set_shadow": {
+        const slideIndex = Number(action.args.slide_index);
+        const slide = currentSlides[slideIndex];
+        if (!slide || !slide.ui) return `Slide ${slideIndex} doesn't exist.`;
+        const elementIndex = Number(action.args.element_index);
+        const enabled = Boolean(action.args.enabled);
+        const patch: ShadowPatch = {
+          color: typeof action.args.color === "string" ? action.args.color : undefined,
+          blur: typeof action.args.blur === "number" ? action.args.blur : undefined,
+          opacity: typeof action.args.opacity === "number" ? action.args.opacity : undefined,
+          offset_x: typeof action.args.offset_x === "number" ? action.args.offset_x : undefined,
+          offset_y: typeof action.args.offset_y === "number" ? action.args.offset_y : undefined,
+        };
+        const newUi = setElementShadowInSlide(slide.ui as Record<string, unknown>, elementIndex, enabled, patch);
+        if (!newUi) return `Couldn't find element ${elementIndex} on slide ${slideIndex}.`;
+        dispatch(updateSlideUi({ index: slideIndex, ui: newUi }));
+        return enabled ? `Added a shadow on slide ${slideIndex}.` : `Removed the shadow on slide ${slideIndex}.`;
       }
       default:
         return `Unknown action: ${action.tool}`;

@@ -25,8 +25,12 @@ import {
 import { applyBackgroundStyle } from "@/components/editor-react/background-panel";
 import type { BackgroundStyle } from "@/components/slide-editor/surface/SlideBackground";
 import { PresentationGenerationApi } from "@/app/(presentation-generator)/services/api/presentation-generation";
-import type { RawUi } from "@/components/slide-editor/model/core";
-import { setComponentPositionsInUi, componentBox } from "@/components/slide-editor/model/model";
+import type { RawUi, RawElement } from "@/components/slide-editor/model/core";
+import {
+  setComponentPositionsInUi,
+  componentBox,
+  recolorRawElement,
+} from "@/components/slide-editor/model/model";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -373,17 +377,41 @@ function anchorToXY(anchor: string, size: { width: number; height: number }): { 
   return { x, y };
 }
 
-function resolveComponentIndexForFlatElementIndex(ui: AnyRecord, flatIndex: number): number | null {
+function resolveFlatElementLocation(
+  ui: AnyRecord,
+  flatIndex: number,
+): { componentIndex: number; elementIndex: number } | null {
   const components = Array.isArray(ui.components) ? (ui.components as AnyRecord[]) : [];
   let counter = 0;
   for (let i = 0; i < components.length; i += 1) {
     const elements = Array.isArray(components[i].elements) ? (components[i].elements as AnyRecord[]) : [];
     for (let j = 0; j < elements.length; j += 1) {
-      if (counter === flatIndex) return i;
+      if (counter === flatIndex) return { componentIndex: i, elementIndex: j };
       counter += 1;
     }
   }
   return null;
+}
+
+// Applies `updater` to the single element at `flatIndex` (same flat, non-
+// recursive components->elements order as buildDeckSummary/moveElementInSlide
+// below) and returns the new ui, or null if the index doesn't resolve.
+function applyToElementByFlatIndex(
+  ui: AnyRecord,
+  flatIndex: number,
+  updater: (element: AnyRecord) => AnyRecord,
+): AnyRecord | null {
+  const location = resolveFlatElementLocation(ui, flatIndex);
+  if (!location) return null;
+
+  const components = Array.isArray(ui.components) ? (ui.components as AnyRecord[]) : [];
+  const nextComponents = components.map((component, i) => {
+    if (i !== location.componentIndex) return component;
+    const elements = Array.isArray(component.elements) ? (component.elements as AnyRecord[]) : [];
+    const nextElements = elements.map((el, j) => (j === location.elementIndex ? updater(el) : el));
+    return { ...component, elements: nextElements };
+  });
+  return { ...ui, components: nextComponents };
 }
 
 export function moveElementInSlide(
@@ -391,11 +419,11 @@ export function moveElementInSlide(
   flatElementIndex: number,
   target: { anchor?: string; x?: number; y?: number },
 ): AnyRecord | null {
-  const componentIndex = resolveComponentIndexForFlatElementIndex(ui, flatElementIndex);
-  if (componentIndex === null) return null;
+  const location = resolveFlatElementLocation(ui, flatElementIndex);
+  if (!location) return null;
 
   const components = Array.isArray(ui.components) ? (ui.components as AnyRecord[]) : [];
-  const box = componentBox(components[componentIndex] as never);
+  const box = componentBox(components[location.componentIndex] as never);
 
   const position = target.anchor
     ? anchorToXY(target.anchor, box)
@@ -404,5 +432,49 @@ export function moveElementInSlide(
       : null;
   if (!position) return null;
 
-  return setComponentPositionsInUi(ui as RawUi, [{ componentIndex, position }]) as AnyRecord;
+  return setComponentPositionsInUi(ui as RawUi, [
+    { componentIndex: location.componentIndex, position },
+  ]) as AnyRecord;
+}
+
+// ── recolor_element / set_shadow: per-element style tools. Reuse the SAME
+// flat element_index scheme move_element uses — no new "current selection"
+// plumbing needed, the deck summary the AI already sees is enough. ──
+
+export function recolorElementInSlide(
+  ui: AnyRecord,
+  flatElementIndex: number,
+  color: string,
+): AnyRecord | null {
+  return applyToElementByFlatIndex(ui, flatElementIndex, (el) =>
+    recolorRawElement(el as RawElement, color) as AnyRecord,
+  );
+}
+
+const DEFAULT_ELEMENT_SHADOW = {
+  color: "#000000",
+  blur: 10,
+  opacity: 0.18,
+  offset_x: 0.06,
+  offset_y: 0.06,
+};
+
+export type ShadowPatch = Partial<{
+  color: string;
+  blur: number;
+  opacity: number;
+  offset_x: number;
+  offset_y: number;
+}>;
+
+export function setElementShadowInSlide(
+  ui: AnyRecord,
+  flatElementIndex: number,
+  enabled: boolean,
+  patch?: ShadowPatch,
+): AnyRecord | null {
+  return applyToElementByFlatIndex(ui, flatElementIndex, (el) => ({
+    ...el,
+    shadow: enabled ? { ...DEFAULT_ELEMENT_SHADOW, ...patch } : null,
+  }));
 }

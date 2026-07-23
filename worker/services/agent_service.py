@@ -51,10 +51,11 @@ use the activeSlideIndex from the summary.
 - When the user references a slide by content (e.g. "the slide about pricing"), match it against \
 the titles and element descriptions in the summary to find the right slide_index.
 - Use slide_index as a 0-based index into the slides array.
-- For move_element, element_index is the 0-based position of the target element within that \
-slide's `elements` list, in the exact order given (e.g. element_index 0 is the first string in \
-that slide's `elements` array). Match "that box"/"the icon"/"the chart" etc. against the element \
-descriptions in the list to figure out which index to use.
+- For move_element, recolor_element, and set_shadow, element_index is the 0-based position of \
+the target element within that slide's `elements` list, in the exact order given (e.g. \
+element_index 0 is the first string in that slide's `elements` array). Match "that box"/"the \
+icon"/"the chart"/"it" etc. against the element descriptions in the list (and against what was \
+just inserted/discussed in the conversation history) to figure out which index to use.
 - The shape tool only supports: rectangle, square, rounded-rectangle, pill, ellipse, circle, line. \
 There is no triangle/polygon shape yet — if asked for one, say so in plain text rather than \
 silently picking something else."""
@@ -391,6 +392,52 @@ TOOLS = [
                     "y": {"type": "number", "description": "Absolute Y in stage pixels (0-720). Only used if position is omitted."},
                 },
                 "required": ["slide_index", "element_index"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "recolor_element",
+            "description": "Change the color of an EXISTING element on a slide (shape fill, icon tint, text color, etc.).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "slide_index": {"type": "integer", "description": "0-based index"},
+                    "element_index": {
+                        "type": "integer",
+                        "description": "0-based index into that slide's `elements` array from the deck summary.",
+                    },
+                    "color": {"type": "string", "description": "Hex color, e.g. '#7A5AF8'."},
+                },
+                "required": ["slide_index", "element_index", "color"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_shadow",
+            "description": "Add, adjust, or remove a drop shadow on an EXISTING element on a slide.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "slide_index": {"type": "integer", "description": "0-based index"},
+                    "element_index": {
+                        "type": "integer",
+                        "description": "0-based index into that slide's `elements` array from the deck summary.",
+                    },
+                    "enabled": {
+                        "type": "boolean",
+                        "description": "true to add/keep a shadow, false to remove it entirely.",
+                    },
+                    "color": {"type": "string", "description": "Shadow hex color. Defaults to black."},
+                    "blur": {"type": "number", "description": "Shadow blur radius in px. Defaults to 10."},
+                    "opacity": {"type": "number", "description": "0-1. Defaults to 0.18."},
+                    "offset_x": {"type": "number", "description": "Horizontal offset (fraction of element size). Defaults to 0.06."},
+                    "offset_y": {"type": "number", "description": "Vertical offset (fraction of element size). Defaults to 0.06."},
+                },
+                "required": ["slide_index", "element_index", "enabled"],
             },
         },
     },

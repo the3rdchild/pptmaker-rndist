@@ -11,6 +11,7 @@ export interface SlideData {
   design_index?: number;
   isLocked?: boolean;
   isHidden?: boolean;
+  notes?: string;
 }
 
 export interface PresentationData {
@@ -122,6 +123,15 @@ interface PresentationGenerationState {
           state.presentationData.slides[index].isHidden = hidden;
         }
       },
+      setSlideNotes: (
+        state,
+        action: PayloadAction<{ index: number; notes: string }>
+      ) => {
+        const { index, notes } = action.payload;
+        if (state.presentationData?.slides[index]) {
+          state.presentationData.slides[index].notes = notes;
+        }
+      },
     },
   });
 
@@ -134,5 +144,6 @@ interface PresentationGenerationState {
     reorderSlide,
     setSlideLocked,
     setSlideHidden,
+    setSlideNotes,
   } = presentationSlice.actions;
 export default presentationSlice.reducer;

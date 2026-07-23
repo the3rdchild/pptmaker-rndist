@@ -15,6 +15,7 @@ import {
   Redo2,
   Search,
   Sparkles,
+  StickyNote,
   Undo2,
   ZoomIn,
   ZoomOut,
@@ -42,6 +43,7 @@ import {
   reorderSlide,
   setSlideLocked,
   setSlideHidden,
+  setSlideNotes,
 } from "@/store/presentationGeneration";
 import type { PresentationData, SlideData } from "@/store/presentationGeneration";
 import { useSessionStore } from "@/store/session.store";
@@ -107,7 +109,12 @@ function adaptDeckToPresentation(
     .map((s) => {
       const rec = (s ?? {}) as Record<string, unknown>;
       const ui = rec.ui ?? null;
-      return { ui: ui as Record<string, unknown> | null };
+      return {
+        ui: ui as Record<string, unknown> | null,
+        isLocked: rec.isLocked as boolean | undefined,
+        isHidden: rec.isHidden as boolean | undefined,
+        notes: rec.notes as string | undefined,
+      };
     })
     .filter((s) => s.ui);
   if (slides.length === 0) return null;
@@ -137,6 +144,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
     PdfExportSlide[] | null
   >(null);
   const [showAiPanel, setShowAiPanel] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
   const [showFindReplace, setShowFindReplace] = useState(false);
   const [showSlideSorter, setShowSlideSorter] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -323,6 +331,9 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
   };
   const handleToggleHide = (i: number) => {
     dispatch(setSlideHidden({ index: i, hidden: !slides[i]?.isHidden }));
+  };
+  const handleNotesChange = (notes: string) => {
+    dispatch(setSlideNotes({ index: safeActive, notes }));
   };
 
   // Find & Replace's Prev/Next navigate to a match that may be on a
@@ -773,6 +784,14 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
             <LayoutGrid className="h-3.5 w-3.5" />
           </ToolButton>
           <ToolButton
+            size="sm"
+            active={showNotes}
+            onClick={() => setShowNotes((v) => !v)}
+            title="Speaker Notes"
+          >
+            <StickyNote className="h-3.5 w-3.5" />
+          </ToolButton>
+          <ToolButton
             id="onboarding-present"
             variant="solid"
             onClick={() => setPresenting(true)}
@@ -937,6 +956,24 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
           />
         )}
       </div>
+      {showNotes && (
+        <div className="flex h-[160px] shrink-0 flex-col border-t border-[var(--border)] bg-[var(--bg-panel)] px-4 py-2.5">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="text-xs font-medium text-[var(--text-secondary)]">
+              Speaker Notes
+            </span>
+            <span className="text-[11px] text-[var(--text-muted)]">
+              Slide {safeActive + 1}
+            </span>
+          </div>
+          <textarea
+            value={slides[safeActive]?.notes ?? ""}
+            onChange={(event) => handleNotesChange(event.target.value)}
+            placeholder="Add notes for this slide — visible to you in Presenter View, not to your audience."
+            className="w-full flex-1 resize-none rounded-md border border-[var(--border-strong)] bg-[var(--bg-surface)] p-2 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+          />
+        </div>
+      )}
       <Toaster />
       {presenting && (
         <PresentMode

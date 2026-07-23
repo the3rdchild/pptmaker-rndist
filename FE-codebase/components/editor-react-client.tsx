@@ -45,13 +45,14 @@ import {
   setSlideHidden,
   setSlideNotes,
   applyAccentBackground,
-  withBackgroundTint,
 } from "@/store/presentationGeneration";
 import type { SlideData } from "@/store/presentationGeneration";
 import {
   extractDominantColors,
   pickVividColor,
 } from "@/components/slide-editor/utils/extract-image-colors";
+import { buildPaletteFromSeed, type GeneratedPalette } from "@/components/slide-editor/utils/color-theory";
+import { applyPaletteToUi, type IconCounter } from "@/components/slide-editor/utils/ai-palette";
 import { adaptDeckToPresentation } from "@/components/editor-react/deck-adapt";
 import { useSessionStore } from "@/store/session.store";
 import { getDeck, saveDeck, streamAipptDeck, generateImage, type AgentAction } from "@/lib/api";
@@ -456,12 +457,18 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
     // first line) arrives BEFORE any slide exists — dispatching a "recolor
     // every slide in state" action at that point is a no-op (the slides array
     // is still empty; setPresentationData({slides: []}) ran just above).
-    // So instead of dispatching immediately, remember the raw color here and
-    // tint each slide's `ui` at the moment it's created below, regardless of
-    // whether the theme line or a slide arrives first.
-    let pendingThemeColor: string | null = null;
+    // So instead of dispatching immediately, remember the resolved PALETTE
+    // here and apply it to each slide's `ui` at the moment it's created
+    // below, regardless of whether the theme line or a slide arrives first.
+    // The icon counter is shared/mutated across the WHOLE deck (not reset
+    // per slide) so icon accents rotate through the palette's tetradic hues
+    // instead of every icon in the deck landing on the same one.
+    let pendingPalette: GeneratedPalette | null = null;
+    const iconCounter: IconCounter = { current: 0 };
     const tintIfThemed = (ui: Record<string, unknown>): Record<string, unknown> =>
-      pendingThemeColor ? (withBackgroundTint(ui, pendingThemeColor) as Record<string, unknown>) : ui;
+      pendingPalette
+        ? (applyPaletteToUi(ui, pendingPalette, iconCounter) as Record<string, unknown>)
+        : ui;
 
     const requestHeroImage = (index: number, ui: Record<string, unknown>, marker: { componentId: string; elementName: string }, subject: string) => {
       const prompt = `${subject} — related to ${topic}. ${heroStyle}`;
@@ -472,17 +479,17 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
 
         // Fallback only: if the theme line never arrived/validated, fall back
         // to the cover photo's own dominant color instead of staying plain
-        // white. Skipped once a theme color is already set — the topic/
+        // white. Skipped once a palette is already set — the topic/
         // color-preference-aware theme line is more informed than whatever a
         // random generated photo happens to contain (e.g. a portrait's skin
         // tones), so it should never be overridden by this fallback.
-        if (index === 0 && !pendingThemeColor) {
+        if (index === 0 && !pendingPalette) {
           void extractDominantColors(dataUrl, 5).then((colors) => {
-            if (pendingThemeColor) return;
+            if (pendingPalette) return;
             const accent = pickVividColor(colors);
             if (!accent) return;
-            pendingThemeColor = accent;
-            dispatch(applyAccentBackground(accent));
+            pendingPalette = buildPaletteFromSeed(accent);
+            dispatch(applyAccentBackground(pendingPalette));
           });
         }
       });
@@ -502,12 +509,12 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
     };
 
     const tryApplyThemeLine = (line: string): boolean => {
-      if (pendingThemeColor) return false;
+      if (pendingPalette) return false;
       try {
         const parsed = JSON.parse(line) as { type?: string; color?: string };
         if (parsed.type !== "theme" || typeof parsed.color !== "string") return false;
         if (!/^#[0-9a-fA-F]{6}$/.test(parsed.color)) return false;
-        pendingThemeColor = parsed.color;
+        pendingPalette = buildPaletteFromSeed(parsed.color);
         return true;
       } catch {
         return false;

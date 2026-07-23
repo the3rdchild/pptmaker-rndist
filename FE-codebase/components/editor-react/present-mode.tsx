@@ -7,6 +7,7 @@ import {
   usePresenterChannel,
   type PresenterPoint,
 } from "@/components/editor-react/presenter-sync";
+import { collectMediaOverlays } from "@/components/editor-react/present-media-overlay";
 
 const TemplateV2KonvaSlide = dynamic(
   () =>
@@ -169,7 +170,7 @@ export default function PresentMode({
           className="relative"
         >
           <div
-            className="origin-top-left"
+            className="relative origin-top-left"
             style={{
               width: SLIDE_W,
               height: SLIDE_H,
@@ -182,6 +183,43 @@ export default function PresentMode({
               slideIndex={index}
               fonts={fonts}
             />
+            {/* Real media players overlaid on the Konva static stand-in.
+                Coordinates are in slide space (1280x720); the parent div's
+                CSS transform scales them down with the slide. */}
+            {collectMediaOverlays(ui).map((item) =>
+              item.media_type === "video" ? (
+                <video
+                  key={item.key}
+                  src={item.src}
+                  poster={item.poster ?? undefined}
+                  controls
+                  style={{
+                    position: "absolute",
+                    left: item.x,
+                    top: item.y,
+                    width: item.width,
+                    height: item.height,
+                    borderRadius: Math.min(item.width, item.height) * 0.06,
+                    background: "#000",
+                  }}
+                />
+              ) : (
+                <div
+                  key={item.key}
+                  style={{
+                    position: "absolute",
+                    left: item.x,
+                    top: item.y,
+                    width: item.width,
+                    height: item.height,
+                    display: "flex",
+                    alignItems: "center",
+                  }}
+                >
+                  <audio src={item.src} controls style={{ width: "100%" }} />
+                </div>
+              ),
+            )}
           </div>
 
           {/* Live tools overlay (#41): laser pointer + freehand annotations

@@ -9,6 +9,7 @@ import {
   ChevronDown,
   Download,
   FilePlus2,
+  History,
   LayoutGrid,
   Loader2,
   Lock,
@@ -80,6 +81,7 @@ import {
 } from "@/components/editor-react/PdfExportCapture";
 import AIAssistantPanel from "@/components/editor-react/ai-assistant-panel";
 import FindReplacePanel from "@/components/editor-react/find-replace-panel";
+import VersionHistoryPanel from "@/components/editor-react/version-history-panel";
 import SlideSorter from "@/components/editor-react/slide-sorter";
 import OnboardingTour from "@/components/editor-react/onboarding-tour";
 import type { FindMatchLocation } from "@/components/editor-react/find-replace";
@@ -148,6 +150,7 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
   const [showNotes, setShowNotes] = useState(false);
   const [showFindReplace, setShowFindReplace] = useState(false);
   const [showSlideSorter, setShowSlideSorter] = useState(false);
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationError, setGenerationError] = useState<{
     message: string;
@@ -1114,6 +1117,29 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
           >
             <StickyNote className="h-3.5 w-3.5" />
           </ToolButton>
+          <div className="relative">
+            <ToolButton
+              size="sm"
+              active={showVersionHistory}
+              onClick={() => setShowVersionHistory((v) => !v)}
+              title="Version History"
+            >
+              <History className="h-3.5 w-3.5" />
+            </ToolButton>
+            {showVersionHistory && token && (
+              <div className="absolute right-0 top-[calc(100%+6px)] z-50">
+                <VersionHistoryPanel
+                  token={token}
+                  deckId={deckId}
+                  onRestored={(payload) => {
+                    const adapted = adaptDeckToPresentation(deckId, payload);
+                    if (adapted) dispatch(setPresentationData(adapted));
+                  }}
+                  onClose={() => setShowVersionHistory(false)}
+                />
+              </div>
+            )}
+          </div>
           <ToolButton
             id="onboarding-present"
             variant="solid"

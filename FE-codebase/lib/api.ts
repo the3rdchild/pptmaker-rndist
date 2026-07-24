@@ -104,6 +104,38 @@ export async function patchDeck(
 	return unwrap<DeckRow>(res)
 }
 
+// ── Deck version history ──
+// Throttled checkpoints (max ~1/10min), not one row per autosave — see
+// api/src/db/schemas/deck-version.ts for why. Payload is omitted from the
+// list response (same pattern as listDecks) and only fetched per-version if
+// needed.
+
+export type DeckVersionRow = {
+	id: string
+	deck_id: string
+	title: string
+	created_at: string
+}
+
+export async function listDeckVersions(token: string, deckId: string): Promise<DeckVersionRow[]> {
+	const res = await fetch(`${API_BASE}/api/v1/decks/${deckId}/versions`, {
+		headers: authHeaders(token),
+	})
+	return unwrap<DeckVersionRow[]>(res)
+}
+
+export async function restoreDeckVersion(
+	token: string,
+	deckId: string,
+	versionId: string,
+): Promise<DeckRow> {
+	const res = await fetch(`${API_BASE}/api/v1/decks/${deckId}/versions/${versionId}/restore`, {
+		method: 'POST',
+		headers: authHeaders(token),
+	})
+	return unwrap<DeckRow>(res)
+}
+
 // ── Agent chat (structured action stream) ──
 //
 // Mirrors editor/src/services/index.ts's api.Agent() — same backend endpoint

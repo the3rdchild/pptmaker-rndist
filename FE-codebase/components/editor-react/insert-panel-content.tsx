@@ -62,8 +62,6 @@ const ThumbnailSlide = dynamic(
   { ssr: false }
 );
 
-const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
-
 function matches(label: string, search: string) {
   return !search || label.toLowerCase().includes(search.toLowerCase());
 }
@@ -826,112 +824,6 @@ export function MediaTab({
 /* -------------------------------- Uploads -------------------------------- */
 
 export type UploadedAsset = { url: string; name: string };
-
-export function UploadsTab({
-  search,
-  uploads,
-  onUploaded,
-  onInsertImage,
-}: {
-  search: string;
-  uploads: UploadedAsset[];
-  onUploaded: (asset: UploadedAsset) => void;
-  onInsertImage: (url: string) => void;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const filtered = uploads.filter((asset) => matches(asset.name, search));
-
-  const handleFiles = async (files: FileList | null) => {
-    const file = files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      notify.warning("Invalid file", "Please upload an image file.");
-      return;
-    }
-    if (file.size > MAX_UPLOAD_BYTES) {
-      notify.warning("File too large", "Image files must be smaller than 5MB.");
-      return;
-    }
-    try {
-      setUploading(true);
-      const uploaded = await ImagesApi.uploadImage(file);
-      const url = resolveBackendAssetSource(uploaded);
-      if (!url) throw new Error("Upload did not return an image URL.");
-      onUploaded({ url, name: file.name });
-    } catch (error) {
-      notify.error(
-        "Upload failed",
-        error instanceof Error ? error.message : "Failed to upload image."
-      );
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  return (
-    <div
-      className="p-2.5"
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={(e) => {
-        e.preventDefault();
-        void handleFiles(e.dataTransfer.files);
-      }}
-    >
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={(e) => {
-          void handleFiles(e.target.files);
-          e.target.value = "";
-        }}
-      />
-      <button
-        onClick={() => inputRef.current?.click()}
-        disabled={uploading}
-        className="mb-3 flex h-24 w-full flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--border-strong)] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent-light)] disabled:opacity-60"
-      >
-        {uploading ? (
-          <Loader2 size={18} className="animate-spin" />
-        ) : (
-          <ImagePlus size={18} />
-        )}
-        <span className="text-[11px] font-medium">
-          {uploading ? "Uploading…" : "Upload image, or drag & drop"}
-        </span>
-      </button>
-
-      {filtered.length > 0 ? (
-        <>
-          <PanelLabel>Recently uploaded</PanelLabel>
-          <div className="grid grid-cols-3 gap-2.5 px-2.5">
-            {filtered.map((asset, i) => (
-              <GridCard
-                key={`${asset.url}-${i}`}
-                label={asset.name}
-                onClick={() => onInsertImage(asset.url)}
-              >
-                <img
-                  src={asset.url}
-                  alt={asset.name}
-                  className="h-full w-full object-cover"
-                />
-              </GridCard>
-            ))}
-          </div>
-        </>
-      ) : (
-        <EmptyState
-          icon={<ImagePlus size={20} />}
-          title="No uploads yet"
-          description="Images you upload will show up here for quick reuse."
-        />
-      )}
-    </div>
-  );
-}
 
 /* ------------------------------- Placeholder ------------------------------ */
 

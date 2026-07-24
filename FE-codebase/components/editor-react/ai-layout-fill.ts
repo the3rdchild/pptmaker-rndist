@@ -337,7 +337,9 @@ function walkElement(
 
   const child = el.child as Rec | undefined;
   if (child) {
-    walkElement(child, global, slots, undefined);
+    walkElement(child, global, slots, () => {
+      delete el.child;
+    });
   }
 }
 
@@ -533,8 +535,10 @@ export function fillLayout(layout: TemplateLayout, slide: AIPPTSlide): FilledSli
 }
 
 /** Removes container/group elements whose child array is empty after filling.
- *  Mutates the node in place. A non-empty children array (even one holding
- *  only a background rectangle) is left untouched. */
+ *  Mutates the node in place. Recurses through `.elements`, `.children`, AND
+ *  the singular `.child` (a container holding a single child via `child:`
+ *  instead of `children:[]` also goes empty if that child is pruned). A
+ *  non-empty holder (even one with only a background rectangle) is left. */
 function pruneEmptyContainers(node: Rec): void {
   const elements = (node.elements as Rec[] | undefined) ?? [];
   if (Array.isArray(node.elements)) {
@@ -547,6 +551,11 @@ function pruneEmptyContainers(node: Rec): void {
     for (const child of children) pruneEmptyContainers(child);
     node.children = children.filter((child) => !isEmptyHoldingNode(child));
     return;
+  }
+  const child = node.child as Rec | undefined;
+  if (child) {
+    pruneEmptyContainers(child);
+    if (isEmptyHoldingNode(child)) delete node.child;
   }
 }
 

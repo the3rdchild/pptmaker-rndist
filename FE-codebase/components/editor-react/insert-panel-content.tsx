@@ -570,14 +570,30 @@ export function FormulaTab({
 }
 
 export function MediaTab({
+  search,
   onInsertElements,
+  uploads,
+  onUploaded,
+  onInsertImage,
 }: {
+  search: string;
   onInsertElements: (elements: SlideElement[]) => void;
+  uploads: UploadedAsset[];
+  onUploaded: (asset: UploadedAsset) => void;
+  onInsertImage: (url: string) => void;
 }) {
   const [mediaType, setMediaType] = useState<"video" | "audio">("video");
   const [src, setSrc] = useState("");
   const [caption, setCaption] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [imageUploading, setImageUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const trimmed = src.trim();
+
+  const filteredUploads = uploads.filter((asset) =>
+    matches(asset.name, search),
+  );
 
   const handleInsert = () => {
     if (!trimmed) return;
@@ -592,9 +608,126 @@ export function MediaTab({
     setCaption("");
   };
 
+  // Media files can be large; cap at 15MB so the base64-embedded deck JSON
+  // doesn't balloon (base64 inflates by ~33%). Hosted URLs (the paste path)
+  // have no such limit.
+  const MAX_MEDIA_BYTES = 15 * 1024 * 1024;
+
+  const readFileAsDataUrl = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+
+  const handleFile = async (file: File | null | undefined) => {
+    if (!file) return;
+    const isVideo = file.type.startsWith("video/");
+    const isAudio = file.type.startsWith("audio/");
+    if (!isVideo && !isAudio) {
+      notify.warning("Unsupported file", "Please choose a video or audio file.");
+      return;
+    }
+    if (file.size > MAX_MEDIA_BYTES) {
+      notify.warning(
+        "File too large",
+        `Media must be under ${Math.round(MAX_MEDIA_BYTES / (1024 * 1024))}MB to embed in the deck. Use a hosted URL for larger files.`,
+      );
+      return;
+    }
+    try {
+      setUploading(true);
+      const dataUrl = await readFileAsDataUrl(file);
+      onInsertElements(
+        createMediaInsertElements(
+          isVideo ? "video" : "audio",
+          dataUrl,
+          file.name,
+        ),
+      );
+    } catch {
+      notify.error("Upload failed", "Could not read that media file.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="p-1.5">
       <div className="px-2.5">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="video/*,audio/*"
+          className="hidden"
+          onChange={(event) => {
+            void handleFile(event.target.files?.[0]);
+            event.target.value = "";
+          }}
+        />
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={async (event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (!file) return;
+            if (!file.type.startsWith("image/")) {
+              notify.warning("Unsupported file", "Please choose an image file.");
+              return;
+            }
+            if (file.size > 5 * 1024 * 1024) {
+              notify.warning("File too large", "Images must be under 5MB.");
+              return;
+            }
+            try {
+              setImageUploading(true);
+              const uploaded = await ImagesApi.uploadImage(file);
+              const url = resolveBackendAssetSource(uploaded);
+              if (!url) throw new Error("Upload did not return an image URL.");
+              onUploaded({ url, name: file.name });
+              onInsertImage(url);
+            } catch {
+              notify.error("Upload failed", "Could not read that image file.");
+            } finally {
+              setImageUploading(false);
+            }
+          }}
+        />
+        <div className="mb-2 flex gap-1.5">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="flex h-20 flex-1 flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--border-strong)] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent-light)] disabled:opacity-60"
+          >
+            {uploading ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : (
+              <Video size={18} />
+            )}
+            <span className="text-[11px] font-medium">
+              {uploading ? "Embedding…" : "Video / audio"}
+            </span>
+          </button>
+          <button
+            onClick={() => imageInputRef.current?.click()}
+            disabled={imageUploading}
+            className="flex h-20 flex-1 flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--border-strong)] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent-light)] disabled:opacity-60"
+          >
+            {imageUploading ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : (
+              <ImagePlus size={18} />
+            )}
+            <span className="text-[11px] font-medium">
+              {imageUploading ? "Uploading…" : "Image"}
+            </span>
+          </button>
+        </div>
+
         <div className="mb-3 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-surface)] p-2.5">
           <div className="mb-2 flex gap-1.5">
             {(["video", "audio"] as const).map((kind) => (
@@ -614,12 +747,12 @@ export function MediaTab({
             ))}
           </div>
           <label className="mb-1.5 block text-[11px] font-medium text-[var(--text-muted)]">
-            Media URL
+            Or paste a media URL
           </label>
           <input
             value={src}
             onChange={(event) => setSrc(event.target.value)}
-            placeholder="https://… or paste a hosted mp4/mp3 link"
+            placeholder="https://… hosted mp4/mp3 link"
             className="w-full rounded-md border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
           />
           <label className="mb-1.5 mt-2 block text-[11px] font-medium text-[var(--text-muted)]">
@@ -641,7 +774,7 @@ export function MediaTab({
           </button>
         </div>
       </div>
-      <PanelLabel>Media</PanelLabel>
+      <PanelLabel>Quick add</PanelLabel>
       <div className="grid grid-cols-2 gap-2.5 px-2.5 pb-2">
         <GridCard
           label="Video"
@@ -666,6 +799,26 @@ export function MediaTab({
           <Music size={22} />
         </GridCard>
       </div>
+      {filteredUploads.length > 0 ? (
+        <>
+          <PanelLabel>Recently uploaded images</PanelLabel>
+          <div className="grid grid-cols-3 gap-2.5 px-2.5 pb-2">
+            {filteredUploads.map((asset, i) => (
+              <GridCard
+                key={`${asset.url}-${i}`}
+                label={asset.name}
+                onClick={() => onInsertImage(asset.url)}
+              >
+                <img
+                  src={asset.url}
+                  alt={asset.name}
+                  className="h-full w-full object-cover"
+                />
+              </GridCard>
+            ))}
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

@@ -11,7 +11,6 @@ import {
   Sparkles,
   Table as TableIcon,
   Type,
-  Upload as UploadIcon,
   Video,
   X,
 } from "lucide-react";
@@ -29,7 +28,6 @@ import {
   TableTab,
   TemplatesTab,
   TextTab,
-  UploadsTab,
   type UploadedAsset,
 } from "@/components/editor-react/insert-panel-content";
 import type { ElementCatalogEntry } from "@/components/editor-react/element-catalog";
@@ -97,7 +95,6 @@ type TabId =
   | "table"
   | "formula"
   | "media"
-  | "uploads"
   | "magic-media"
   | "palette"
   | "background";
@@ -114,9 +111,8 @@ const TABS: {
   { id: "chart", label: "Chart", icon: BarChart3, searchPlaceholder: "Search charts" },
   { id: "table", label: "Table", icon: TableIcon },
   { id: "formula", label: "Formula", icon: Sigma, searchPlaceholder: "Search formulas" },
-  { id: "media", label: "Media", icon: Video, searchPlaceholder: "Paste a media URL" },
+  { id: "media", label: "Media", icon: Video, searchPlaceholder: "Upload or paste a URL" },
   { id: "palette", label: "Palette", icon: Palette },
-  { id: "uploads", label: "Uploads", icon: UploadIcon, searchPlaceholder: "Search uploads" },
   { id: "magic-media", label: "Magic Media", icon: Sparkles },
   { id: "background", label: "Background", icon: PaintBucket },
 ];
@@ -267,19 +263,19 @@ export default function InsertToolbar({
             {openTab === "formula" && (
               <FormulaTab search={search} onInsertElements={runInsert} />
             )}
-            {openTab === "media" && <MediaTab onInsertElements={runInsert} />}
+            {openTab === "media" && (
+              <MediaTab
+                search={search}
+                onInsertElements={runInsert}
+                uploads={uploads}
+                onUploaded={(asset) => setUploads((prev) => [asset, ...prev].slice(0, 24))}
+                onInsertImage={handleInsertUploadedImage}
+              />
+            )}
             {openTab === "palette" && (
               <ColorPalettePanel
                 onApplyColorToSelection={onApplyColorToSelection}
                 onApplyColorToBackground={handleApplyColorToBackground}
-              />
-            )}
-            {openTab === "uploads" && (
-              <UploadsTab
-                search={search}
-                uploads={uploads}
-                onUploaded={(asset) => setUploads((prev) => [asset, ...prev].slice(0, 24))}
-                onInsertImage={handleInsertUploadedImage}
               />
             )}
             {openTab === "background" && (

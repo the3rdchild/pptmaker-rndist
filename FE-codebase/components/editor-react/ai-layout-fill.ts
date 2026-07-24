@@ -355,7 +355,19 @@ function collectComponent(component: Rec): { global: TextLeaf[]; slots: ItemSlot
   const global: TextLeaf[] = [];
   const slots: ItemSlot[] = [];
   const elements = (component.elements as Rec[]) ?? [];
-  for (const el of elements) walkElement(el, global, slots);
+  // Give top-level component.elements entries a working remove() too — same
+  // splice-out-of-parent-array pattern walkElement already uses one level
+  // down. Without this, a global text leaf that happens to sit DIRECTLY in
+  // component.elements (very common — e.g. a "name"/"date" caption card
+  // authored as siblings, not nested in a wrapper) silently no-ops when
+  // fillLayout tries to remove it as surplus, since `remove` stayed
+  // undefined for it.
+  for (const el of elements) {
+    walkElement(el, global, slots, () => {
+      const idx = elements.indexOf(el);
+      if (idx !== -1) elements.splice(idx, 1);
+    });
+  }
   return { global, slots };
 }
 
@@ -471,6 +483,21 @@ function fillOrTrimSlots(allSlots: ItemSlot[], items: { title: string; text: str
   allSlots.slice(0, items.length).forEach((slot, i) => fillItemSlot(slot, items[i]));
 }
 
+/** Removes every global text leaf beyond the first `keep` (sorted by font
+ * size, same ordering fillGlobalText itself uses) instead of leaving them at
+ * the template's own sample copy. cover/transition/end slide types only ever
+ * supply 1-2 values (title[, text]) to fillGlobalText — any further global
+ * leaf a layout happens to carry (a "name"/"date" caption card, a secondary
+ * tagline, ...) was never touched at all, so it silently kept showing
+ * whatever sample text — or sample-text-on-a-colored-chip that reads as a
+ * blank box once repainted with the deck's own palette — the template
+ * author left there. Mirrors the same "remove don't leave stale copy"
+ * decision `fillOrTrimSlots` already makes for item-slot cards. */
+function trimSurplusGlobalText(allGlobal: TextLeaf[], keep: number): void {
+  const sorted = [...allGlobal].sort((a, b) => b.fontSize - a.fontSize);
+  for (let i = keep; i < sorted.length; i++) sorted[i].remove?.();
+}
+
 export function fillLayout(layout: TemplateLayout, slide: AIPPTSlide): FilledSlide {
   const components = JSON.parse(JSON.stringify(layout.components)) as Rec[];
 
@@ -486,6 +513,10 @@ export function fillLayout(layout: TemplateLayout, slide: AIPPTSlide): FilledSli
     case "cover":
     case "transition":
       fillGlobalText(allGlobal, [slide.data.title, slide.data.text]);
+      // Beyond title+text, any further global leaf (a "name"/"date" caption
+      // card, a secondary tagline, ...) was never touched at all — remove it
+      // rather than leave the template's own sample copy on screen.
+      trimSurplusGlobalText(allGlobal, 2);
       // Cover/transition slides never carry an items array, so any card grid
       // a cover-bucketed layout happens to contain (e.g. a decorative
       // highlight row under the hero title) can never be filled — remove it
@@ -517,11 +548,13 @@ export function fillLayout(layout: TemplateLayout, slide: AIPPTSlide): FilledSli
     case "contents": {
       const items = slide.data.items.map((title) => ({ title, text: "" }));
       fillGlobalText(allGlobal, ["Contents"]);
+      trimSurplusGlobalText(allGlobal, 1);
       fillOrTrimSlots(allSlots, items);
       break;
     }
     case "end":
       fillGlobalText(allGlobal, ["Thank You"]);
+      trimSurplusGlobalText(allGlobal, 1);
       fillOrTrimSlots(allSlots, []);
       break;
   }
@@ -698,9 +731,17 @@ function pruneEmptyContainers(node: Rec): void {
   }
 }
 
+// grid/flex included alongside container/group: a card grid trimmed down to
+// zero children by fillOrTrimSlots (e.g. every card removed for a cover/
+// transition/end slide, or every card removed because the AI supplied no
+// items) has children.length===0 but ISN'T a "container"/"group" type, so it
+// used to survive this filter untouched — a childless grid element sitting
+// in the tree, occupying its authored size/position with nothing to render,
+// which showed as a blank box wherever it (or a background chip behind it)
+// had its own fill.
 function isEmptyHoldingNode(el: Rec): boolean {
   const type = el.type;
-  if (type !== "container" && type !== "group") return false;
+  if (type !== "container" && type !== "group" && type !== "grid" && type !== "flex") return false;
   const children = el.children as Rec[] | undefined;
   if (Array.isArray(children)) return children.length === 0;
   return el.child == null;

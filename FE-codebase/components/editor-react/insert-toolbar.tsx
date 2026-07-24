@@ -48,6 +48,41 @@ import type { TemplateV2InsertComponent } from "@/components/slide-editor/events
 
 type InsertHandler = (ui: Record<string, unknown>) => void;
 
+// Loads an image's natural dimensions (used to size a freshly uploaded image
+// to its real aspect ratio instead of forcing a fixed box that crops it).
+function loadImageSize(src: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    if (typeof window === "undefined") {
+      reject(new Error("window unavailable"));
+      return;
+    }
+    const img = new window.Image();
+    img.onload = () =>
+      resolve({ width: img.naturalWidth || img.width, height: img.naturalHeight || img.height });
+    img.onerror = () => reject(new Error("image load failed"));
+    img.src = src;
+  });
+}
+
+function fitWithin(
+  size: { width: number; height: number },
+  maxWidth: number,
+  maxHeight: number,
+): { width: number; height: number } {
+  const ratio = size.width / size.height || 1;
+  let width = size.width;
+  let height = size.height;
+  if (width > maxWidth) {
+    width = maxWidth;
+    height = Math.round(width / ratio);
+  }
+  if (height > maxHeight) {
+    height = maxHeight;
+    width = Math.round(height * ratio);
+  }
+  return { width: Math.max(1, width), height: Math.max(1, height) };
+}
+
 export interface InsertToolbarProps {
   activeUi: Record<string, unknown> | null;
   onInsert: InsertHandler;
@@ -148,8 +183,26 @@ export default function InsertToolbar({
 
   const handleInsertUploadedImage = (url: string) => {
     const content = createImageInsertContent("image");
-    const elements = (content.elements ?? []).map((el) => ({ ...el, data: url }));
-    runInsert(elements as SlideElement[]);
+    const baseElements = (content.elements ?? []).map((el) => ({ ...el, data: url })) as SlideElement[];
+    // Preserve the source image's native aspect ratio instead of forcing the
+    // default 666x397 box (which crops non-matching images via fit:cover).
+    // Load the dimensions, then size the box to fit within a 800x600 bound
+    // while keeping the original ratio, and switch to fit:contain so nothing
+    // gets cropped.
+    loadImageSize(url).then(
+      (size) => {
+        const fit = fitWithin(size, 800, 600);
+        const elements = baseElements.map((el) =>
+          el.type === "image"
+            ? { ...el, size: { width: fit.width, height: fit.height }, fit: "contain" as const }
+            : el,
+        );
+        runInsert(elements);
+      },
+      () => {
+        runInsert(baseElements);
+      },
+    );
   };
 
   const handleInsertIcon = (iconUrl: string) => {

@@ -2,10 +2,12 @@
 
 import { useRouter } from 'next/navigation'
 import { Wand2, Plus, ChevronDown, Loader2 } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useSessionStore } from '@/store/session.store'
-import { createDeck } from '@/lib/api'
+import { createDeck, saveDeck } from '@/lib/api'
 import { Button } from '@/components/shared/button'
+import { importPptxFile } from '@/components/slide-editor/importing/pptx-import'
+import { notify } from '@/components/ui/sonner'
 
 const LANGUAGES = ['Bahasa Indonesia', 'English', 'Español', '中文', '日本語']
 
@@ -17,9 +19,11 @@ export function PromptInput() {
 	const [prompt, setPrompt] = useState('')
 	const [language, setLanguage] = useState('Bahasa Indonesia')
 	const [submitting, setSubmitting] = useState(false)
+	const [importing, setImporting] = useState(false)
 	const [localError, setLocalError] = useState<string | null>(null)
+	const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-	const canGenerate = prompt.trim().length > 0 && token !== null && sessionReady && !submitting
+	const canGenerate = prompt.trim().length > 0 && token !== null && sessionReady && !submitting && !importing
 
 	const handleGenerate = async () => {
 		if (!token) {
@@ -45,6 +49,41 @@ export function PromptInput() {
 		}
 	}
 
+	const handleImportFile = async (file: File | null | undefined) => {
+		if (!file) return
+		if (!token) {
+			setLocalError('Session belum siap. Tunggu sebentar...')
+			return
+		}
+		if (!file.name.toLowerCase().endsWith('.pptx')) {
+			notify.warning('File tidak didukung', 'Pilih file .pptx.')
+			return
+		}
+
+		setImporting(true)
+		setLocalError(null)
+		try {
+			const parsed = await importPptxFile(file)
+			const deck = await createDeck(token, { title: parsed.title })
+			await saveDeck(token, deck.id, {
+				title: parsed.title,
+				payload: { title: parsed.title, slides: parsed.slides },
+			} as unknown as Parameters<typeof saveDeck>[2])
+			if (parsed.skippedShapeCount > 0) {
+				notify.info(
+					'Sebagian elemen dilewati',
+					`${parsed.skippedShapeCount} elemen (chart/tabel/grafik kompleks) belum didukung dan tidak ikut ter-import.`,
+				)
+			}
+			router.push(`/editor-react/${deck.id}`)
+		} catch (e) {
+			const message = e instanceof Error ? e.message : 'Gagal import file .pptx'
+			setLocalError(message)
+			notify.error('Import gagal', message)
+			setImporting(false)
+		}
+	}
+
 	return (
 		<div className="bg-hero-gradient rounded-2xl p-6">
 			<div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-[#6c5ce7]/20 px-3 py-1 text-xs font-medium text-[#a29bfe]">
@@ -67,8 +106,24 @@ export function PromptInput() {
 			/>
 
 			<div className="mt-3 flex flex-wrap items-center gap-2">
-				<Button variant="subtle" size="sm">
-					<Plus className="h-4 w-4" /> Lampirkan
+				<input
+					ref={fileInputRef}
+					type="file"
+					accept=".pptx"
+					className="hidden"
+					onChange={(e) => {
+						void handleImportFile(e.target.files?.[0])
+						e.target.value = ''
+					}}
+				/>
+				<Button
+					variant="subtle"
+					size="sm"
+					disabled={importing || submitting}
+					onClick={() => fileInputRef.current?.click()}
+				>
+					{importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+					{importing ? 'Mengimpor...' : 'Import .pptx'}
 				</Button>
 
 				<Dropdown label={language} options={LANGUAGES} onSelect={(v) => setLanguage(v)} />

@@ -6,6 +6,7 @@ import {
 	listDecksBySession,
 	updateDeck,
 } from '@/repository/deck'
+import { DeckVersionService } from '@/modules/deck-version/service'
 import type { CreateDeckBody, PatchDeckBody, UpdateDeckBody } from './dto'
 
 export class DeckService {
@@ -29,7 +30,11 @@ export class DeckService {
 	}
 
 	async update(sessionId: string, id: string, body: UpdateDeckBody) {
-		await this.getById(sessionId, id) // ownership check
+		const current = await this.getById(sessionId, id) // ownership check
+		// Snapshot the state that's about to be overwritten (throttled — see
+		// deck-version.ts) BEFORE applying the update, so a version always
+		// reflects a real prior state, never the one we're about to write.
+		await new DeckVersionService().maybeSnapshot(current)
 		const updated = await updateDeck(id, {
 			title: body.title,
 			payload: body.payload,

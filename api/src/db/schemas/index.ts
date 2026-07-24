@@ -1,4 +1,5 @@
 export * from './session'
 export * from './deck'
+export * from './deck-version'
 export * from './pool-request'
 export * from './generation-result'

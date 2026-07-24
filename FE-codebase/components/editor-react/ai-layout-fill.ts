@@ -147,7 +147,7 @@ export class DeckLayoutPicker {
 
 /* ------------------------------ Fill logic -------------------------------- */
 
-type TextLeaf = { el: Rec; fontSize: number };
+type TextLeaf = { el: Rec; fontSize: number; remove?: () => void };
 
 /** One "item slot" is a repeated child of a grid/flex (a card, a row, …).
  * `remove()` splices this slot's own card out of its parent grid/flex's
@@ -189,10 +189,21 @@ function collectAllTextLeaves(node: Rec, out: TextLeaf[]): void {
  * `group`/`container` wrappers are just layout grouping and get flattened
  * into the surrounding context instead, so e.g. a title+subtitle held
  * together in a `group` stay "global" text rather than becoming two
- * mismatched item slots. */
-function walkElement(el: Rec, global: TextLeaf[], slots: ItemSlot[]): void {
+ * mismatched item slots.
+ *
+ * Global text leaves carry an optional `remove()` so surplus global text
+ * (e.g. a 3rd overlapping copy of a tagline in some templates) can be
+ * spliced out of its parent array instead of being filled with a duplicated
+ * summary — which previously stacked the same paragraph 3× on the same spot.
+ * The `removeSelf` arg threads the parent-array + index from the caller. */
+function walkElement(
+  el: Rec,
+  global: TextLeaf[],
+  slots: ItemSlot[],
+  removeSelf?: () => void,
+): void {
   if (isTextLike(el)) {
-    global.push({ el, fontSize: fontSizeOf(el) });
+    global.push({ el, fontSize: fontSizeOf(el), remove: removeSelf });
     return;
   }
 
@@ -215,13 +226,19 @@ function walkElement(el: Rec, global: TextLeaf[], slots: ItemSlot[]): void {
     return;
   }
   if (Array.isArray(children)) {
-    for (const child of children) walkElement(child, global, slots);
+    children.forEach((child, index) =>
+      walkElement(child, global, slots, () => {
+        const idx = children.indexOf(child);
+        if (idx !== -1) children.splice(idx, 1);
+        void index;
+      }),
+    );
     return;
   }
 
   const child = el.child as Rec | undefined;
   if (child) {
-    walkElement(child, global, slots);
+    walkElement(child, global, slots, undefined);
   }
 }
 
@@ -370,18 +387,18 @@ export function fillLayout(layout: TemplateLayout, slide: AIPPTSlide): FilledSli
       fillGlobalText(allGlobal, [slide.data.title]);
       const items = slide.data.items;
 
-      // Any OTHER global text slot beyond the title (subtitle/tagline/
-      // description) must never be left as the template's own literal
-      // sample copy ("Lorem ipsum dolor sit amet...") — fill every one of
-      // them with a summary of the items. Previously this only ran when the
-      // layout had NO repeated item slots at all, so a layout with BOTH a
-      // secondary global tagline AND a card grid (very common) orphaned the
-      // tagline forever, leaking real placeholder text into the deck.
+      // Beyond the title, at most ONE more global text slot (a subtitle/
+      // tagline) gets a summary of the items. Any further global text slots
+      // are surplus template chrome (e.g. a 3rd overlapping copy of a
+      // tagline in some layouts) — filling them all with the same combined
+      // paragraph used to stack identical text 3× on the same spot. Remove
+      // the surplus instead so nothing leaks placeholder copy either.
       if (items.length) {
         const sorted = [...allGlobal].sort((a, b) => b.fontSize - a.fontSize);
         const combined = items.map((i) => (i.title ? `${i.title}: ${i.text}` : i.text)).join(" ");
-        for (let i = 1; i < sorted.length; i++) {
-          setText(sorted[i].el, combined);
+        if (sorted[1]) setText(sorted[1].el, combined);
+        for (let i = 2; i < sorted.length; i++) {
+          sorted[i].remove?.();
         }
       }
 

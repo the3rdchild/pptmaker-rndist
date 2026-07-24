@@ -647,7 +647,17 @@ const ICON_SYNONYMS: Record<string, string> = {
   healthcare: "heart", care: "heart", wellness: "heart", love: "heart", passion: "heart",
   environment: "leaf", environmental: "leaf", nature: "leaf", natural: "leaf", green: "leaf",
   sustainability: "leaf", sustainable: "leaf", eco: "leaf", climate: "leaf", ocean: "world",
-  marine: "world", benefit: "thumb up", benefits: "thumb up", advantage: "thumb up",
+  marine: "world", forest: "leaf", forests: "leaf", tree: "leaf", trees: "leaf", woodland: "leaf",
+  jungle: "leaf", plant: "leaf", plants: "leaf", flora: "leaf", biodiversity: "world",
+  wildlife: "world", animal: "world", animals: "world", species: "world", ecosystem: "world",
+  conservation: "leaf", habitat: "leaf", carbon: "cloud", emission: "cloud", emissions: "cloud",
+  pollution: "cloud", smoke: "cloud", fire: "alert triangle", burning: "alert triangle",
+  blaze: "alert triangle", deforest: "alert triangle", deforestation: "alert triangle",
+  logging: "alert triangle", threat: "alert triangle", threats: "alert triangle",
+  danger: "alert triangle", endangered: "alert triangle", protect: "shield check",
+  preserve: "leaf", preservation: "leaf", restore: "refresh",
+  restoration: "refresh", renewable: "refresh",
+  water: "world", river: "world", lake: "world", sea: "world", benefit: "thumb up", benefits: "thumb up", advantage: "thumb up",
   pros: "thumb up", feature: "star", features: "star", value: "star", values: "heart",
   service: "headset", services: "headset", support: "headset", help: "headset",
   assistance: "headset", info: "info circle", information: "info circle", detail: "info circle",
@@ -862,12 +872,14 @@ async function fillPlaceholderIcons(ui: Rec, fallbackQuery: string): Promise<Rec
 /** Minimum card size (area) before we bother injecting an icon — tiny rows
  *  (e.g. a tight comparison bullet) would just get cluttered. */
 const ICON_INJECT_MIN_AREA = 18000;
-const ICON_TILE_SIZE = 36;
+const ICON_TILE_SIZE = 72;
 
-/** True if the card contains a text element whose box width is at least 75%
- *  of the card width AND sits in the card's top half (where the injected
+/** True if the card contains a text element whose box width is at least 85%
+ *  of the card width AND sits in the card's top third (where the injected
  *  top-corner tile would land). Used to avoid overlapping a centered/wide
- *  heading. */
+ *  heading. The threshold is high (0.85) so typical card titles — which span
+ *  much of the card width but leave the corner clear — still get an icon;
+ *  only genuinely full-bleed centered headings are skipped. */
 function hasWideText(card: Rec, cardWidth: number): boolean {
   let found = false;
   const visit = (node: Rec | undefined): void => {
@@ -879,7 +891,7 @@ function hasWideText(card: Rec, cardWidth: number): boolean {
       const w = typeof sz?.width === "number" ? sz.width : 0;
       const y = typeof pos?.y === "number" ? pos.y : 0;
       const cardH = (card.size as { height?: number } | undefined)?.height ?? 0;
-      if (w >= cardWidth * 0.75 && y < cardH / 2) found = true;
+      if (w >= cardWidth * 0.85 && y < cardH / 3) found = true;
       return;
     }
     const children = node.children as Rec[] | undefined;
@@ -911,8 +923,8 @@ function injectIconIntoCard(card: Rec, iconUrl: string): void {
   // `centered_card_row`'s portrait cards (centered full-width name) sit here.
   if (hasWideText(card, width)) return;
 
-  const margin = Math.max(16, Math.round(Math.min(width, height) * 0.08));
-  const tileSize = Math.min(ICON_TILE_SIZE, Math.round(Math.min(width, height) * 0.16));
+  const margin = Math.max(20, Math.round(Math.min(width, height) * 0.08));
+  const tileSize = Math.min(ICON_TILE_SIZE, Math.round(Math.min(width, height) * 0.22));
   const iconSize = Math.round(tileSize * 0.6);
   const tileX = width - tileSize - margin;
   const tileY = margin;

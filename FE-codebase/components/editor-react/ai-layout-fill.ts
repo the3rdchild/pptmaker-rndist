@@ -77,18 +77,84 @@ interface Buckets {
   cover: TemplateLayout[];
   contents: TemplateLayout[];
   content: TemplateLayout[];
+  /** Layouts that need numeric/stat data the AI can't supply yet. Parked
+   *  here so the picker never rotates them into a generated deck; they stay
+   *  available for manual insert from the Templates panel. */
+  metrics: TemplateLayout[];
+}
+
+// Layouts audited as needing real numeric data (big figures / stat cards).
+// Excluded from AI generation until the AI can research actual figures — a
+// metric card filled with prose reads as fabricated ("92% — [unrelated
+// sentence]"). Detected by structure too (hasMetricCardSlot) so new layouts
+// with the same shape are caught automatically.
+const METRIC_LAYOUT_IDS = new Set([
+  "centered_metrics_layout_9752",
+  "split_content_metrics_4327",
+  "stat_row_layout_4821",
+  "two_column_metrics_7973",
+  "top_header_metric_cards_2015",
+  "icon_stat_tiles_5602",
+  "two_column_layout_2710",
+  "two_column_info_layout_8378",
+]);
+
+// True if the layout contains a grid/flex card whose subtree has a text leaf
+// named like a metric/stat value — i.e. it expects numeric data per card.
+function hasMetricCardSlot(layout: TemplateLayout): boolean {
+  if (METRIC_LAYOUT_IDS.has(layout.id)) return true;
+  const components = Array.isArray(layout.components) ? (layout.components as Rec[]) : [];
+  for (const component of components) {
+    const elements = Array.isArray(component?.elements) ? (component.elements as Rec[]) : [];
+    for (const el of elements) {
+      if (gridFlexHasMetricLeaf(el)) return true;
+    }
+  }
+  return false;
+}
+
+function gridFlexHasMetricLeaf(el: Rec | null): boolean {
+  if (!el) return false;
+  const type = el.type;
+  const children = el.children as Rec[] | undefined;
+  if ((type === "grid" || type === "flex") && Array.isArray(children) && children.length > 1) {
+    for (const card of children) {
+      if (subtreeHasMetricLeaf(card)) return true;
+    }
+    return false;
+  }
+  return false;
+}
+
+function subtreeHasMetricLeaf(node: Rec | null | undefined): boolean {
+  if (!node) return false;
+  const type = node.type;
+  if (type === "text" || type === "text-list") {
+    if (/metric|stat/i.test(String(node.name ?? ""))) return true;
+    return false;
+  }
+  const children = node.children as Rec[] | undefined;
+  if (Array.isArray(children)) {
+    for (const c of children) if (subtreeHasMetricLeaf(c)) return true;
+    return false;
+  }
+  const child = node.child as Rec | undefined;
+  if (child) return subtreeHasMetricLeaf(child);
+  return false;
 }
 
 function bucketLayouts(layouts: TemplateLayout[]): Buckets {
   const cover: TemplateLayout[] = [];
   const contents: TemplateLayout[] = [];
   const content: TemplateLayout[] = [];
+  const metrics: TemplateLayout[] = [];
   for (const l of layouts) {
     if (isCoverLayout(l)) cover.push(l);
     else if (isContentsLayout(l)) contents.push(l);
+    else if (hasMetricCardSlot(l)) metrics.push(l);
     else content.push(l);
   }
-  return { cover, contents, content };
+  return { cover, contents, content, metrics };
 }
 
 /** Picks one template pack per deck (deterministic from a seed) and rotates
@@ -188,7 +254,13 @@ function isMetricOrStatSample(el: Rec): boolean {
   const name = String(el.name ?? "");
   const looksStat = /metric|stat|value|unit|figure|number|percent/i.test(name);
   if (!looksStat) return false;
-  return /^[\d.,%+\-x\s]*\d*[%]?$/.test(textSample(el).trim());
+  // A leading number, an optional short unit word (K, h, Billion, Million…),
+  // an optional trailing symbol — e.g. "92%", "150K", "1.4 Billion", "24h".
+  // Anything starting with a digit-looking figure is treated as numeric
+  // chrome the AI (which only supplies prose) shouldn't overwrite. A real
+  // prose field ("metric_description": "These forests absorb…") doesn't start
+  // with a bare number, so it stays fillable.
+  return /^[\d.,+\-]+\s*[a-zA-Z]{0,12}[%+\-]*$/.test(textSample(el).trim());
 }
 
 function isFillableText(el: Rec): boolean {

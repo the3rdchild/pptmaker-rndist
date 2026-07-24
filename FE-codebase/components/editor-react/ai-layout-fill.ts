@@ -37,6 +37,7 @@ interface TemplateLayout {
 
 interface TemplatePack {
   layouts: TemplateLayout[];
+  fonts?: Record<string, string> | null;
 }
 
 const PACK_NAMES = ["general", "modern", "standard", "swift"] as const;
@@ -96,6 +97,7 @@ export class DeckLayoutPicker {
   private buckets: Buckets | null = null;
   private contentCursor = 0;
   private packName: string;
+  private packFonts: Record<string, string> | null = null;
 
   constructor(seed: string) {
     const packs = PACK_NAMES;
@@ -107,6 +109,14 @@ export class DeckLayoutPicker {
     const packs = await loadAllPacks();
     const pack = packs[this.packName] ?? packs["general"];
     this.buckets = bucketLayouts(pack.layouts);
+    this.packFonts = (pack.fonts ?? null) as Record<string, string> | null;
+  }
+
+  /** The chosen pack's font map ({ family: cssUrl }). Available after
+   *  ensureLoaded(). Used so the editor/present render path loads the right
+   *  per-pack typeface instead of only the generic Google-Fonts fallback. */
+  getFonts(): Record<string, string> | null {
+    return this.packFonts;
   }
 
   private fallbackContent(): TemplateLayout {

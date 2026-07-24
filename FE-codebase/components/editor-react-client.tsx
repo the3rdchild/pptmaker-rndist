@@ -467,6 +467,19 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
     const layoutPicker = new DeckLayoutPicker(topic);
     const currentToken = token;
 
+    // Resolve the chosen pack's font map up front so the editor/present render
+    // path loads the right per-pack typeface (e.g. Playfair Display for the
+    // standard pack). Without this, presentationData.fonts stays undefined and
+    // only the generic Google-Fonts fallback is used for the whole deck.
+    await layoutPicker.ensureLoaded();
+    const deckFonts = layoutPicker.getFonts();
+    if (deckFonts) {
+      dispatch(setPresentationData({
+        ...(presentationData ?? { id: deckId, title: topic, slides: [] }),
+        fonts: deckFonts,
+      }));
+    }
+
     const slideSubject = (slide: AIPPTSlide): string => {
       if (slide.type === "cover" || slide.type === "transition") return slide.data.title;
       if (slide.type === "content") return slide.data.title;

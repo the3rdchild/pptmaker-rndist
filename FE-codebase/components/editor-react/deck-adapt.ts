@@ -27,5 +27,11 @@ export function adaptDeckToPresentation(
     id: deckId,
     title: (payload.title as string) ?? "Untitled",
     slides,
+    // Carry the deck's template font map so the render path loads the right
+    // per-pack typeface (Poppins / Montserrat / Playfair / Albert Sans) when
+    // a saved deck is reopened — without this, presentationData.fonts is
+    // always undefined for loaded decks and only the generic Google-Fonts
+    // fallback is used.
+    fonts: payload.fonts,
   };
 }

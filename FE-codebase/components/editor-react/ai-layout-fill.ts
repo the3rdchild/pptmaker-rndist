@@ -448,7 +448,42 @@ export function fillLayout(layout: TemplateLayout, slide: AIPPTSlide): FilledSli
   const heroImage = findHeroImage(photoSlots);
   const secondaryImages = findSecondaryImages(photoSlots, heroImage);
 
+  // Filling can orphan a container/group: e.g. when its only child was a text
+  // leaf removed as a surplus global slot, or when all its meaningful children
+  // got pruned. Such an empty box would render as a floating chrome rectangle
+  // with nothing in it. Walk each component's element tree and drop any
+  // container/group whose child array ended up empty (single-`child` holders
+  // that lost their child are handled too). Stops at the first non-empty
+  // parent — a card that still has its background rectangle + content stays.
+  for (const component of components) pruneEmptyContainers(component);
+
   return { ui: { id: layout.id, components }, heroImage, secondaryImages };
+}
+
+/** Removes container/group elements whose child array is empty after filling.
+ *  Mutates the node in place. A non-empty children array (even one holding
+ *  only a background rectangle) is left untouched. */
+function pruneEmptyContainers(node: Rec): void {
+  const elements = (node.elements as Rec[] | undefined) ?? [];
+  if (Array.isArray(node.elements)) {
+    for (const el of elements) pruneEmptyContainers(el);
+    node.elements = elements.filter((el) => !isEmptyHoldingNode(el));
+    return;
+  }
+  const children = node.children as Rec[] | undefined;
+  if (Array.isArray(children)) {
+    for (const child of children) pruneEmptyContainers(child);
+    node.children = children.filter((child) => !isEmptyHoldingNode(child));
+    return;
+  }
+}
+
+function isEmptyHoldingNode(el: Rec): boolean {
+  const type = el.type;
+  if (type !== "container" && type !== "group") return false;
+  const children = el.children as Rec[] | undefined;
+  if (Array.isArray(children)) return children.length === 0;
+  return el.child == null;
 }
 
 /* --------------------------- Photo slots ------------------------------ */

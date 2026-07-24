@@ -456,10 +456,6 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
       throw new Error(message);
     }
 
-    if (presentationData) {
-      dispatch(setPresentationData({ ...presentationData, slides: [] }));
-    }
-
     const reader = res.body.getReader();
     const decoder = new TextDecoder("utf-8");
     let buf = "";
@@ -467,18 +463,18 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
     const layoutPicker = new DeckLayoutPicker(topic);
     const currentToken = token;
 
-    // Resolve the chosen pack's font map up front so the editor/present render
-    // path loads the right per-pack typeface (e.g. Playfair Display for the
-    // standard pack). Without this, presentationData.fonts stays undefined and
-    // only the generic Google-Fonts fallback is used for the whole deck.
+    // Resolve the chosen pack's font map up front and reset the deck in ONE
+    // dispatch. Splitting these used to be a stale-closure bug: the second
+    // dispatch spread the PRE-generation `presentationData` (still holding the
+    // old slides) back over the just-cleared `slides: []`, so a regenerate on
+    // an already-populated deck appended new slides on top of the old ones.
     await layoutPicker.ensureLoaded();
     const deckFonts = layoutPicker.getFonts();
-    if (deckFonts) {
-      dispatch(setPresentationData({
-        ...(presentationData ?? { id: deckId, title: topic, slides: [] }),
-        fonts: deckFonts,
-      }));
-    }
+    dispatch(setPresentationData({
+      ...(presentationData ?? { id: deckId, title: topic, slides: [] }),
+      slides: [],
+      ...(deckFonts ? { fonts: deckFonts } : {}),
+    }));
 
     const slideSubject = (slide: AIPPTSlide): string => {
       if (slide.type === "cover" || slide.type === "transition") return slide.data.title;

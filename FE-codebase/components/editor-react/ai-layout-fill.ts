@@ -168,10 +168,37 @@ function isTextLike(el: Rec): boolean {
   return (el.type === "text" || el.type === "text-list") && el.decorative !== true;
 }
 
+// Template-authored metric/stat/unit text elements carry numeric samples like
+// "95%", "92%", "150", or a lone "%" (metric_unit). The AI supplies prose
+// (titles + paragraphs), never numbers, so filling these leaves with item
+// text produced nonsense (a long sentence crammed into a tiny metric box,
+// wrapping one character per line). Treat such leaves as non-fillable so
+// they keep their authored sample instead — they read as a placeholder figure
+// rather than broken overflowing copy.
+function textSample(el: Rec): string {
+  const runs = el.runs as Rec[] | undefined;
+  if (Array.isArray(runs)) {
+    return runs.map((r) => String((r as Rec)?.text ?? "")).join("");
+  }
+  return "";
+}
+
+function isMetricOrStatSample(el: Rec): boolean {
+  if (!isTextLike(el)) return false;
+  const name = String(el.name ?? "");
+  const looksStat = /metric|stat|value|unit|figure|number|percent/i.test(name);
+  if (!looksStat) return false;
+  return /^[\d.,%+\-x\s]*\d*[%]?$/.test(textSample(el).trim());
+}
+
+function isFillableText(el: Rec): boolean {
+  return isTextLike(el) && !isMetricOrStatSample(el);
+}
+
 /** Flattens every text leaf under `node`, regardless of further nesting —
  * used to gather the (title, body, ...) leaves that belong to one item slot. */
 function collectAllTextLeaves(node: Rec, out: TextLeaf[]): void {
-  if (isTextLike(node)) {
+  if (isFillableText(node)) {
     out.push({ el: node, fontSize: fontSizeOf(node) });
     return;
   }
@@ -202,7 +229,7 @@ function walkElement(
   slots: ItemSlot[],
   removeSelf?: () => void,
 ): void {
-  if (isTextLike(el)) {
+  if (isFillableText(el)) {
     global.push({ el, fontSize: fontSizeOf(el), remove: removeSelf });
     return;
   }

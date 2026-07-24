@@ -2,7 +2,7 @@
   "id": "dd31ac17-b50a-4579-8aed-a5c7cad80f9c",
   "name": "Standard",
   "description": "Balanced, versatile layouts for clear business and everyday presentations.",
-  "thumbnail": "static/thumbnail.png",
+  "thumbnail": "/templates/standard/static/thumbnail.png",
   "merged_components": [
     {
       "id": "canvas_background",
@@ -1579,7 +1579,7 @@
                 "height": 88
               },
               "rotation": 0,
-              "data": "static/image6-d77d5bd67ea3.png",
+              "data": "/templates/standard/static/image6-d77d5bd67ea3.png",
               "fit": "fill",
               "decorative": true,
               "name": "bottom_photo_overlay",
@@ -2587,7 +2587,7 @@
               },
               "rotation": 0,
               "opacity": 1,
-              "data": "static/image8-1bc3f07c9b32.png",
+              "data": "/templates/standard/static/image8-1bc3f07c9b32.png",
               "fit": "fill",
               "decorative": true,
               "name": "backdrop_image",
@@ -8255,7 +8255,7 @@
                 "height": 88
               },
               "rotation": 0,
-              "data": "static/image6-d77d5bd67ea3.png",
+              "data": "/templates/standard/static/image6-d77d5bd67ea3.png",
               "fit": "fill",
               "decorative": true,
               "name": "bottom_photo_overlay",
@@ -9318,7 +9318,7 @@
               },
               "rotation": 0,
               "opacity": 1,
-              "data": "static/image8-1bc3f07c9b32.png",
+              "data": "/templates/standard/static/image8-1bc3f07c9b32.png",
               "fit": "fill",
               "decorative": true,
               "name": "backdrop_image",

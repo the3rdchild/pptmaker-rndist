@@ -2,7 +2,7 @@
   "id": "general",
   "name": "General",
   "description": "General purpose layouts for common presentation elements",
-  "thumbnail": "static/thumbnail.png",
+  "thumbnail": "/templates/general/static/thumbnail.png",
   "merged_components": [
     {
       "id": "background_canvas",
@@ -992,7 +992,7 @@
                 "height": 720
               },
               "rotation": 0,
-              "data": "static/image2-ec1c92dee7a3.png",
+              "data": "/templates/general/static/image2-ec1c92dee7a3.png",
               "fit": "fill",
               "decorative": true,
               "name": "left_edge_decor",
@@ -1009,7 +1009,7 @@
                 "height": 128
               },
               "rotation": 0,
-              "data": "static/image3-82be19a88965.png",
+              "data": "/templates/general/static/image3-82be19a88965.png",
               "fit": "fill",
               "decorative": true,
               "name": "bottom_edge_decor",
@@ -1044,7 +1044,7 @@
                 "height": 20
               },
               "rotation": 0,
-              "data": "static/image9-68eb2d8ed47c.png",
+              "data": "/templates/general/static/image9-68eb2d8ed47c.png",
               "fit": "fill",
               "decorative": true,
               "name": "small_wave_decor",
@@ -1089,7 +1089,7 @@
                 "height": 720
               },
               "rotation": 0,
-              "data": "static/image20-6875b30b26c2.png",
+              "data": "/templates/general/static/image20-6875b30b26c2.png",
               "fit": "fill",
               "decorative": true,
               "name": "left_edge_accent",
@@ -1106,7 +1106,7 @@
                 "height": 720
               },
               "rotation": 0,
-              "data": "static/image21-f2b82e740bc2.png",
+              "data": "/templates/general/static/image21-f2b82e740bc2.png",
               "fit": "fill",
               "decorative": true,
               "name": "right_edge_accent",
@@ -1152,7 +1152,7 @@
                 "height": 192
               },
               "rotation": 0,
-              "data": "static/image22-6dd2f52e896c.png",
+              "data": "/templates/general/static/image22-6dd2f52e896c.png",
               "fit": "fill",
               "decorative": true,
               "name": "bottom_corner_shape",
@@ -1169,7 +1169,7 @@
                 "height": 256
               },
               "rotation": 0,
-              "data": "static/image23-f21b824d69c7.png",
+              "data": "/templates/general/static/image23-f21b824d69c7.png",
               "fit": "fill",
               "decorative": true,
               "name": "top_corner_shape",
@@ -1214,7 +1214,7 @@
                 "width": 1280,
                 "height": 80
               },
-              "data": "static/image26-6ba37bd671c7.png",
+              "data": "/templates/general/static/image26-6ba37bd671c7.png",
               "fit": "fill",
               "decorative": true,
               "name": "bottom_wave_image",
@@ -1260,7 +1260,7 @@
                 "height": 720
               },
               "rotation": 0,
-              "data": "static/image20-6875b30b26c2.png",
+              "data": "/templates/general/static/image20-6875b30b26c2.png",
               "fit": "fill",
               "decorative": true,
               "name": "left_edge_pattern",
@@ -1277,7 +1277,7 @@
                 "height": 720
               },
               "rotation": 0,
-              "data": "static/image21-f2b82e740bc2.png",
+              "data": "/templates/general/static/image21-f2b82e740bc2.png",
               "fit": "fill",
               "decorative": true,
               "name": "right_edge_pattern",
@@ -1323,7 +1323,7 @@
                 "height": 160
               },
               "rotation": 0,
-              "data": "static/image33-ae1f10d83bac.png",
+              "data": "/templates/general/static/image33-ae1f10d83bac.png",
               "fit": "fill",
               "decorative": true,
               "name": "corner_wave",
@@ -2064,7 +2064,7 @@
                 "width": 528,
                 "height": 548
               },
-              "data": "static/image11-6ce50168d7ec.png",
+              "data": "/templates/general/static/image11-6ce50168d7ec.png",
               "fit": "fill",
               "decorative": true,
               "name": "background_grid_image",
@@ -2776,7 +2776,7 @@
               "x_axis_grid": true,
               "y_axis_grid": true,
               "grid_color": "#A855F7",
-              "source": "static/image16-9fc4d585158e.png",
+              "source": "/templates/general/static/image16-9fc4d585158e.png",
               "decorative": false,
               "name": "panel_bar_chart"
             }
@@ -4570,7 +4570,7 @@
                 "height": 720
               },
               "rotation": 0,
-              "data": "static/image27-a0b95cd83829.png",
+              "data": "/templates/general/static/image27-a0b95cd83829.png",
               "fit": "fill",
               "decorative": true,
               "name": "background_photo",
@@ -5056,7 +5056,7 @@
                 "width": 80,
                 "height": 20
               },
-              "data": "static/image32-e024f0f6ca8c.png",
+              "data": "/templates/general/static/image32-e024f0f6ca8c.png",
               "fit": "fill",
               "decorative": true,
               "name": "center_accent",
@@ -8850,7 +8850,7 @@
                 "height": 720
               },
               "rotation": 0,
-              "data": "static/image2-ec1c92dee7a3.png",
+              "data": "/templates/general/static/image2-ec1c92dee7a3.png",
               "fit": "fill",
               "decorative": true,
               "name": "left_edge_decor",
@@ -8867,7 +8867,7 @@
                 "height": 128
               },
               "rotation": 0,
-              "data": "static/image3-82be19a88965.png",
+              "data": "/templates/general/static/image3-82be19a88965.png",
               "fit": "fill",
               "decorative": true,
               "name": "bottom_edge_decor",
@@ -8902,7 +8902,7 @@
                 "height": 20
               },
               "rotation": 0,
-              "data": "static/image9-68eb2d8ed47c.png",
+              "data": "/templates/general/static/image9-68eb2d8ed47c.png",
               "fit": "fill",
               "decorative": true,
               "name": "small_wave_decor",
@@ -9739,7 +9739,7 @@
                 "width": 528,
                 "height": 548
               },
-              "data": "static/image11-6ce50168d7ec.png",
+              "data": "/templates/general/static/image11-6ce50168d7ec.png",
               "fit": "fill",
               "decorative": true,
               "name": "background_grid_image",
@@ -10378,7 +10378,7 @@
               "x_axis_grid": true,
               "y_axis_grid": true,
               "grid_color": "#A855F7",
-              "source": "static/image16-9fc4d585158e.png",
+              "source": "/templates/general/static/image16-9fc4d585158e.png",
               "decorative": false,
               "name": "panel_bar_chart"
             }
@@ -10827,7 +10827,7 @@
                 "height": 720
               },
               "rotation": 0,
-              "data": "static/image20-6875b30b26c2.png",
+              "data": "/templates/general/static/image20-6875b30b26c2.png",
               "fit": "fill",
               "decorative": true,
               "name": "left_edge_accent",
@@ -10844,7 +10844,7 @@
                 "height": 720
               },
               "rotation": 0,
-              "data": "static/image21-f2b82e740bc2.png",
+              "data": "/templates/general/static/image21-f2b82e740bc2.png",
               "fit": "fill",
               "decorative": true,
               "name": "right_edge_accent",
@@ -11416,7 +11416,7 @@
                 "height": 192
               },
               "rotation": 0,
-              "data": "static/image22-6dd2f52e896c.png",
+              "data": "/templates/general/static/image22-6dd2f52e896c.png",
               "fit": "fill",
               "decorative": true,
               "name": "bottom_corner_shape",
@@ -11433,7 +11433,7 @@
                 "height": 256
               },
               "rotation": 0,
-              "data": "static/image23-f21b824d69c7.png",
+              "data": "/templates/general/static/image23-f21b824d69c7.png",
               "fit": "fill",
               "decorative": true,
               "name": "top_corner_shape",
@@ -11827,7 +11827,7 @@
                 "width": 1280,
                 "height": 80
               },
-              "data": "static/image26-6ba37bd671c7.png",
+              "data": "/templates/general/static/image26-6ba37bd671c7.png",
               "fit": "fill",
               "decorative": true,
               "name": "bottom_wave_image",
@@ -12486,7 +12486,7 @@
                 "height": 720
               },
               "rotation": 0,
-              "data": "static/image27-a0b95cd83829.png",
+              "data": "/templates/general/static/image27-a0b95cd83829.png",
               "fit": "fill",
               "decorative": true,
               "name": "background_photo",
@@ -12872,7 +12872,7 @@
                 "height": 720
               },
               "rotation": 0,
-              "data": "static/image20-6875b30b26c2.png",
+              "data": "/templates/general/static/image20-6875b30b26c2.png",
               "fit": "fill",
               "decorative": true,
               "name": "left_edge_pattern",
@@ -12889,7 +12889,7 @@
                 "height": 720
               },
               "rotation": 0,
-              "data": "static/image21-f2b82e740bc2.png",
+              "data": "/templates/general/static/image21-f2b82e740bc2.png",
               "fit": "fill",
               "decorative": true,
               "name": "right_edge_pattern",
@@ -13678,7 +13678,7 @@
                 "width": 80,
                 "height": 20
               },
-              "data": "static/image32-e024f0f6ca8c.png",
+              "data": "/templates/general/static/image32-e024f0f6ca8c.png",
               "fit": "fill",
               "decorative": true,
               "name": "center_accent",
@@ -15536,7 +15536,7 @@
                 "height": 160
               },
               "rotation": 0,
-              "data": "static/image33-ae1f10d83bac.png",
+              "data": "/templates/general/static/image33-ae1f10d83bac.png",
               "fit": "fill",
               "decorative": true,
               "name": "corner_wave",

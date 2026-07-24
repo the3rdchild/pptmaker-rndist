@@ -2,7 +2,7 @@
   "id": "0beb3141-1ec1-4648-a531-af1b1ae58185",
   "name": "Modern",
   "description": "Clean, contemporary layouts with spacious compositions and bold visual accents.",
-  "thumbnail": "static/thumbnail.png",
+  "thumbnail": "/templates/modern/static/thumbnail.png",
   "merged_components": [
     {
       "id": "plain_background",

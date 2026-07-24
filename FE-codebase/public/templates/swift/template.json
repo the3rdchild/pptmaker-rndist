@@ -2,7 +2,7 @@
   "id": "209b1081-4aea-45ee-b35e-749e04d6c34c",
   "name": "Swift",
   "description": "Light, energetic layouts for fast-moving and focused presentations.",
-  "thumbnail": "static/thumbnail.png",
+  "thumbnail": "/templates/swift/static/thumbnail.png",
   "merged_components": [
     {
       "id": "background_panel",
@@ -3431,7 +3431,7 @@
                 "height": 220
               },
               "rotation": 0,
-              "data": "static/image13-155e60388f78.png",
+              "data": "/templates/swift/static/image13-155e60388f78.png",
               "fit": "fill",
               "decorative": true,
               "name": "subtle_curve_accent",
@@ -4623,7 +4623,7 @@
                 "height": 260
               },
               "rotation": 0,
-              "data": "static/image14-4a89d3fc557a.png",
+              "data": "/templates/swift/static/image14-4a89d3fc557a.png",
               "fit": "fill",
               "decorative": true,
               "name": "soft_blur_accent",
@@ -11240,7 +11240,7 @@
                 "height": 220
               },
               "rotation": 0,
-              "data": "static/image13-155e60388f78.png",
+              "data": "/templates/swift/static/image13-155e60388f78.png",
               "fit": "fill",
               "decorative": true,
               "name": "subtle_curve_accent",
@@ -12146,7 +12146,7 @@
                 "height": 260
               },
               "rotation": 0,
-              "data": "static/image14-4a89d3fc557a.png",
+              "data": "/templates/swift/static/image14-4a89d3fc557a.png",
               "fit": "fill",
               "decorative": true,
               "name": "soft_blur_accent",

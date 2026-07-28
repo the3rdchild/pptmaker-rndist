@@ -97,58 +97,63 @@ export default function SlideSidebar({
       className="relative w-full shrink-0 border-t border-[var(--border)] bg-[var(--bg-panel)]"
       data-inline-edit-ignore="true"
     >
-      <div className="flex items-center gap-0 overflow-x-auto overflow-y-hidden px-3 py-2.5">
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext items={itemIds} strategy={horizontalListSortingStrategy}>
-            {slides.map((slide, i) => (
-              <div key={i} className="flex shrink-0 items-center">
-                {i === 0 && <InsertSlot onAdd={() => onAddAt(0)} />}
-                <SortableSlide
-                  id={i}
-                  slide={slide}
-                  isActive={i === activeIndex}
-                  canDelete={slides.length > 1}
-                  onSelect={() => onSelect(i)}
-                  onDuplicate={() => onDuplicate(i)}
-                  onDelete={() => onDelete(i)}
-                  onToggleLock={() => onToggleLock(i)}
-                  onToggleHide={() => onToggleHide(i)}
-                />
-                <InsertSlot onAdd={() => onAddAt(i + 1)} />
-              </div>
-            ))}
-          </SortableContext>
-        </DndContext>
-        <div
-          className="flex shrink-0 overflow-hidden rounded-lg bg-[var(--bg-surface)] ring-1 ring-[var(--border-strong)] transition-shadow hover:ring-[var(--text-muted)]"
-          style={{ width: THUMB_W, height: THUMB_H }}
-        >
-          <button
-            className="flex flex-1 items-center justify-center text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
-            onClick={() => onAdd({ id: "blank", components: [], elements: [] })}
-            title="Add blank slide"
+      <div className="overflow-x-auto overflow-y-hidden px-3 py-2.5">
+        {/* w-max + mx-auto centres the strip while it fits and falls back to a
+            normal left-anchored scroll once it doesn't. Plain justify-center
+            would clip the first slides out of reach when the strip overflows. */}
+        <div className="mx-auto flex w-max items-center gap-0">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
           >
-            <Plus size={18} />
-          </button>
-          <button
-            className={cn(
-              "flex w-7 items-center justify-center border-l border-[var(--border-strong)] transition-colors",
-              pickerOpen
-                ? "bg-[var(--accent-soft)] text-[var(--accent-light)]"
-                : "text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
-            )}
-            onClick={() => setPickerOpen((v) => !v)}
-            title="Pick a layout"
+            <SortableContext items={itemIds} strategy={horizontalListSortingStrategy}>
+              {slides.map((slide, i) => (
+                <div key={i} className="flex shrink-0 items-center">
+                  {i === 0 && <InsertSlot onAdd={() => onAddAt(0)} />}
+                  <SortableSlide
+                    id={i}
+                    slide={slide}
+                    isActive={i === activeIndex}
+                    canDelete={slides.length > 1}
+                    onSelect={() => onSelect(i)}
+                    onDuplicate={() => onDuplicate(i)}
+                    onDelete={() => onDelete(i)}
+                    onToggleLock={() => onToggleLock(i)}
+                    onToggleHide={() => onToggleHide(i)}
+                  />
+                  <InsertSlot onAdd={() => onAddAt(i + 1)} />
+                </div>
+              ))}
+            </SortableContext>
+          </DndContext>
+          <div
+            className="flex shrink-0 overflow-hidden rounded-lg bg-[var(--bg-surface)] ring-1 ring-[var(--border-strong)] transition-shadow hover:ring-[var(--text-muted)]"
+            style={{ width: THUMB_W, height: THUMB_H }}
           >
-            <ChevronUp
-              size={13}
-              className={cn("transition-transform", pickerOpen && "rotate-180")}
-            />
-          </button>
+            <button
+              className="flex flex-1 items-center justify-center text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
+              onClick={() => onAdd({ id: "blank", components: [], elements: [] })}
+              title="Add blank slide"
+            >
+              <Plus size={18} />
+            </button>
+            <button
+              className={cn(
+                "flex w-7 items-center justify-center border-l border-[var(--border-strong)] transition-colors",
+                pickerOpen
+                  ? "bg-[var(--accent-soft)] text-[var(--accent-light)]"
+                  : "text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
+              )}
+              onClick={() => setPickerOpen((v) => !v)}
+              title="Pick a layout"
+            >
+              <ChevronUp
+                size={13}
+                className={cn("transition-transform", pickerOpen && "rotate-180")}
+              />
+            </button>
+          </div>
         </div>
       </div>
       {pickerOpen && (

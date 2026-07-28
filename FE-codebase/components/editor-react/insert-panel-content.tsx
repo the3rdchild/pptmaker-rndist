@@ -45,7 +45,12 @@ import {
   sizedColoredSvg,
 } from "@/components/slide-editor/formula/latex-to-svg";
 import { svgToDataUri } from "@/components/slide-editor/surface/exportAssets";
-import { normalizeBackendAssetUrls, resolveBackendAssetSource } from "@/utils/api";
+import { resolveBackendAssetSource } from "@/utils/api";
+import {
+  ALL_THEMES,
+  ThemeFilterBar,
+  useTemplateThemes,
+} from "@/components/editor-react/theme-picker";
 import { ImagesApi } from "@/app/(presentation-generator)/services/api/images";
 import {
   loadIconCategories,
@@ -77,24 +82,12 @@ export function TemplatesTab({
   search: string;
   onApplyLayout: (layout: Layout) => void;
 }) {
-  const [layouts, setLayouts] = useState<Layout[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { themes, loading, activeThemeId, setActiveThemeId, visibleLayouts } =
+    useTemplateThemes();
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch("/templates/general/template.json");
-        const tpl = await res.json();
-        setLayouts((tpl.layouts ?? []) as Layout[]);
-      } catch {
-        // ignore
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  const filtered = layouts.filter((layout) =>
+  // Layouts arrive from the theme registry already asset-resolved against
+  // their own theme folder, so no per-render normalization is needed here.
+  const filtered = visibleLayouts.filter((layout) =>
     matches(String(layout.description ?? layout.id ?? ""), search)
   );
 
@@ -108,14 +101,23 @@ export function TemplatesTab({
 
   return (
     <div className="p-3">
-      <PanelLabel>All templates</PanelLabel>
+      <PanelLabel>
+        {activeThemeId === ALL_THEMES
+          ? "All templates"
+          : themes.find((t) => t.id === activeThemeId)?.name ?? "Templates"}
+      </PanelLabel>
+      <ThemeFilterBar
+        themes={themes}
+        activeThemeId={activeThemeId}
+        onChange={setActiveThemeId}
+      />
       <div className="grid grid-cols-2 gap-3 px-2.5 py-1.5">
         {filtered.map((layout, i) => {
           const scale = 0.19;
           return (
             <button
-              key={i}
-              onClick={() => onApplyLayout(normalizeBackendAssetUrls(layout))}
+              key={`${layout.id ?? i}`}
+              onClick={() => onApplyLayout(layout)}
               className="group relative overflow-hidden rounded-lg bg-white ring-1 ring-[var(--border-strong)] transition-shadow hover:shadow-[var(--shadow-accent-glow)] hover:ring-[var(--accent)]"
               style={{ width: "100%", aspectRatio: "16 / 9" }}
               title={String(layout.description ?? `Layout ${i + 1}`).slice(0, 80)}
@@ -125,7 +127,7 @@ export function TemplatesTab({
                 style={{ width: 1280, height: 720, transform: `scale(${scale})` }}
               >
                 <ThumbnailSlide
-                  layout={normalizeBackendAssetUrls(layout) as never}
+                  layout={layout as never}
                   isEditMode={false}
                   slideIndex={0}
                 />

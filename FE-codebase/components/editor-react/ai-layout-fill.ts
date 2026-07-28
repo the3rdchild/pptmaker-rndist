@@ -27,6 +27,11 @@ import {
   normalizeId,
   cloneJson,
 } from "@/components/slide-editor/model/model";
+import {
+  DEFAULT_THEME_ID,
+  listThemeIds,
+  loadAllThemes,
+} from "@/lib/templates/themes";
 
 export type AIPPTSlide =
   | { type: "cover"; data: { title: string; text: string } }
@@ -48,21 +53,29 @@ interface TemplatePack {
   fonts?: Record<string, string> | null;
 }
 
-const PACK_NAMES = ["general", "modern", "standard", "swift"] as const;
-
 let packCache: Record<string, TemplatePack> | null = null;
+let packNamesCache: string[] | null = null;
 
+/** Every theme in the registry, keyed by id. Themes hand back layouts whose
+ *  asset paths are already resolved against their own folder, so filling a
+ *  layout from any theme is safe. */
 async function loadAllPacks(): Promise<Record<string, TemplatePack>> {
   if (packCache) return packCache;
-  const entries = await Promise.all(
-    PACK_NAMES.map(async (name) => {
-      const res = await fetch(`/templates/${name}/template.json`);
-      const json = (await res.json()) as TemplatePack;
-      return [name, json] as const;
-    })
+  const themes = await loadAllThemes();
+  packCache = Object.fromEntries(
+    themes.map((theme) => [
+      theme.id,
+      { layouts: theme.layouts as unknown as TemplateLayout[], fonts: theme.fonts },
+    ])
   );
-  packCache = Object.fromEntries(entries);
+  packNamesCache = themes.map((theme) => theme.id);
   return packCache;
+}
+
+async function loadPackNames(): Promise<string[]> {
+  if (packNamesCache) return packNamesCache;
+  packNamesCache = await listThemeIds();
+  return packNamesCache;
 }
 
 function hashSeed(seed: string): number {
@@ -170,20 +183,30 @@ function bucketLayouts(layouts: TemplateLayout[]): Buckets {
 export class DeckLayoutPicker {
   private buckets: Buckets | null = null;
   private contentCursor = 0;
-  private packName: string;
+  private seed: string;
+  /** Resolved in ensureLoaded() — the theme list is fetched, not compiled in,
+   *  so a theme added to public/templates is picked up without a code change. */
+  private packName: string | null = null;
   private packFonts: Record<string, string> | null = null;
 
   constructor(seed: string) {
-    const packs = PACK_NAMES;
-    this.packName = packs[hashSeed(seed) % packs.length];
+    this.seed = seed;
   }
 
   async ensureLoaded(): Promise<void> {
     if (this.buckets) return;
+    const names = await loadPackNames();
+    this.packName =
+      this.packName ?? names[hashSeed(this.seed) % Math.max(1, names.length)];
     const packs = await loadAllPacks();
-    const pack = packs[this.packName] ?? packs["general"];
+    const pack = packs[this.packName] ?? packs[DEFAULT_THEME_ID];
     this.buckets = bucketLayouts(pack.layouts);
     this.packFonts = (pack.fonts ?? null) as Record<string, string> | null;
+  }
+
+  /** The theme this deck was assigned. Available after ensureLoaded(). */
+  getThemeId(): string | null {
+    return this.packName;
   }
 
   /** The chosen pack's font map ({ family: cssUrl }). Available after

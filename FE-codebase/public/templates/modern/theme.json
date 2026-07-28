@@ -1,0 +1,30 @@
+{
+  "id": "modern",
+  "name": "Modern",
+  "description": "Clean, contemporary layouts with spacious compositions and bold visual accents.",
+  "ai": {
+    "when_to_use": "Product launches, startup and investor pitches, brand or design-led decks — anything where the deck should look confident and current. Strong on big hero imagery and generous whitespace.",
+    "avoid_when": "The deck is dense with tables, figures, or regulatory detail; the spacious compositions leave too little room for that.",
+    "tone": ["bold", "spacious", "contemporary", "confident"],
+    "keywords": [
+      "pitch deck",
+      "startup",
+      "product launch",
+      "brand",
+      "design",
+      "vision",
+      "roadmap",
+      "investor"
+    ]
+  },
+  "palette": {
+    "background": "#FFFFFF",
+    "surface": "#F5F8FE",
+    "primary": "#1E4CD9",
+    "secondary": "#234CD9",
+    "accent": "#1E4CD9",
+    "text": "#334155",
+    "muted": "#64748B",
+    "border": "#E5E7EB"
+  }
+}

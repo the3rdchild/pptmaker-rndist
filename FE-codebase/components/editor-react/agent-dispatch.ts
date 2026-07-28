@@ -9,6 +9,7 @@
 // + font color only), not a full theme system.
 
 import { mergeFont } from "@/components/slide-editor/model/element-model";
+import { DEFAULT_THEME_ID, loadTheme } from "@/lib/templates/themes";
 import type { SlideData } from "@/store/presentationGeneration";
 import { EDITOR_STAGE_WIDTH, EDITOR_STAGE_HEIGHT } from "@/components/slide-editor/types";
 import { appendInsertedContent } from "@/components/slide-editor/model/inserted-content";
@@ -152,9 +153,8 @@ let cachedGeneralLayout: AnyRecord | null = null;
 
 async function loadContentLayout(): Promise<AnyRecord> {
   if (cachedGeneralLayout) return structuredClone(cachedGeneralLayout);
-  const res = await fetch("/templates/general/template.json");
-  const template = await res.json();
-  const layouts = (template.layouts ?? []) as AnyRecord[];
+  const theme = await loadTheme(DEFAULT_THEME_ID);
+  const layouts = (theme?.layouts ?? []) as AnyRecord[];
   // split_content_layout: headline + body copy, the simplest content-only shape.
   const layout = layouts.find((l) => typeof l.id === "string" && l.id.startsWith("split_content_layout")) ?? layouts[0];
   cachedGeneralLayout = layout;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import dynamic from "next/dynamic";
 import {
   DndContext,
@@ -29,7 +29,10 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { normalizeBackendAssetUrls } from "@/utils/api";
+import {
+  ThemeFilterBar,
+  useTemplateThemes,
+} from "@/components/editor-react/theme-picker";
 
 const ThumbnailSlide = dynamic(
   () =>
@@ -325,19 +328,8 @@ function LayoutPicker({
   onPick: (layout: Layout) => void;
   onClose: () => void;
 }) {
-  const [layouts, setLayouts] = useState<Layout[]>([]);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch("/templates/general/template.json");
-        const tpl = await res.json();
-        setLayouts((tpl.layouts ?? []) as Layout[]);
-      } catch {
-        // ignore
-      }
-    })();
-  }, []);
+  const { themes, activeThemeId, setActiveThemeId, visibleLayouts } =
+    useTemplateThemes();
 
   // Two columns of fixed-width cards; panel width = 2*card + gap + padding.
   const cardW = 176;
@@ -359,15 +351,22 @@ function LayoutPicker({
           <X size={14} />
         </button>
       </header>
+      <div className="shrink-0 pt-2">
+        <ThemeFilterBar
+          themes={themes}
+          activeThemeId={activeThemeId}
+          onChange={setActiveThemeId}
+        />
+      </div>
       <div className="grid flex-1 grid-cols-2 content-start justify-items-center gap-3 overflow-y-auto p-3">
-        {layouts.map((layout, i) => {
+        {visibleLayouts.map((layout, i) => {
           const scale = cardW / 1280;
           return (
             <button
-              key={i}
+              key={`${layout.id ?? i}`}
               className="group relative overflow-hidden rounded-lg bg-white ring-1 ring-[var(--border-strong)] transition-shadow hover:shadow-[var(--shadow-accent-glow)] hover:ring-[var(--accent)]"
               style={{ width: cardW, height: cardH }}
-              onClick={() => onPick(normalizeBackendAssetUrls(layout))}
+              onClick={() => onPick(layout)}
               title={String(layout.description ?? `Layout ${i + 1}`).slice(0, 80)}
             >
               <div
@@ -379,7 +378,7 @@ function LayoutPicker({
                 }}
               >
                 <ThumbnailSlide
-                  layout={normalizeBackendAssetUrls(layout) as never}
+                  layout={layout as never}
                   isEditMode={false}
                   slideIndex={0}
                 />

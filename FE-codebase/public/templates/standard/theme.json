@@ -1,0 +1,31 @@
+{
+  "id": "standard",
+  "name": "Standard",
+  "description": "Balanced, versatile layouts for clear business and everyday presentations.",
+  "ai": {
+    "when_to_use": "Business reviews, financial and operational reporting, formal proposals, board and stakeholder updates. The serif headings read as considered and institutional, and the layouts carry metrics, tables, and timelines well.",
+    "avoid_when": "The deck is meant to feel playful, fast, or informal.",
+    "tone": ["formal", "balanced", "editorial", "trustworthy"],
+    "keywords": [
+      "business review",
+      "quarterly report",
+      "financial",
+      "proposal",
+      "board",
+      "stakeholder",
+      "metrics",
+      "timeline",
+      "corporate"
+    ]
+  },
+  "palette": {
+    "background": "#FFFFFF",
+    "surface": "#F3F4F6",
+    "primary": "#111827",
+    "secondary": "#6B7280",
+    "accent": "#1B8C2D",
+    "text": "#111827",
+    "muted": "#6B7280",
+    "border": "#E5E7EB"
+  }
+}

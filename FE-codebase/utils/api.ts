@@ -48,12 +48,18 @@ export function buildAbsoluteApiRequestUrl(
   return new URL(resolved, baseForRelative).toString();
 }
 
-const ACTIVE_TEMPLATE_PACK = "general";
+/** Theme a bare `static/...` asset path belongs to when no theme is supplied.
+ *  Every shipped pack already stores its images pack-absolute
+ *  (`/templates/<theme>/static/...`), so this only catches hand-authored or
+ *  legacy relative paths. Templates saved by the template engine are written
+ *  pack-absolute for the same reason — a bare path is ambiguous the moment
+ *  more than one theme exists. */
+const FALLBACK_TEMPLATE_THEME = "general";
 
-function toTemplatePath(rawPath: string): string {
+function toTemplatePath(rawPath: string, theme: string): string {
   const normalized = rawPath.replace(/\\/g, "/");
   if (normalized.startsWith("static/")) {
-    return `/templates/${ACTIVE_TEMPLATE_PACK}/${normalized}`;
+    return `/templates/${theme}/${normalized}`;
   }
   if (normalized.startsWith("/static/")) {
     return normalized;
@@ -64,14 +70,29 @@ function toTemplatePath(rawPath: string): string {
   return normalized;
 }
 
-export function resolveBackendAssetUrl(path?: string): string {
+export function resolveBackendAssetUrl(
+  path?: string,
+  theme: string = FALLBACK_TEMPLATE_THEME
+): string {
   if (!path) return "";
   const trimmed = path.trim();
   if (!trimmed) return "";
   if (trimmed.startsWith("data:") || trimmed.startsWith("blob:")) return trimmed;
   if (isAbsoluteHttpUrl(trimmed)) return trimmed;
 
-  return toTemplatePath(trimmed);
+  return toTemplatePath(trimmed, theme);
+}
+
+/** Inverse of {@link resolveBackendAssetUrl}: turns a resolved URL back into
+ *  the pack-absolute form stored in template.json. Shared assets under
+ *  `/static/...` and remote URLs are left alone. */
+export function toStoredTemplateAssetUrl(path: string, theme: string): string {
+  const trimmed = path.trim();
+  if (!trimmed) return "";
+  if (trimmed.startsWith("data:") || trimmed.startsWith("blob:")) return trimmed;
+  if (isAbsoluteHttpUrl(trimmed)) return trimmed;
+  if (trimmed.startsWith("static/")) return `/templates/${theme}/${trimmed}`;
+  return trimmed.replace(/\\/g, "/");
 }
 
 export type BackendAssetLike = {
@@ -89,22 +110,23 @@ export function getBackendAssetSource(
 }
 
 export function resolveBackendAssetSource(
-  asset: BackendAssetLike | string | null | undefined
+  asset: BackendAssetLike | string | null | undefined,
+  theme?: string
 ): string {
-  return resolveBackendAssetUrl(getBackendAssetSource(asset));
+  return resolveBackendAssetUrl(getBackendAssetSource(asset), theme);
 }
 
-export const normalizeBackendAssetUrls = <T,>(input: T): T => {
+export const normalizeBackendAssetUrls = <T,>(input: T, theme?: string): T => {
   if (Array.isArray(input)) {
-    return input.map((item) => normalizeBackendAssetUrls(item)) as T;
+    return input.map((item) => normalizeBackendAssetUrls(item, theme)) as T;
   }
   if (input && typeof input === "object") {
     const normalized: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
       normalized[key] =
         typeof value === "string"
-          ? resolveBackendAssetUrl(value)
-          : normalizeBackendAssetUrls(value);
+          ? resolveBackendAssetUrl(value, theme)
+          : normalizeBackendAssetUrls(value, theme);
     }
     return normalized as T;
   }

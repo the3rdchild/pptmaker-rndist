@@ -135,6 +135,19 @@ async function loadDefaultLayout(): Promise<Record<string, unknown>> {
   return theme?.layouts[0] ?? {};
 }
 
+const ZOOM_MIN = 0.2;
+const ZOOM_MAX = 3;
+const ZOOM_STEP = 0.2;
+
+function clampZoom(value: number): number {
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, value));
+}
+
+/** Position of the current zoom along the slider track, as a percentage. */
+function zoomFraction(zoom: number): number {
+  return ((clampZoom(zoom) - ZOOM_MIN) / (ZOOM_MAX - ZOOM_MIN)) * 100;
+}
+
 /** An empty slide for the template engine. No id, so the first save mints one
  *  from the name the author types rather than overwriting something. */
 function blankTemplateLayout(): Record<string, unknown> {
@@ -266,7 +279,7 @@ export default function EditorReactClient({
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         const delta = -e.deltaY * 0.002;
-        setZoom((z) => Math.min(3, Math.max(0.2, z + delta)));
+        setZoom((z) => clampZoom(z + delta));
       } else if (zoomRef.current > 1) {
         e.preventDefault();
         setPan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }));
@@ -1398,25 +1411,41 @@ export default function EditorReactClient({
           <div className="absolute bottom-3 right-3 flex items-center gap-0.5 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-surface)]/95 p-1 shadow-[var(--shadow-panel)] backdrop-blur">
             <ToolButton
               size="sm"
-              onClick={() => setZoom((z) => Math.max(0.2, z - 0.2))}
+              onClick={() => setZoom((z) => clampZoom(z - ZOOM_STEP))}
               title="Zoom out"
             >
               <ZoomOut size={15} />
             </ToolButton>
+            <input
+              type="range"
+              min={ZOOM_MIN * 100}
+              max={ZOOM_MAX * 100}
+              step={5}
+              value={Math.round(zoom * 100)}
+              onChange={(event) => setZoom(Number(event.target.value) / 100)}
+              aria-label="Zoom"
+              title={`Zoom ${Math.round(zoom * 100)}%`}
+              // The filled portion of the track is painted with a gradient
+              // stop — range inputs have no cross-browser "progress" part.
+              style={{
+                background: `linear-gradient(to right, var(--accent) ${zoomFraction(zoom)}%, var(--border-strong) ${zoomFraction(zoom)}%)`,
+              }}
+              className="mx-1 h-1 w-24 cursor-pointer appearance-none rounded-full [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-[var(--accent)] [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[var(--accent)] [&::-webkit-slider-thumb]:shadow-[var(--shadow-soft)]"
+            />
             <ToolButton
               size="sm"
-              onClick={resetView}
-              title="Reset view"
-              className="min-w-[46px] tabular-nums"
-            >
-              {Math.round(zoom * 100)}%
-            </ToolButton>
-            <ToolButton
-              size="sm"
-              onClick={() => setZoom((z) => Math.min(3, z + 0.2))}
+              onClick={() => setZoom((z) => clampZoom(z + ZOOM_STEP))}
               title="Zoom in"
             >
               <ZoomIn size={15} />
+            </ToolButton>
+            <ToolButton
+              size="sm"
+              onClick={resetView}
+              title="Reset to 100%"
+              className="min-w-[46px] tabular-nums"
+            >
+              {Math.round(zoom * 100)}%
             </ToolButton>
             <ToolDivider className="mx-0.5 h-4" />
             <ToolButton size="sm" onClick={resetView} title="Fit to screen">

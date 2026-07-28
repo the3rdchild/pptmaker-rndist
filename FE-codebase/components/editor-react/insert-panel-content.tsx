@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import dynamic from "next/dynamic";
+
 import {
   BarChart3,
   CircleDot,
@@ -56,6 +56,7 @@ import {
   CustomElementsSection,
   type CustomElementItem,
 } from "@/components/editor-react/custom-elements-section";
+import { LazyLayoutThumbnail } from "@/components/editor-react/lazy-layout-thumbnail";
 import { ImagesApi } from "@/app/(presentation-generator)/services/api/images";
 import {
   loadIconCategories,
@@ -64,13 +65,10 @@ import {
 } from "@/app/(presentation-generator)/services/api/presentation-generation";
 import type { SlideElement } from "@/components/slide-editor/types";
 
-const ThumbnailSlide = dynamic(
-  () =>
-    import("@/components/slide-editor/surface/TemplateV2KonvaSlide").then(
-      (m) => m.TemplateV2KonvaSlide
-    ),
-  { ssr: false }
-);
+/** The flyout is 560px wide: two columns inside 2.5rem of padding and a 12px gap. */
+const TEMPLATE_CARD_WIDTH = 248;
+/** Roughly what fits above the fold — rendered without waiting for the observer. */
+const EAGER_TEMPLATE_CARDS = 6;
 
 function matches(label: string, search: string) {
   return !search || label.toLowerCase().includes(search.toLowerCase());
@@ -131,32 +129,23 @@ export function TemplatesTab({
         </button>
       )}
       <div className="grid grid-cols-2 gap-3 px-2.5 py-1.5">
-        {filtered.map((layout, i) => {
-          const scale = 0.19;
-          return (
-            <button
-              key={`${layout.id ?? i}`}
-              onClick={() => onApplyLayout(layout)}
-              className="group relative overflow-hidden rounded-lg bg-white ring-1 ring-[var(--border-strong)] transition-shadow hover:shadow-[var(--shadow-accent-glow)] hover:ring-[var(--accent)]"
-              style={{ width: "100%", aspectRatio: "16 / 9" }}
-              title={String(layout.description ?? `Layout ${i + 1}`).slice(0, 80)}
-            >
-              <div
-                className="pointer-events-none origin-top-left"
-                style={{ width: 1280, height: 720, transform: `scale(${scale})` }}
-              >
-                <ThumbnailSlide
-                  layout={layout as never}
-                  isEditMode={false}
-                  slideIndex={0}
-                />
-              </div>
-              <span className="pointer-events-none absolute inset-x-0 bottom-0 flex h-6 items-center justify-center bg-gradient-to-t from-black/70 to-transparent text-[10px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
-                Use template
-              </span>
-            </button>
-          );
-        })}
+        {filtered.map((layout, i) => (
+          <button
+            key={`${layout.id ?? i}`}
+            onClick={() => onApplyLayout(layout)}
+            className="group relative overflow-hidden rounded-lg bg-white ring-1 ring-[var(--border-strong)] transition-shadow hover:shadow-[var(--shadow-accent-glow)] hover:ring-[var(--accent)]"
+            title={String(layout.description ?? `Layout ${i + 1}`).slice(0, 80)}
+          >
+            <LazyLayoutThumbnail
+              layout={layout}
+              width={TEMPLATE_CARD_WIDTH}
+              eager={i < EAGER_TEMPLATE_CARDS}
+            />
+            <span className="pointer-events-none absolute inset-x-0 bottom-0 flex h-6 items-center justify-center bg-gradient-to-t from-black/70 to-transparent text-[10px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
+              Use template
+            </span>
+          </button>
+        ))}
       </div>
     </div>
   );

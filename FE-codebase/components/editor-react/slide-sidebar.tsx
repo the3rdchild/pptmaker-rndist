@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import dynamic from "next/dynamic";
+
 import {
   DndContext,
   PointerSensor,
@@ -33,14 +33,7 @@ import {
   ThemeFilterBar,
   useTemplateThemes,
 } from "@/components/editor-react/theme-picker";
-
-const ThumbnailSlide = dynamic(
-  () =>
-    import("@/components/slide-editor/surface/TemplateV2KonvaSlide").then(
-      (m) => m.TemplateV2KonvaSlide
-    ),
-  { ssr: false }
-);
+import { LazyLayoutThumbnail } from "@/components/editor-react/lazy-layout-thumbnail";
 
 const THUMB_SCALE = 0.1; // 128px wide for a 1280px slide
 const THUMB_W = 1280 * THUMB_SCALE;
@@ -223,22 +216,19 @@ function SortableSlide({
       {...attributes}
       {...(isLocked ? {} : listeners)}
     >
-      <div
-        className="pointer-events-none origin-top-left bg-white"
-        style={{
-          width: 1280,
-          height: 720,
-          transform: `scale(${THUMB_SCALE})`,
-        }}
-      >
-        {slide.ui ? (
-          <ThumbnailSlide
-            layout={slide.ui as never}
-            isEditMode={false}
-            slideIndex={id}
-          />
-        ) : null}
-      </div>
+      {slide.ui ? (
+        <LazyLayoutThumbnail
+          layout={slide.ui}
+          width={THUMB_W}
+          slideIndex={id}
+          className="bg-white"
+          // The strip is always on screen and short; the first slides should
+          // never flash a placeholder.
+          eager={id < 12}
+        />
+      ) : (
+        <div className="h-full w-full bg-white" />
+      )}
       <span
         className={cn(
           "absolute bottom-1 left-1 rounded px-1 text-[10px] font-medium tabular-nums",
@@ -368,7 +358,6 @@ function LayoutPicker({
       </div>
       <div className="grid flex-1 grid-cols-2 content-start justify-items-center gap-3 overflow-y-auto p-3">
         {visibleLayouts.map((layout, i) => {
-          const scale = cardW / 1280;
           return (
             <button
               key={`${layout.id ?? i}`}
@@ -377,20 +366,7 @@ function LayoutPicker({
               onClick={() => onPick(layout)}
               title={String(layout.description ?? `Layout ${i + 1}`).slice(0, 80)}
             >
-              <div
-                className="pointer-events-none origin-top-left"
-                style={{
-                  width: 1280,
-                  height: 720,
-                  transform: `scale(${scale})`,
-                }}
-              >
-                <ThumbnailSlide
-                  layout={layout as never}
-                  isEditMode={false}
-                  slideIndex={0}
-                />
-              </div>
+              <LazyLayoutThumbnail layout={layout} width={cardW} eager={i < 6} />
               <span className="pointer-events-none absolute inset-x-0 bottom-0 flex h-6 items-center justify-center bg-gradient-to-t from-black/70 to-transparent text-[10px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
                 Use layout
               </span>

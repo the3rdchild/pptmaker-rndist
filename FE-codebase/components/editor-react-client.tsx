@@ -1347,22 +1347,24 @@ export default function EditorReactClient({
           onInsert={handleInsert}
           onApplyColorToSelection={handleApplyColorToSelection}
           onApplyAllLayouts={handleApplyAllLayouts}
+          templatePanel={
+            templateMode ? (
+              <TemplateEnginePanel
+                themes={themes}
+                themeId={templateThemeId}
+                onThemeChange={setTemplateThemeId}
+                activeIndex={safeActive}
+                activeUi={activeUi as Record<string, unknown> | null}
+                selection={templateSelection}
+                onSaved={handleTemplateSaved}
+                onAddBlank={handleAddBlankTemplate}
+                onThemeCreated={handleThemeCreated}
+                onThemeDeleted={handleThemeDeleted}
+                onLayoutDeleted={handleLayoutDeleted}
+              />
+            ) : undefined
+          }
         />
-        {templateMode && (
-          <TemplateEnginePanel
-            themes={themes}
-            themeId={templateThemeId}
-            onThemeChange={setTemplateThemeId}
-            activeIndex={safeActive}
-            activeUi={activeUi as Record<string, unknown> | null}
-            selection={templateSelection}
-            onSaved={handleTemplateSaved}
-            onAddBlank={handleAddBlankTemplate}
-            onThemeCreated={handleThemeCreated}
-            onThemeDeleted={handleThemeDeleted}
-            onLayoutDeleted={handleLayoutDeleted}
-          />
-        )}
         <div
           ref={canvasAreaRef}
           id="onboarding-canvas"

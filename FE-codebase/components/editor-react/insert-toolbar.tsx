@@ -10,6 +10,7 @@ import {
   Sigma,
   Sparkles,
   Table as TableIcon,
+  Tag,
   Type,
   Video,
   X,
@@ -94,9 +95,14 @@ export interface InsertToolbarProps {
     layouts: Record<string, unknown>[],
     themeName: string
   ) => void;
+  /** Template-engine mode: the authoring panel, mounted as its own rail tab so
+   *  it collapses like every other panel instead of permanently occupying
+   *  320px next to the canvas. */
+  templatePanel?: React.ReactNode;
 }
 
 type TabId =
+  | "template-engine"
   | "templates"
   | "elements"
   | "text"
@@ -114,6 +120,7 @@ const TABS: {
   icon: typeof LayoutTemplate;
   searchPlaceholder?: string;
 }[] = [
+  { id: "template-engine", label: "Template", icon: Tag },
   { id: "templates", label: "Templates", icon: LayoutTemplate, searchPlaceholder: "Search templates" },
   { id: "elements", label: "Elements", icon: Shapes, searchPlaceholder: "Search elements" },
   { id: "text", label: "Text", icon: Type, searchPlaceholder: "Search text styles" },
@@ -152,7 +159,12 @@ export default function InsertToolbar({
   onInsert,
   onApplyColorToSelection,
   onApplyAllLayouts,
+  templatePanel,
 }: InsertToolbarProps) {
+  // The template tab only exists in the engine; the normal editor never sees it.
+  const tabs = templatePanel
+    ? TABS
+    : TABS.filter((tab) => tab.id !== "template-engine");
   const [openTab, setOpenTab] = useState<TabId | null>(null);
   const [search, setSearch] = useState("");
   const [recentElementKeys, setRecentElementKeys] = useState<string[]>([]);
@@ -255,7 +267,7 @@ export default function InsertToolbar({
     );
   };
 
-  const activeTab = TABS.find((t) => t.id === openTab) ?? null;
+  const activeTab = tabs.find((t) => t.id === openTab) ?? null;
 
   return (
     <div className="flex h-full shrink-0" data-inline-edit-ignore="true">
@@ -281,6 +293,7 @@ export default function InsertToolbar({
           </div>
 
           <div className="flex-1 overflow-y-auto">
+            {openTab === "template-engine" && templatePanel}
             {openTab === "templates" && (
               <TemplatesTab
                 search={search}
@@ -358,7 +371,7 @@ export default function InsertToolbar({
         id="onboarding-insert-rail"
         className="order-first flex h-full w-[68px] shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-[var(--border)] bg-[var(--bg-panel)] p-1.5"
       >
-        {TABS.map((tab) => (
+        {tabs.map((tab) => (
           <RailTabButton
             key={tab.id}
             icon={<tab.icon size={18} />}

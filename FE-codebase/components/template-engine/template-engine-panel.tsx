@@ -7,7 +7,6 @@ import {
   Loader2,
   Plus,
   Save,
-  Tag,
   Trash2,
 } from "lucide-react";
 
@@ -179,14 +178,9 @@ export function TemplateEnginePanel({
   }, [activeUi, draft, existingIds, onSaved, themeId, updateDraft]);
 
   return (
-    <aside className="flex h-full w-[320px] shrink-0 flex-col overflow-y-auto border-r border-[var(--border)] bg-[var(--bg-panel)]">
-      <header className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] px-4 py-2.5">
-        <Tag size={14} className="text-[var(--accent-light)]" />
-        <h2 className="text-xs font-medium text-[var(--text-primary)]">
-          Template engine
-        </h2>
-      </header>
-
+    // Mounted inside the rail's flyout, which supplies the title bar and the
+    // close button — hence no header and no width of its own.
+    <aside className="flex min-h-full w-full flex-col">
       <Section title="Theme">
         <select
           value={themeId}

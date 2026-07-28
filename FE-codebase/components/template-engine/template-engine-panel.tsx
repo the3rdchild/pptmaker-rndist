@@ -28,6 +28,14 @@ import {
   type ExportWarning,
 } from "@/components/slide-editor/templates/template-v2-export";
 import type { TemplateTheme } from "@/lib/templates/themes";
+import {
+  buildElementOutline,
+  sameAddress,
+} from "@/components/template-engine/element-outline";
+import {
+  TEMPLATE_V2_SELECT_ELEMENT_EVENT,
+  type TemplateV2SelectElementDetail,
+} from "@/components/slide-editor/events/events";
 
 type Rec = Record<string, unknown>;
 
@@ -322,6 +330,12 @@ export function TemplateEnginePanel({
         )}
       </Section>
 
+      <ElementOutlineSection
+        activeUi={activeUi}
+        slideIndex={activeIndex}
+        selection={selection}
+      />
+
       <SlotSection selection={selection} />
 
       <div className="mt-auto shrink-0 border-t border-[var(--border)] p-3">
@@ -575,6 +589,105 @@ function NewThemeForm({
         </button>
       </div>
     </div>
+  );
+}
+
+/** Every element in the layout, clickable. Small or overlapped elements are
+ *  effectively unreachable on the canvas, and those are exactly the ones that
+ *  end up unlabelled. */
+function ElementOutlineSection({
+  activeUi,
+  slideIndex,
+  selection,
+}: {
+  activeUi: Rec | null;
+  slideIndex: number;
+  selection: TemplateSelectionPayload | null;
+}) {
+  const entries = useMemo(() => buildElementOutline(activeUi), [activeUi]);
+  const selected = selection?.selection ?? null;
+
+  if (entries.length === 0) {
+    return (
+      <Section title="Elements">
+        <p className="text-[11px] leading-relaxed text-[var(--text-muted)]">
+          Nothing on this slide yet.
+        </p>
+      </Section>
+    );
+  }
+
+  const unlabelled = entries.filter(
+    (entry) => entry.fillable && (!entry.name || !entry.slot?.role),
+  ).length;
+
+  return (
+    <Section title={`Elements (${entries.length})`}>
+      {unlabelled > 0 && (
+        <p className="text-[10px] text-amber-300">
+          {unlabelled} fillable slot{unlabelled === 1 ? "" : "s"} still need a
+          name and role.
+        </p>
+      )}
+      <ul className="max-h-[320px] space-y-px overflow-y-auto">
+        {entries.map((entry) => {
+          const isSelected = sameAddress(selected, entry);
+          const needsLabel = entry.fillable && (!entry.name || !entry.slot?.role);
+          return (
+            <li key={`${entry.componentIndex}:${entry.elementPath.join(".")}`}>
+              <button
+                onClick={() =>
+                  window.dispatchEvent(
+                    new CustomEvent<TemplateV2SelectElementDetail>(
+                      TEMPLATE_V2_SELECT_ELEMENT_EVENT,
+                      {
+                        detail: {
+                          slideIndex,
+                          componentIndex: entry.componentIndex,
+                          elementPath: entry.elementPath,
+                        },
+                      },
+                    ),
+                  )
+                }
+                style={{ paddingLeft: 6 + entry.depth * 12 }}
+                className={
+                  isSelected
+                    ? "flex w-full items-center gap-1.5 rounded-md bg-[var(--accent-soft)] py-1 pr-2 text-left text-[11px] text-[var(--accent-light)]"
+                    : "flex w-full items-center gap-1.5 rounded-md py-1 pr-2 text-left text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
+                }
+              >
+                <span className="w-[52px] shrink-0 truncate text-[9px] uppercase tracking-wide text-[var(--text-muted)]">
+                  {entry.type}
+                </span>
+                <span className="min-w-0 flex-1 truncate">{entry.label}</span>
+                {entry.decorative && (
+                  <span
+                    title="Decorative — never filled by the generator"
+                    className="shrink-0 text-[9px] text-[var(--text-muted)]"
+                  >
+                    dec
+                  </span>
+                )}
+                {entry.slot?.role && (
+                  <span className="shrink-0 text-[9px] text-[var(--accent-light)]">
+                    {entry.slot.role}
+                  </span>
+                )}
+                {needsLabel && (
+                  <span
+                    title="Fillable but unlabelled"
+                    className="shrink-0 text-[10px] text-amber-400"
+                  >
+                    ●
+                  </span>
+                )}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </Section>
   );
 }
 

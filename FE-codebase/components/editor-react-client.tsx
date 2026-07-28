@@ -1329,20 +1329,6 @@ export default function EditorReactClient({
       </header>
       <PdfExportCapture slides={pdfExportSlides} onCapture={handlePdfCaptured} />
       <div className="flex flex-1 overflow-hidden">
-        <div id="onboarding-sidebar" className="flex h-full shrink-0">
-          <SlideSidebar
-            slides={slides}
-            activeIndex={safeActive}
-            onSelect={setActiveIndex}
-            onAdd={handleAdd}
-            onAddAt={handleAddAt}
-            onDuplicate={handleDuplicate}
-            onDelete={handleDelete}
-            onReorder={handleReorder}
-            onToggleLock={handleToggleLock}
-            onToggleHide={handleToggleHide}
-          />
-        </div>
         <div
           ref={canvasAreaRef}
           id="onboarding-canvas"
@@ -1486,6 +1472,20 @@ export default function EditorReactClient({
           />
         </div>
       )}
+      <div id="onboarding-sidebar" className="shrink-0">
+        <SlideSidebar
+          slides={slides}
+          activeIndex={safeActive}
+          onSelect={setActiveIndex}
+          onAdd={handleAdd}
+          onAddAt={handleAddAt}
+          onDuplicate={handleDuplicate}
+          onDelete={handleDelete}
+          onReorder={handleReorder}
+          onToggleLock={handleToggleLock}
+          onToggleHide={handleToggleHide}
+        />
+      </div>
       <Toaster />
       {presenting && (
         <PresentMode

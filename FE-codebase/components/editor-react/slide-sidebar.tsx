@@ -13,11 +13,11 @@ import {
 import {
   SortableContext,
   useSortable,
-  verticalListSortingStrategy,
+  horizontalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  ChevronRight,
+  ChevronUp,
   Copy,
   Eye,
   EyeOff,
@@ -93,64 +93,67 @@ export default function SlideSidebar({
   const itemIds = slides.map((_, i) => i);
 
   return (
-    <div className="flex h-full shrink-0" data-inline-edit-ignore="true">
-      <aside className="flex h-full w-[168px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-panel)]">
-        <div className="flex-1 overflow-y-auto px-3 py-2">
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
+    <div
+      className="relative w-full shrink-0 border-t border-[var(--border)] bg-[var(--bg-panel)]"
+      data-inline-edit-ignore="true"
+    >
+      <div className="flex items-center gap-0 overflow-x-auto overflow-y-hidden px-3 py-2.5">
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext items={itemIds} strategy={horizontalListSortingStrategy}>
+            {slides.map((slide, i) => (
+              <div key={i} className="flex shrink-0 items-center">
+                {i === 0 && <InsertSlot onAdd={() => onAddAt(0)} />}
+                <SortableSlide
+                  id={i}
+                  slide={slide}
+                  isActive={i === activeIndex}
+                  canDelete={slides.length > 1}
+                  onSelect={() => onSelect(i)}
+                  onDuplicate={() => onDuplicate(i)}
+                  onDelete={() => onDelete(i)}
+                  onToggleLock={() => onToggleLock(i)}
+                  onToggleHide={() => onToggleHide(i)}
+                />
+                <InsertSlot onAdd={() => onAddAt(i + 1)} />
+              </div>
+            ))}
+          </SortableContext>
+        </DndContext>
+        <div
+          className="flex shrink-0 overflow-hidden rounded-lg bg-[var(--bg-surface)] ring-1 ring-[var(--border-strong)] transition-shadow hover:ring-[var(--text-muted)]"
+          style={{ width: THUMB_W, height: THUMB_H }}
+        >
+          <button
+            className="flex flex-1 items-center justify-center text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
+            onClick={() => onAdd({ id: "blank", components: [], elements: [] })}
+            title="Add blank slide"
           >
-            <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
-              {slides.map((slide, i) => (
-                <div key={i}>
-                  {i === 0 && <InsertSlot onAdd={() => onAddAt(0)} />}
-                  <SortableSlide
-                    id={i}
-                    slide={slide}
-                    isActive={i === activeIndex}
-                    canDelete={slides.length > 1}
-                    onSelect={() => onSelect(i)}
-                    onDuplicate={() => onDuplicate(i)}
-                    onDelete={() => onDelete(i)}
-                    onToggleLock={() => onToggleLock(i)}
-                    onToggleHide={() => onToggleHide(i)}
-                  />
-                  <InsertSlot onAdd={() => onAddAt(i + 1)} />
-                </div>
-              ))}
-            </SortableContext>
-          </DndContext>
-          <div
-            className="mx-auto flex overflow-hidden rounded-lg bg-[var(--bg-surface)] ring-1 ring-[var(--border-strong)] transition-shadow hover:ring-[var(--text-muted)]"
-            style={{ width: THUMB_W, height: THUMB_H }}
+            <Plus size={18} />
+          </button>
+          <button
+            className={cn(
+              "flex w-7 items-center justify-center border-l border-[var(--border-strong)] transition-colors",
+              pickerOpen
+                ? "bg-[var(--accent-soft)] text-[var(--accent-light)]"
+                : "text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
+            )}
+            onClick={() => setPickerOpen((v) => !v)}
+            title="Pick a layout"
           >
-            <button
-              className="flex flex-1 items-center justify-center text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
-              onClick={() => onAdd({ id: "blank", components: [], elements: [] })}
-              title="Add blank slide"
-            >
-              <Plus size={18} />
-            </button>
-            <button
-              className={cn(
-                "flex w-7 items-center justify-center border-l border-[var(--border-strong)] transition-colors",
-                pickerOpen
-                  ? "bg-[var(--accent-soft)] text-[var(--accent-light)]"
-                  : "text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
-              )}
-              onClick={() => setPickerOpen((v) => !v)}
-              title="Pick a layout"
-            >
-              <ChevronRight
-                size={13}
-                className={cn("transition-transform", pickerOpen && "rotate-180")}
-              />
-            </button>
-          </div>
+            <ChevronUp
+              size={13}
+              className={cn("transition-transform", pickerOpen && "rotate-180")}
+            />
+          </button>
         </div>
-      </aside>
+      </div>
       {pickerOpen && (
+        // Anchored above the strip rather than beside it — at the bottom of the
+        // window there is no room to open downwards.
         <LayoutPicker
           onPick={(layout) => {
             onAdd(layout);
@@ -197,7 +200,7 @@ function SortableSlide({
     <div
       ref={setNodeRef}
       className={cn(
-        "group relative mx-auto overflow-hidden rounded-lg transition-shadow",
+        "group relative shrink-0 overflow-hidden rounded-lg transition-shadow",
         isLocked ? "cursor-default" : "cursor-grab active:cursor-grabbing",
         isActive
           ? "shadow-[var(--shadow-accent-glow)] ring-2 ring-[var(--accent)]"
@@ -305,8 +308,8 @@ function SortableSlide({
 
 function InsertSlot({ onAdd }: { onAdd: () => void }) {
   return (
-    <div className="group/insert relative mx-auto flex h-3 items-center justify-center" style={{ width: THUMB_W }}>
-      <div className="absolute inset-x-1 top-1/2 h-px -translate-y-1/2 bg-[var(--accent)] opacity-0 transition-opacity group-hover/insert:opacity-100" />
+    <div className="group/insert relative flex w-3 shrink-0 items-center justify-center" style={{ height: THUMB_H }}>
+      <div className="absolute inset-y-1 left-1/2 w-px -translate-x-1/2 bg-[var(--accent)] opacity-0 transition-opacity group-hover/insert:opacity-100" />
       <button
         className="relative z-10 flex h-4 w-4 scale-75 items-center justify-center rounded-full bg-[var(--accent)] text-white opacity-0 shadow-[var(--shadow-soft)] transition-all hover:bg-[var(--accent-hover)] group-hover/insert:scale-100 group-hover/insert:opacity-100"
         title="Insert slide here"
@@ -336,7 +339,7 @@ function LayoutPicker({
   const cardH = Math.round((cardW / 1280) * 720);
 
   return (
-    <div className="flex h-full w-[400px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-panel)]">
+    <div className="absolute bottom-full left-3 z-50 mb-2 flex h-[min(460px,60vh)] w-[400px] flex-col overflow-hidden rounded-xl border border-[var(--border-strong)] bg-[var(--bg-panel)] shadow-[var(--shadow-panel)]">
       <header className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-4 py-2.5">
         <div className="flex items-center gap-2">
           <LayoutTemplate size={14} className="text-[var(--accent-light)]" />

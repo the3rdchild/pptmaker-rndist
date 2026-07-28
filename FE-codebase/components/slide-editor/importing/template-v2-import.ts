@@ -2,6 +2,10 @@ import { resolveBackendAssetUrl } from "@/utils/api";
 import { chartDataFromSeriesWithColors } from "@/components/slide-editor/charts/chart-data";
 import { renderMarkdownTextRuns } from "@/components/slide-editor/text/markdown-text";
 import {
+  parseSlotMeta,
+  type SlotMeta,
+} from "@/components/slide-editor/templates/slot-meta";
+import {
   EDITOR_STAGE_HEIGHT,
   EDITOR_STAGE_WIDTH,
   type Alignment,
@@ -33,6 +37,7 @@ type AdaptedPosition = { x: number; y: number };
 type AdaptedSize = { width: number; height: number };
 type AdaptedBaseElement = {
   decorative?: boolean | null;
+  slot?: SlotMeta | null;
   position?: AdaptedPosition | null;
   size?: AdaptedSize | null;
   rotation?: number | null;
@@ -1069,6 +1074,11 @@ function baseElement(
 
   const decorative = readDecorative(raw);
   if (decorative != null) base.decorative = decorative;
+  // Authoring metadata must survive import -> edit -> export, otherwise every
+  // label set in the template engine would be silently dropped the next time
+  // the template is reopened.
+  const slot = parseSlotMeta(readValue(raw, "slot"));
+  if (slot) base.slot = slot;
   if (position) base.position = position;
   if (size) base.size = size;
   if (options.requireFrame && !position) base.position = { x: 0, y: 0 };

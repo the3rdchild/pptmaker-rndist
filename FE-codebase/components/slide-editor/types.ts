@@ -1,3 +1,5 @@
+import type { SlotMeta } from "@/components/slide-editor/templates/slot-meta";
+
 // Template V2 editor geometry is stored in canvas pixels.
 export const EDITOR_STAGE_WIDTH = 1280;
 export const EDITOR_STAGE_HEIGHT = 720;
@@ -155,6 +157,9 @@ export type DesignVariable = {
 type ElementBase = {
   decorative?: boolean | null;
   name?: string | null;
+  /** Template-authoring metadata (slot role, fill condition, word budgets).
+   *  Only present on elements labelled in the template engine. */
+  slot?: SlotMeta | null;
   position?: Position | null;
   size?: Size | null;
   rotation?: number | null;

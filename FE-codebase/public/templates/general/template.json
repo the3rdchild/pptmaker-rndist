@@ -1,7 +1,7 @@
 {
   "id": "general",
   "name": "General",
-  "description": "General purpose layouts for common presentation elements",
+  "description": "General purpose layouts for common presentation elements.",
   "thumbnail": "/templates/general/static/thumbnail.png",
   "merged_components": [
     {
@@ -16573,7 +16573,7 @@
                           "family": "Poppins",
                           "color": "#9333EA",
                           "bold": true,
-                          "line_height": 1.0,
+                          "line_height": 1,
                           "wrap": "none"
                         },
                         "alignment": {
@@ -16720,7 +16720,7 @@
                           "family": "Poppins",
                           "color": "#9333EA",
                           "bold": true,
-                          "line_height": 1.0,
+                          "line_height": 1,
                           "wrap": "none"
                         },
                         "alignment": {
@@ -16867,7 +16867,7 @@
                           "family": "Poppins",
                           "color": "#9333EA",
                           "bold": true,
-                          "line_height": 1.0,
+                          "line_height": 1,
                           "wrap": "none"
                         },
                         "alignment": {
@@ -17647,7 +17647,7 @@
                           "family": "Poppins",
                           "color": "#FFFFFF",
                           "bold": true,
-                          "line_height": 1.0,
+                          "line_height": 1,
                           "wrap": "none"
                         },
                         "alignment": {
@@ -17768,7 +17768,7 @@
                           "family": "Poppins",
                           "color": "#FFFFFF",
                           "bold": true,
-                          "line_height": 1.0,
+                          "line_height": 1,
                           "wrap": "none"
                         },
                         "alignment": {
@@ -17889,7 +17889,7 @@
                           "family": "Poppins",
                           "color": "#FFFFFF",
                           "bold": true,
-                          "line_height": 1.0,
+                          "line_height": 1,
                           "wrap": "none"
                         },
                         "alignment": {
@@ -18010,7 +18010,7 @@
                           "family": "Poppins",
                           "color": "#FFFFFF",
                           "bold": true,
-                          "line_height": 1.0,
+                          "line_height": 1,
                           "wrap": "none"
                         },
                         "alignment": {

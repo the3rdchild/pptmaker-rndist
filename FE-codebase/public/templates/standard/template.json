@@ -14576,7 +14576,7 @@
                 "family": "Playfair Display",
                 "color": "#111827",
                 "bold": true,
-                "line_height": 1.0,
+                "line_height": 1,
                 "wrap": "word"
               },
               "alignment": {
@@ -15147,7 +15147,7 @@
                 "family": "Playfair Display",
                 "color": "#111827",
                 "bold": true,
-                "line_height": 1.0,
+                "line_height": 1,
                 "wrap": "word"
               },
               "alignment": {
@@ -15285,7 +15285,7 @@
                         "family": "Playfair Display",
                         "color": "#168C2A",
                         "bold": true,
-                        "line_height": 1.0,
+                        "line_height": 1,
                         "wrap": "none"
                       },
                       "alignment": {
@@ -15424,7 +15424,7 @@
                         "family": "Playfair Display",
                         "color": "#168C2A",
                         "bold": true,
-                        "line_height": 1.0,
+                        "line_height": 1,
                         "wrap": "none"
                       },
                       "alignment": {
@@ -15563,7 +15563,7 @@
                         "family": "Playfair Display",
                         "color": "#168C2A",
                         "bold": true,
-                        "line_height": 1.0,
+                        "line_height": 1,
                         "wrap": "none"
                       },
                       "alignment": {
@@ -15697,7 +15697,7 @@
                 "family": "Playfair Display",
                 "color": "#111827",
                 "bold": true,
-                "line_height": 1.0,
+                "line_height": 1,
                 "wrap": "word"
               },
               "alignment": {

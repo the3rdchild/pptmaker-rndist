@@ -278,6 +278,18 @@ type TemplateV2KonvaSlideProps = {
    * PDF export's stage.toDataURL()) without the component otherwise needing
    * to know its consumer cares about that. */
   stageRef?: Ref<Konva.Stage>;
+  /** Template engine only: reports the selected element together with a patch
+   * function bound to it. The patch routes through this component's own
+   * commitUi so the surface keeps ownership of the ui draft — pushing the
+   * change in via the `layout` prop instead would trip the resync effect and
+   * clear both the selection and the undo stack on every keystroke. */
+  onTemplateSelection?: (payload: TemplateSelectionPayload | null) => void;
+};
+
+export type TemplateSelectionPayload = {
+  selection: ElementSelection;
+  element: RawElement | null;
+  patch: (updater: (element: RawElement) => RawElement) => void;
 };
 
 function TemplateV2KonvaSlideComponent({
@@ -289,6 +301,7 @@ function TemplateV2KonvaSlideComponent({
   renderIndex,
   fonts,
   stageRef,
+  onTemplateSelection,
 }: TemplateV2KonvaSlideProps) {
   const dispatch = useDispatch();
   const surfaceId = useId();
@@ -1352,6 +1365,22 @@ function TemplateV2KonvaSlideComponent({
     },
     [commitUi],
   );
+
+  // Bridge for the template engine's metadata panel. Fires on every selection
+  // change so the panel always edits the element the author is looking at.
+  useEffect(() => {
+    if (!onTemplateSelection) return;
+    if (selection?.kind !== "element") {
+      onTemplateSelection(null);
+      return;
+    }
+    const elementSelection = selection;
+    onTemplateSelection({
+      selection: elementSelection,
+      element: selectedElement,
+      patch: (updater) => updateElement(elementSelection, updater),
+    });
+  }, [onTemplateSelection, selectedElement, selection, updateElement]);
 
   const closeChartEditor = useCallback(() => {
     setChartEditorSelection(null);

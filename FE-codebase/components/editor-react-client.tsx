@@ -62,7 +62,15 @@ import {
 import { adaptDeckToPresentation } from "@/components/editor-react/deck-adapt";
 import { useSessionStore } from "@/store/session.store";
 import { getDeck, saveDeck, streamAipptDeck, generateImage, type AgentAction } from "@/lib/api";
-import { normalizeBackendAssetUrls } from "@/utils/api";
+import {
+  DEFAULT_THEME_ID,
+  invalidateThemeCache,
+  loadAllThemes,
+  loadTheme,
+  type TemplateTheme,
+} from "@/lib/templates/themes";
+import { TemplateEnginePanel } from "@/components/template-engine/template-engine-panel";
+import type { TemplateSelectionPayload } from "@/components/slide-editor/surface/TemplateV2KonvaSlide";
 import { Toaster, notify } from "@/components/ui/sonner";
 import {
   DropdownMenu,
@@ -122,13 +130,22 @@ const TemplateV2KonvaSlide = dynamic(
 );
 
 async function loadDefaultLayout(): Promise<Record<string, unknown>> {
-  const res = await fetch("/templates/general/template.json");
-  const template = await res.json();
-  const layouts = (template.layouts ?? []) as Record<string, unknown>[];
-  return normalizeBackendAssetUrls(layouts[0] ?? {});
+  const theme = await loadTheme(DEFAULT_THEME_ID);
+  return theme?.layouts[0] ?? {};
 }
 
-export default function EditorReactClient({ deckId }: { deckId: string }) {
+export default function EditorReactClient({
+  deckId,
+  templateMode = false,
+}: {
+  deckId: string;
+  /** Template-engine mode: the "deck" is a theme, its slides are that theme's
+   *  layouts, and edits are saved to public/templates instead of the deck API.
+   *  Everything else — canvas, toolbars, undo, insert panel — is the editor
+   *  the authors already know, which is the point of running it as a mode
+   *  rather than a fork. */
+  templateMode?: boolean;
+}) {
   const dispatch = useDispatch<AppDispatch>();
   const presentationData = useSelector(
     (s: RootState) => s.presentationGeneration.presentationData
@@ -152,6 +169,13 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
   const [showSlideSorter, setShowSlideSorter] = useState(false);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  // Template mode only.
+  const [themes, setThemes] = useState<TemplateTheme[]>([]);
+  const [templateThemeId, setTemplateThemeId] = useState(
+    () => searchParams?.get("theme") ?? DEFAULT_THEME_ID
+  );
+  const [templateSelection, setTemplateSelection] =
+    useState<TemplateSelectionPayload | null>(null);
   const [generationError, setGenerationError] = useState<{
     message: string;
     topic: string;
@@ -254,8 +278,42 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
   const onCanvasMouseUp = () => setIsPanning(false);
   const isFirstSave = useRef(true);
 
+  // Template mode: the theme's layouts ARE the slides. Loaded from the static
+  // template registry, so no session token is involved.
+  useEffect(() => {
+    if (!templateMode) return;
+    let cancelled = false;
+    (async () => {
+      const all = await loadAllThemes();
+      if (cancelled) return;
+      setThemes(all);
+      const theme = all.find((t) => t.id === templateThemeId) ?? all[0] ?? null;
+      if (!theme) {
+        setError("No template themes found under public/templates.");
+        setLoading(false);
+        return;
+      }
+      dispatch(
+        setPresentationData({
+          id: theme.id,
+          title: `${theme.name} — template theme`,
+          slides:
+            theme.layouts.length > 0
+              ? theme.layouts.map((layout) => ({ ui: layout as Record<string, unknown> }))
+              : [{ ui: { id: "blank", components: [], elements: [] } }],
+          fonts: theme.fonts ?? undefined,
+        } as never)
+      );
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [dispatch, templateMode, templateThemeId]);
+
   // Load deck → init Redux presentationData (or fall back to default template).
   useEffect(() => {
+    if (templateMode) return;
     let cancelled = false;
     (async () => {
       if (!token) return;
@@ -289,10 +347,13 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [deckId, token, dispatch]);
+  }, [deckId, token, dispatch, templateMode]);
 
   // Persist edits back to the API (debounced) whenever the deck changes.
+  // Template mode saves explicitly to disk instead — an autosave here would
+  // write half-finished layouts into the repo on every drag.
   useEffect(() => {
+    if (templateMode) return;
     if (!presentationData || !token) return;
     if (isFirstSave.current) {
       isFirstSave.current = false;
@@ -319,12 +380,24 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
-  }, [presentationData, token, deckId]);
+  }, [presentationData, token, deckId, templateMode]);
 
   // Keep activeIndex in bounds after delete.
   const slides = presentationData?.slides ?? [];
   const safeActive = Math.min(activeIndex, Math.max(0, slides.length - 1));
   const activeUi = slides[safeActive]?.ui ?? null;
+
+  const handleTemplateSelection = useCallback(
+    (payload: TemplateSelectionPayload | null) => setTemplateSelection(payload),
+    []
+  );
+
+  // A saved layout changes the theme's layout list (and its id set), so pull
+  // the registry again rather than trusting the page-lifetime cache.
+  const handleTemplateSaved = useCallback(async () => {
+    invalidateThemeCache();
+    setThemes(await loadAllThemes());
+  }, []);
 
   const handleAdd = (layout: Record<string, unknown>) => {
     dispatch(addSlide({ ui: layout, atIndex: safeActive + 1 }));
@@ -1232,6 +1305,9 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
                 presentationId={deckId}
                 slideIndex={safeActive}
                 fonts={presentationData?.fonts}
+                onTemplateSelection={
+                  templateMode ? handleTemplateSelection : undefined
+                }
               />
             </div>
           ) : generationError ? (
@@ -1303,6 +1379,17 @@ export default function EditorReactClient({ deckId }: { deckId: string }) {
             activeIndex={safeActive}
             onAction={handleAgentAction}
             onClose={() => setShowAiPanel(false)}
+          />
+        )}
+        {templateMode && (
+          <TemplateEnginePanel
+            themes={themes}
+            themeId={templateThemeId}
+            onThemeChange={setTemplateThemeId}
+            activeIndex={safeActive}
+            activeUi={activeUi as Record<string, unknown> | null}
+            selection={templateSelection}
+            onSaved={handleTemplateSaved}
           />
         )}
       </div>

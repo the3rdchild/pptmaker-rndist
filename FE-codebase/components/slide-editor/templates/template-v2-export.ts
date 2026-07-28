@@ -132,7 +132,12 @@ function cleanElement(value: unknown, theme: string, warnings: ExportWarning[]):
       continue;
     }
 
-    out[key] = cleanElement(raw, theme, warnings);
+    const cleaned = cleanElement(raw, theme, warnings);
+    // Insert paths leave behind empty stubs like `font: {}` on shapes and
+    // images. They mean nothing to the renderer and only add noise to the
+    // saved template, so drop them rather than committing them.
+    if (isRecord(cleaned) && Object.keys(cleaned).length === 0) continue;
+    out[key] = cleaned;
   }
 
   return out;

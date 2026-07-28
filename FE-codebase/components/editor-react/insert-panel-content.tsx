@@ -52,6 +52,10 @@ import {
   ThemeFilterBar,
   useTemplateThemes,
 } from "@/components/editor-react/theme-picker";
+import {
+  CustomElementsSection,
+  type CustomElementItem,
+} from "@/components/editor-react/custom-elements-section";
 import { ImagesApi } from "@/app/(presentation-generator)/services/api/images";
 import {
   loadIconCategories,
@@ -278,11 +282,13 @@ export function ElementsTab({
   recentKeys,
   onInsertElements,
   onInsertIcon,
+  onInsertCustomElement,
 }: {
   search: string;
   recentKeys: string[];
   onInsertElements: (entry: ElementCatalogEntry) => void;
   onInsertIcon: (iconUrl: string) => void;
+  onInsertCustomElement: (item: CustomElementItem) => void;
 }) {
   const catalogByKey = new Map(ELEMENT_CATALOG.map((entry) => [entry.key, entry]));
   const recent = recentKeys
@@ -300,6 +306,10 @@ export function ElementsTab({
 
   return (
     <div className="p-1.5">
+      <CustomElementsSection
+        search={search}
+        onInsertElement={onInsertCustomElement}
+      />
       <IconsSection search={search} onInsertIcon={onInsertIcon} />
       {recent.length > 0 && !search && (
         <>

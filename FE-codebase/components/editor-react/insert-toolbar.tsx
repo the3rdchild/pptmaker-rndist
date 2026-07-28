@@ -41,7 +41,11 @@ import {
   type BackgroundStyle,
 } from "@/components/slide-editor/surface/SlideBackground";
 import type { RawUi } from "@/components/slide-editor/model/core";
-import type { SlideElement } from "@/components/slide-editor/types";
+import {
+  EDITOR_STAGE_HEIGHT,
+  EDITOR_STAGE_WIDTH,
+  type SlideElement,
+} from "@/components/slide-editor/types";
 import type { TemplateV2InsertComponent } from "@/components/slide-editor/events/events";
 
 type InsertHandler = (ui: Record<string, unknown>) => void;
@@ -211,6 +215,31 @@ export default function InsertToolbar({
     runInsert([createIconInsertElement(iconUrl)]);
   };
 
+  // Library elements are decoration the author placed deliberately, so they go
+  // in marked decorative — that keeps ai-layout-fill from treating them as a
+  // fillable image slot and swapping them out when a template is generated.
+  // Natural size comes from the manifest, recorded at upload time.
+  const handleInsertCustomElement = (item: {
+    src: string;
+    width: number;
+    height: number;
+  }) => {
+    const fit = fitWithin({ width: item.width, height: item.height }, 480, 360);
+    runInsert([
+      {
+        type: "image",
+        position: {
+          x: Math.round((EDITOR_STAGE_WIDTH - fit.width) / 2),
+          y: Math.round((EDITOR_STAGE_HEIGHT - fit.height) / 2),
+        },
+        size: fit,
+        data: item.src,
+        fit: "contain",
+        decorative: true,
+      } as SlideElement,
+    ]);
+  };
+
   const handleBackgroundApply = (ui: Record<string, unknown>) => {
     const style = readBackgroundStyle(ui as RawUi);
     setRecentBackgrounds((prev) => {
@@ -265,6 +294,7 @@ export default function InsertToolbar({
                 recentKeys={recentElementKeys}
                 onInsertElements={handleElementInsert}
                 onInsertIcon={handleInsertIcon}
+                onInsertCustomElement={handleInsertCustomElement}
               />
             )}
             {openTab === "text" && <TextTab search={search} onInsertElements={runInsert} />}

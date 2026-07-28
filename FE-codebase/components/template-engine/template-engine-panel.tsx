@@ -36,6 +36,7 @@ import {
   TEMPLATE_V2_SELECT_ELEMENT_EVENT,
   type TemplateV2SelectElementDetail,
 } from "@/components/slide-editor/events/events";
+import { ThemePaletteEditor } from "@/components/template-engine/theme-palette-editor";
 
 type Rec = Record<string, unknown>;
 
@@ -77,6 +78,7 @@ export function TemplateEnginePanel({
   onThemeCreated,
   onThemeDeleted,
   onLayoutDeleted,
+  onThemeUpdated,
 }: {
   themes: TemplateTheme[];
   themeId: string;
@@ -89,6 +91,7 @@ export function TemplateEnginePanel({
   onThemeCreated: (themeId: string) => void;
   onThemeDeleted: (themeId: string) => void;
   onLayoutDeleted: (layoutId: string) => void;
+  onThemeUpdated: () => void;
 }) {
   const [drafts, setDrafts] = useState<Record<string, LayoutDraft>>({});
   const [saving, setSaving] = useState(false);
@@ -220,6 +223,13 @@ export function TemplateEnginePanel({
             }}
           />
         )}
+      </Section>
+
+      <Section title="Palette & guidance">
+        <ThemePaletteEditor
+          theme={themes.find((t) => t.id === themeId) ?? null}
+          onSaved={onThemeUpdated}
+        />
       </Section>
 
       <Section title="This layout">

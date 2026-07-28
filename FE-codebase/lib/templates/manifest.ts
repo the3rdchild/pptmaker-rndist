@@ -21,6 +21,11 @@ import {
 } from "@/components/slide-editor/templates/slot-meta";
 import { walkElements } from "@/components/slide-editor/templates/template-v2-export";
 import type { TemplateLayout, TemplateTheme } from "@/lib/templates/themes";
+import {
+  brandColorCount,
+  recommendHarmony,
+  toPaletteSpec,
+} from "@/lib/templates/palette-engine";
 
 type Rec = Record<string, unknown>;
 
@@ -37,6 +42,10 @@ export type SlotManifestEntry = {
   max_lines?: number;
   max_length?: number;
   min_length?: number;
+  /** Authored typography. The family is fixed by the theme; size and weight
+   *  are reported so the model can judge how much text will fit, and may be
+   *  adjusted to fit — the family may not. */
+  font?: { family?: string; size?: number; bold?: boolean };
 };
 
 export type LayoutManifest = {
@@ -51,6 +60,25 @@ export type LayoutManifest = {
   notes?: string;
 };
 
+/** What the generator is and isn't allowed to change. Spelled out rather than
+ *  implied, because "here is a palette" reads as a suggestion to a model while
+ *  "hue is yours, everything else is fixed" does not. */
+export type ThemeConstraints = {
+  color: {
+    /** The generator picks this and nothing else about the colour. */
+    choose: "hue";
+    harmony: string;
+    locked: string[];
+    note: string;
+  };
+  typography: {
+    families: string[];
+    locked: "family";
+    adjustable: string[];
+    note: string;
+  };
+};
+
 export type ThemeManifest = {
   id: string;
   name: string;
@@ -59,8 +87,29 @@ export type ThemeManifest = {
   avoid_when?: string;
   tone?: string[];
   keywords?: string[];
+  palette?: unknown;
+  constraints: ThemeConstraints;
   layouts: LayoutManifest[];
 };
+
+function buildConstraints(theme: TemplateTheme): ThemeConstraints {
+  const spec = toPaletteSpec(theme.palette);
+  const harmony = spec.harmony ?? recommendHarmony(brandColorCount(spec));
+  return {
+    color: {
+      choose: "hue",
+      harmony,
+      locked: ["saturation", "lightness", "contrast"],
+      note: "Choose a single hue for the deck. Saturation, lightness and the relationships between brand colours come from the theme; neutrals keep their lightness and only pick up a trace of the chosen hue.",
+    },
+    typography: {
+      families: Object.keys(theme.fonts ?? {}),
+      locked: "family",
+      adjustable: ["size", "weight"],
+      note: "Use the theme's font family as-is. Size and weight may be adjusted to make text fit, but never substitute a different family.",
+    },
+  };
+}
 
 function isRecord(value: unknown): value is Rec {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -147,6 +196,20 @@ export function buildLayoutManifest(
     const minLength = readNumber(element.min_length);
     if (minLength != null) entry.min_length = minLength;
 
+    const font = isRecord(element.font) ? element.font : null;
+    if (font) {
+      const family = readString(font.family);
+      const size = readNumber(font.size);
+      const bold = font.bold === true;
+      if (family || size != null || bold) {
+        entry.font = {
+          ...(family ? { family } : {}),
+          ...(size != null ? { size } : {}),
+          ...(bold ? { bold } : {}),
+        };
+      }
+    }
+
     slots.push(entry);
   });
 
@@ -180,6 +243,8 @@ export function buildThemeManifest(theme: TemplateTheme): ThemeManifest {
     id: theme.id,
     name: theme.name,
     description: theme.description,
+    palette: theme.palette ?? undefined,
+    constraints: buildConstraints(theme),
     layouts: theme.layouts.map((layout) => buildLayoutManifest(layout, theme.id)),
   };
 

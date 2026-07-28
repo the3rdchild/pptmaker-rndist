@@ -12,8 +12,8 @@ import path from "node:path";
 import { NextResponse } from "next/server";
 
 import {
-  buildLayoutManifest,
   buildThemeChoiceManifest,
+  buildThemeManifest,
 } from "@/lib/templates/manifest";
 import { listThemeIds, templatesRoot } from "@/lib/templates/server/store";
 import type { TemplateTheme } from "@/lib/templates/themes";
@@ -65,12 +65,5 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: `Unknown theme: ${themeId}` }, { status: 404 });
   }
 
-  return NextResponse.json({
-    id: theme.id,
-    name: theme.name,
-    description: theme.description,
-    when_to_use: theme.ai?.when_to_use ?? null,
-    avoid_when: theme.ai?.avoid_when ?? null,
-    layouts: theme.layouts.map((layout) => buildLayoutManifest(layout, theme.id)),
-  });
+  return NextResponse.json(buildThemeManifest(theme));
 }

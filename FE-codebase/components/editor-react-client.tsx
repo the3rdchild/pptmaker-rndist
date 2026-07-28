@@ -1379,6 +1379,7 @@ export default function EditorReactClient({
                 onThemeCreated={handleThemeCreated}
                 onThemeDeleted={handleThemeDeleted}
                 onLayoutDeleted={handleLayoutDeleted}
+                onThemeUpdated={handleTemplateSaved}
               />
             ) : undefined
           }

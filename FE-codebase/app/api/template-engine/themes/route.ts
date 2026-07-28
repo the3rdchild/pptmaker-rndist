@@ -6,6 +6,7 @@ import {
   createTheme,
   deleteTheme,
   listThemeIds,
+  updateThemeMeta,
 } from "@/lib/templates/server/store";
 
 export const runtime = "nodejs";
@@ -54,6 +55,43 @@ export async function POST(request: Request) {
         typeof body.description === "string" ? body.description.trim() : "",
     });
     return NextResponse.json({ ok: true, themeId });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 400 },
+    );
+  }
+}
+
+export async function PATCH(request: Request) {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json(
+      { error: "Themes can only be edited in development." },
+      { status: 403 },
+    );
+  }
+
+  let body: { themeId?: unknown; patch?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const themeId = typeof body.themeId === "string" ? body.themeId : "";
+  const patch =
+    body.patch && typeof body.patch === "object" && !Array.isArray(body.patch)
+      ? (body.patch as Record<string, unknown>)
+      : null;
+  if (!themeId || !patch) {
+    return NextResponse.json(
+      { error: "themeId and patch are required" },
+      { status: 400 },
+    );
+  }
+
+  try {
+    return NextResponse.json({ ok: true, theme: await updateThemeMeta(themeId, patch) });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unknown error" },

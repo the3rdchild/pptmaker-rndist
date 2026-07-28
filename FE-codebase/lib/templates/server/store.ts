@@ -186,6 +186,23 @@ export async function rebuildThemeBundle(
   return merged.length;
 }
 
+/** Merges hand-authored theme metadata (palette, AI guidance) into theme.json
+ *  and refreshes the bundle so name/description stay in step. */
+export async function updateThemeMeta(
+  themeId: string,
+  patch: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  assertSafeThemeId(themeId);
+  const metaPath = path.join(templatesRoot(), themeId, "theme.json");
+  const current = (await readJson<Record<string, unknown>>(metaPath)) ?? {
+    id: themeId,
+  };
+  const next = { ...current, ...patch, id: themeId };
+  await writeJson(metaPath, next);
+  await rebuildThemeBundle(themeId);
+  return next;
+}
+
 export type CreateThemeInput = {
   themeId: string;
   name: string;

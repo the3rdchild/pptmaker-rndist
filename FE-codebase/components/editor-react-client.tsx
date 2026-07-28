@@ -40,6 +40,7 @@ import {
   setPresentationData,
   updateSlideUi,
   addSlide,
+  addSlides,
   deleteSlide,
   duplicateSlide,
   reorderSlide,
@@ -132,6 +133,21 @@ const TemplateV2KonvaSlide = dynamic(
 async function loadDefaultLayout(): Promise<Record<string, unknown>> {
   const theme = await loadTheme(DEFAULT_THEME_ID);
   return theme?.layouts[0] ?? {};
+}
+
+/** An empty slide for the template engine. No id, so the first save mints one
+ *  from the name the author types rather than overwriting something. */
+function blankTemplateLayout(): Record<string, unknown> {
+  return { id: "", description: "", components: [], elements: [] };
+}
+
+/** True for a slide that still holds nothing the author put there. */
+function isBlankTemplateUi(ui: unknown): boolean {
+  if (!ui || typeof ui !== "object") return true;
+  const record = ui as Record<string, unknown>;
+  const components = Array.isArray(record.components) ? record.components : [];
+  const elements = Array.isArray(record.elements) ? record.elements : [];
+  return components.length === 0 && elements.length === 0;
 }
 
 export default function EditorReactClient({
@@ -278,8 +294,11 @@ export default function EditorReactClient({
   const onCanvasMouseUp = () => setIsPanning(false);
   const isFirstSave = useRef(true);
 
-  // Template mode: the theme's layouts ARE the slides. Loaded from the static
-  // template registry, so no session token is involved.
+  // Template mode starts on an empty canvas — the point is authoring a new
+  // template, so preloading the theme's existing layouts would just be a pile
+  // of slides to delete first. Existing layouts are opened on demand from the
+  // panel instead. The theme selector only picks the save target; switching it
+  // deliberately does not touch the canvas.
   useEffect(() => {
     if (!templateMode) return;
     let cancelled = false;
@@ -287,21 +306,16 @@ export default function EditorReactClient({
       const all = await loadAllThemes();
       if (cancelled) return;
       setThemes(all);
-      const theme = all.find((t) => t.id === templateThemeId) ?? all[0] ?? null;
-      if (!theme) {
+      if (all.length === 0) {
         setError("No template themes found under public/templates.");
         setLoading(false);
         return;
       }
       dispatch(
         setPresentationData({
-          id: theme.id,
-          title: `${theme.name} — template theme`,
-          slides:
-            theme.layouts.length > 0
-              ? theme.layouts.map((layout) => ({ ui: layout as Record<string, unknown> }))
-              : [{ ui: { id: "blank", components: [], elements: [] } }],
-          fonts: theme.fonts ?? undefined,
+          id: "template-engine",
+          title: "Untitled template",
+          slides: [{ ui: blankTemplateLayout() }],
         } as never)
       );
       setLoading(false);
@@ -309,7 +323,7 @@ export default function EditorReactClient({
     return () => {
       cancelled = true;
     };
-  }, [dispatch, templateMode, templateThemeId]);
+  }, [dispatch, templateMode]);
 
   // Load deck → init Redux presentationData (or fall back to default template).
   useEffect(() => {
@@ -398,6 +412,33 @@ export default function EditorReactClient({
     invalidateThemeCache();
     setThemes(await loadAllThemes());
   }, []);
+
+  /** "Apply all N pages": adds a whole theme at once. Lands on the untouched
+   *  blank slide the editor starts with (replacing it) rather than leaving an
+   *  empty slide in front of the theme; otherwise it appends after the current
+   *  slide so an existing deck is never discarded. */
+  const handleApplyAllLayouts = useCallback(
+    (layouts: Record<string, unknown>[], themeName: string) => {
+      if (layouts.length === 0) return;
+      const onlyUntouchedBlank =
+        slides.length === 1 && isBlankTemplateUi(slides[0]?.ui);
+      dispatch(
+        addSlides({
+          uis: layouts,
+          atIndex: safeActive + 1,
+          replaceAll: onlyUntouchedBlank,
+        })
+      );
+      setActiveIndex(onlyUntouchedBlank ? 0 : safeActive + 1);
+      notify.success(`Added ${layouts.length} ${themeName} layouts`);
+    },
+    [dispatch, safeActive, slides]
+  );
+
+  const handleAddBlankTemplate = useCallback(() => {
+    dispatch(addSlide({ ui: blankTemplateLayout(), atIndex: safeActive + 1 }));
+    setActiveIndex(safeActive + 1);
+  }, [dispatch, safeActive]);
 
   const handleAdd = (layout: Record<string, unknown>) => {
     dispatch(addSlide({ ui: layout, atIndex: safeActive + 1 }));
@@ -1372,6 +1413,7 @@ export default function EditorReactClient({
           activeUi={activeUi}
           onInsert={handleInsert}
           onApplyColorToSelection={handleApplyColorToSelection}
+          onApplyAllLayouts={handleApplyAllLayouts}
         />
         {showAiPanel && (
           <AIAssistantPanel
@@ -1390,6 +1432,7 @@ export default function EditorReactClient({
             activeUi={activeUi as Record<string, unknown> | null}
             selection={templateSelection}
             onSaved={handleTemplateSaved}
+            onAddBlank={handleAddBlankTemplate}
           />
         )}
       </div>

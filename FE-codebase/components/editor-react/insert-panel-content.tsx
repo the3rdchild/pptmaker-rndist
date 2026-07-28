@@ -9,6 +9,7 @@ import {
   Heading2,
   ImagePlus,
   LayoutGrid,
+  Layers,
   LineChart,
   List,
   ListOrdered,
@@ -78,12 +79,16 @@ type Layout = Record<string, unknown>;
 export function TemplatesTab({
   search,
   onApplyLayout,
+  onApplyAllLayouts,
 }: {
   search: string;
   onApplyLayout: (layout: Layout) => void;
+  /** Adds every layout of the selected theme as its own slide. */
+  onApplyAllLayouts?: (layouts: Layout[], themeName: string) => void;
 }) {
   const { themes, loading, activeThemeId, setActiveThemeId, visibleLayouts } =
     useTemplateThemes();
+  const activeTheme = themes.find((theme) => theme.id === activeThemeId) ?? null;
 
   // Layouts arrive from the theme registry already asset-resolved against
   // their own theme folder, so no per-render normalization is needed here.
@@ -111,6 +116,16 @@ export function TemplatesTab({
         activeThemeId={activeThemeId}
         onChange={setActiveThemeId}
       />
+      {onApplyAllLayouts && activeTheme && activeTheme.layouts.length > 0 && (
+        <button
+          onClick={() => onApplyAllLayouts(activeTheme.layouts, activeTheme.name)}
+          title={`Add all ${activeTheme.layouts.length} ${activeTheme.name} layouts as slides`}
+          className="mx-2.5 mb-2 flex w-[calc(100%-1.25rem)] items-center justify-center gap-1.5 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 py-2 text-[11px] font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--bg-surface)]"
+        >
+          <Layers size={13} />
+          Apply all {activeTheme.layouts.length} pages
+        </button>
+      )}
       <div className="grid grid-cols-2 gap-3 px-2.5 py-1.5">
         {filtered.map((layout, i) => {
           const scale = 0.19;

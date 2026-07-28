@@ -2,6 +2,7 @@ export {
   setPresentationData,
   updateSlideUi,
   addSlide,
+  addSlides,
   deleteSlide,
   duplicateSlide,
   reorderSlide,

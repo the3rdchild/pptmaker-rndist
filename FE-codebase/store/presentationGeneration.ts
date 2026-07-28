@@ -81,6 +81,31 @@ interface PresentationGenerationState {
         state.presentationData.slides.splice(insertAt, 0, { ui });
         state.presentationData.slides = reindex(state.presentationData.slides);
       },
+      /** Bulk insert — "Apply all N pages" adds a whole theme at once, and
+       *  dispatching addSlide N times would re-render and restart the autosave
+       *  debounce on every slide. */
+      addSlides: (
+        state,
+        action: PayloadAction<{
+          uis: Record<string, unknown>[];
+          atIndex?: number;
+          /** Drop existing slides first — used when the deck is still the
+           *  single untouched blank slide. */
+          replaceAll?: boolean;
+        }>
+      ) => {
+        if (!state.presentationData) return;
+        const { uis, atIndex, replaceAll } = action.payload;
+        if (uis.length === 0) return;
+        const slides = uis.map((ui) => ({ ui }));
+        if (replaceAll) {
+          state.presentationData.slides = reindex(slides);
+          return;
+        }
+        const insertAt = atIndex ?? state.presentationData.slides.length;
+        state.presentationData.slides.splice(insertAt, 0, ...slides);
+        state.presentationData.slides = reindex(state.presentationData.slides);
+      },
       deleteSlide: (
         state,
         action: PayloadAction<number>
@@ -156,6 +181,7 @@ interface PresentationGenerationState {
     setPresentationData,
     updateSlideUi,
     addSlide,
+    addSlides,
     deleteSlide,
     duplicateSlide,
     reorderSlide,

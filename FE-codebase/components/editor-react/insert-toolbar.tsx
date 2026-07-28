@@ -85,6 +85,11 @@ export interface InsertToolbarProps {
   activeUi: Record<string, unknown> | null;
   onInsert: InsertHandler;
   onApplyColorToSelection: (color: string) => void;
+  /** Adds a whole theme as slides ("Apply all N pages"). */
+  onApplyAllLayouts?: (
+    layouts: Record<string, unknown>[],
+    themeName: string
+  ) => void;
 }
 
 type TabId =
@@ -142,6 +147,7 @@ export default function InsertToolbar({
   activeUi,
   onInsert,
   onApplyColorToSelection,
+  onApplyAllLayouts,
 }: InsertToolbarProps) {
   const [openTab, setOpenTab] = useState<TabId | null>(null);
   const [search, setSearch] = useState("");
@@ -247,7 +253,11 @@ export default function InsertToolbar({
 
           <div className="flex-1 overflow-y-auto">
             {openTab === "templates" && (
-              <TemplatesTab search={search} onApplyLayout={onInsert} />
+              <TemplatesTab
+                search={search}
+                onApplyLayout={onInsert}
+                onApplyAllLayouts={onApplyAllLayouts}
+              />
             )}
             {openTab === "elements" && (
               <ElementsTab

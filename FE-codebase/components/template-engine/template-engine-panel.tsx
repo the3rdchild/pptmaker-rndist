@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Check, Loader2, Save, Tag } from "lucide-react";
+import { AlertTriangle, Check, Loader2, Plus, Save, Tag } from "lucide-react";
 
 import type { TemplateSelectionPayload } from "@/components/slide-editor/surface/TemplateV2KonvaSlide";
 import type { RawElement } from "@/components/slide-editor/model/core";
@@ -58,6 +58,7 @@ export function TemplateEnginePanel({
   activeUi,
   selection,
   onSaved,
+  onAddBlank,
 }: {
   themes: TemplateTheme[];
   themeId: string;
@@ -66,33 +67,41 @@ export function TemplateEnginePanel({
   activeUi: Rec | null;
   selection: TemplateSelectionPayload | null;
   onSaved: (layoutId: string) => void;
+  onAddBlank: () => void;
 }) {
-  const [drafts, setDrafts] = useState<Record<number, LayoutDraft>>({});
+  const [drafts, setDrafts] = useState<Record<string, LayoutDraft>>({});
   const [saving, setSaving] = useState(false);
   const [warnings, setWarnings] = useState<ExportWarning[]>([]);
   const [savedId, setSavedId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Seed the draft for a slide the first time it's opened.
+  // Keyed by slide AND the layout loaded into it: applying an existing template
+  // over the current slide has to re-seed the fields from that layout, or the
+  // author would be editing one template's metadata while looking at another.
+  const draftKey = `${activeIndex}::${String(activeUi?.id ?? "")}`;
+
   useEffect(() => {
     setDrafts((current) =>
-      current[activeIndex]
+      current[draftKey]
         ? current
-        : { ...current, [activeIndex]: draftFromUi(activeUi, activeIndex) },
+        : { ...current, [draftKey]: draftFromUi(activeUi, activeIndex) },
     );
-  }, [activeIndex, activeUi]);
+    setSavedId(null);
+    setWarnings([]);
+    setSaveError(null);
+  }, [activeIndex, activeUi, draftKey]);
 
-  const draft = drafts[activeIndex] ?? draftFromUi(activeUi, activeIndex);
+  const draft = drafts[draftKey] ?? draftFromUi(activeUi, activeIndex);
 
   const updateDraft = useCallback(
     (patch: Partial<LayoutDraft>) => {
       setDrafts((current) => ({
         ...current,
-        [activeIndex]: { ...(current[activeIndex] ?? draft), ...patch },
+        [draftKey]: { ...(current[draftKey] ?? draft), ...patch },
       }));
       setSavedId(null);
     },
-    [activeIndex, draft],
+    [draft, draftKey],
   );
 
   const updateMeta = useCallback(
@@ -174,6 +183,11 @@ export function TemplateEnginePanel({
       </Section>
 
       <Section title="This layout">
+        <p className="text-[10px] leading-snug text-[var(--text-muted)]">
+          {draft.id
+            ? `Editing ${draft.id} — saving overwrites it. Change the name to save a copy instead.`
+            : "New layout. Open an existing one from the Templates panel to edit it instead."}
+        </p>
         <Field label="Name">
           <input
             value={draft.name}
@@ -289,6 +303,13 @@ export function TemplateEnginePanel({
             Saved as {savedId}
           </p>
         )}
+        <button
+          onClick={onAddBlank}
+          className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 py-2 text-[11px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text-primary)]"
+        >
+          <Plus size={13} />
+          New blank layout
+        </button>
         <button
           onClick={handleSave}
           disabled={saving || !activeUi}

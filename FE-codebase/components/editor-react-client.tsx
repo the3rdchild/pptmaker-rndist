@@ -1342,6 +1342,27 @@ export default function EditorReactClient({
       </header>
       <PdfExportCapture slides={pdfExportSlides} onCapture={handlePdfCaptured} />
       <div className="flex flex-1 overflow-hidden">
+        <InsertToolbar
+          activeUi={activeUi}
+          onInsert={handleInsert}
+          onApplyColorToSelection={handleApplyColorToSelection}
+          onApplyAllLayouts={handleApplyAllLayouts}
+        />
+        {templateMode && (
+          <TemplateEnginePanel
+            themes={themes}
+            themeId={templateThemeId}
+            onThemeChange={setTemplateThemeId}
+            activeIndex={safeActive}
+            activeUi={activeUi as Record<string, unknown> | null}
+            selection={templateSelection}
+            onSaved={handleTemplateSaved}
+            onAddBlank={handleAddBlankTemplate}
+            onThemeCreated={handleThemeCreated}
+            onThemeDeleted={handleThemeDeleted}
+            onLayoutDeleted={handleLayoutDeleted}
+          />
+        )}
         <div
           ref={canvasAreaRef}
           id="onboarding-canvas"
@@ -1453,33 +1474,14 @@ export default function EditorReactClient({
             </ToolButton>
           </div>
         </div>
-        <InsertToolbar
-          activeUi={activeUi}
-          onInsert={handleInsert}
-          onApplyColorToSelection={handleApplyColorToSelection}
-          onApplyAllLayouts={handleApplyAllLayouts}
-        />
+        {/* The AI assistant is the one panel that stays on the right — it is a
+            conversation alongside the work, not a tool you reach for. */}
         {showAiPanel && (
           <AIAssistantPanel
             slides={slides}
             activeIndex={safeActive}
             onAction={handleAgentAction}
             onClose={() => setShowAiPanel(false)}
-          />
-        )}
-        {templateMode && (
-          <TemplateEnginePanel
-            themes={themes}
-            themeId={templateThemeId}
-            onThemeChange={setTemplateThemeId}
-            activeIndex={safeActive}
-            activeUi={activeUi as Record<string, unknown> | null}
-            selection={templateSelection}
-            onSaved={handleTemplateSaved}
-            onAddBlank={handleAddBlankTemplate}
-            onThemeCreated={handleThemeCreated}
-            onThemeDeleted={handleThemeDeleted}
-            onLayoutDeleted={handleLayoutDeleted}
           />
         )}
       </div>

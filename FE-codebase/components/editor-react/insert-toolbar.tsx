@@ -260,7 +260,7 @@ export default function InsertToolbar({
   return (
     <div className="flex h-full shrink-0" data-inline-edit-ignore="true">
       {activeTab && (
-        <div className="flex h-full w-[560px] shrink-0 flex-col border-l border-[var(--border)] bg-[var(--bg-panel)]">
+        <div className="flex h-full w-[560px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-panel)]">
           <div className="flex shrink-0 flex-col gap-2 border-b border-[var(--border)] p-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-medium text-[var(--text-primary)]">{activeTab.label}</h2>
@@ -352,9 +352,11 @@ export default function InsertToolbar({
         </div>
       )}
 
+      {/* order-first keeps the rail against the window edge with the flyout
+          opening inward, without moving a hundred lines of panel markup. */}
       <div
         id="onboarding-insert-rail"
-        className="flex h-full w-[68px] shrink-0 flex-col gap-0.5 overflow-y-auto border-l border-[var(--border)] bg-[var(--bg-panel)] p-1.5"
+        className="order-first flex h-full w-[68px] shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-[var(--border)] bg-[var(--bg-panel)] p-1.5"
       >
         {TABS.map((tab) => (
           <RailTabButton

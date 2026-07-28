@@ -32,6 +32,7 @@ export function LazyLayoutThumbnail({
   slideIndex = 0,
   className,
   eager = false,
+  unmountWhenHidden = true,
 }: {
   layout: Record<string, unknown>;
   width: number;
@@ -42,10 +43,22 @@ export function LazyLayoutThumbnail({
    *  browser that never reports intersections (a background tab, a pane that
    *  is not compositing) still shows previews instead of empty boxes. */
   eager?: boolean;
+  /** Drop the stage again once it scrolls away. Right for a long library of
+   *  large cards; wrong for a short strip of small ones that stays on screen,
+   *  where it just makes previews flicker back to placeholders. */
+  unmountWhenHidden?: boolean;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [mounted, setMounted] = useState(eager);
   const height = Math.round((width / 1280) * 720);
+
+  // `eager` is a prop, not just a seed: React reuses these components by index
+  // when slides are inserted or reordered, so an instance that started life
+  // non-eager can become eager. Latching on the initial state alone left those
+  // stuck on the placeholder forever.
+  useEffect(() => {
+    if (eager) setMounted(true);
+  }, [eager]);
 
   useEffect(() => {
     if (eager) return;
@@ -57,13 +70,15 @@ export function LazyLayoutThumbnail({
     const observer = new IntersectionObserver(
       (entries) => {
         const entry = entries[0];
-        if (entry) setMounted(entry.isIntersecting);
+        if (!entry) return;
+        if (entry.isIntersecting) setMounted(true);
+        else if (unmountWhenHidden) setMounted(false);
       },
       { rootMargin: ROOT_MARGIN }
     );
     observer.observe(element);
     return () => observer.disconnect();
-  }, [eager]);
+  }, [eager, unmountWhenHidden]);
 
   return (
     <div

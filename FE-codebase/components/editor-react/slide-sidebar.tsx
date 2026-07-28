@@ -222,9 +222,11 @@ function SortableSlide({
           width={THUMB_W}
           slideIndex={id}
           className="bg-white"
-          // The strip is always on screen and short; the first slides should
-          // never flash a placeholder.
+          // The strip is always on screen and short: render the first slides
+          // outright, and never drop one once it has rendered — a filmstrip
+          // tile flickering back to a placeholder reads as a stuck load.
           eager={id < 12}
+          unmountWhenHidden={false}
         />
       ) : (
         <div className="h-full w-full bg-white" />

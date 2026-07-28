@@ -98,6 +98,24 @@ export async function deleteLayout(
   return rebuildThemeBundle(themeId, { drop: [layoutId] });
 }
 
+/** Removes a whole theme folder — layouts, static assets and all.
+ *
+ *  Irreversible on disk, so the caller is expected to have confirmed it. The
+ *  last theme is refused: the editor's blank-deck path and the generator both
+ *  assume at least one theme exists. */
+export async function deleteTheme(themeId: string): Promise<string[]> {
+  assertSafeThemeId(themeId);
+  const remaining = (await listThemeIds()).filter((id) => id !== themeId);
+  if (remaining.length === 0) {
+    throw new Error("Cannot delete the last remaining theme.");
+  }
+  await fs.rm(path.join(templatesRoot(), themeId), {
+    recursive: true,
+    force: true,
+  });
+  return writeThemeIndex();
+}
+
 /** Merges layouts/*.json over the theme's existing template.json.
  *
  *  The four shipped themes have their layouts inline with no per-file source,

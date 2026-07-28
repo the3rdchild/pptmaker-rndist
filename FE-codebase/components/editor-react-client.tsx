@@ -444,6 +444,26 @@ export default function EditorReactClient({
     notify.success(`Theme "${newThemeId}" created`);
   }, []);
 
+  const handleThemeDeleted = useCallback(
+    async (deletedThemeId: string) => {
+      invalidateThemeCache();
+      const next = await loadAllThemes();
+      setThemes(next);
+      // The canvas keeps whatever is on it; only the save target has to move.
+      setTemplateThemeId((current) =>
+        current === deletedThemeId ? next[0]?.id ?? DEFAULT_THEME_ID : current
+      );
+      notify.success(`Theme "${deletedThemeId}" deleted`);
+    },
+    []
+  );
+
+  const handleLayoutDeleted = useCallback(async (layoutId: string) => {
+    invalidateThemeCache();
+    setThemes(await loadAllThemes());
+    notify.success(`Layout "${layoutId}" deleted`);
+  }, []);
+
   const handleAddBlankTemplate = useCallback(() => {
     dispatch(addSlide({ ui: blankTemplateLayout(), atIndex: safeActive + 1 }));
     setActiveIndex(safeActive + 1);
@@ -1443,6 +1463,8 @@ export default function EditorReactClient({
             onSaved={handleTemplateSaved}
             onAddBlank={handleAddBlankTemplate}
             onThemeCreated={handleThemeCreated}
+            onThemeDeleted={handleThemeDeleted}
+            onLayoutDeleted={handleLayoutDeleted}
           />
         )}
       </div>

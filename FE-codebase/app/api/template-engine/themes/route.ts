@@ -2,7 +2,11 @@
 
 import { NextResponse } from "next/server";
 
-import { createTheme, listThemeIds } from "@/lib/templates/server/store";
+import {
+  createTheme,
+  deleteTheme,
+  listThemeIds,
+} from "@/lib/templates/server/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,6 +54,30 @@ export async function POST(request: Request) {
         typeof body.description === "string" ? body.description.trim() : "",
     });
     return NextResponse.json({ ok: true, themeId });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 400 },
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json(
+      { error: "Themes can only be deleted in development." },
+      { status: 403 },
+    );
+  }
+
+  const themeId = new URL(request.url).searchParams.get("themeId") ?? "";
+  if (!themeId) {
+    return NextResponse.json({ error: "themeId is required" }, { status: 400 });
+  }
+
+  try {
+    const themes = await deleteTheme(themeId);
+    return NextResponse.json({ ok: true, themes });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unknown error" },

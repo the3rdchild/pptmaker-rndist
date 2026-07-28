@@ -1,7 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Check, Loader2, Plus, Save, Tag } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  Loader2,
+  Plus,
+  Save,
+  Tag,
+  Trash2,
+} from "lucide-react";
 
 import type { TemplateSelectionPayload } from "@/components/slide-editor/surface/TemplateV2KonvaSlide";
 import type { RawElement } from "@/components/slide-editor/model/core";
@@ -60,6 +68,8 @@ export function TemplateEnginePanel({
   onSaved,
   onAddBlank,
   onThemeCreated,
+  onThemeDeleted,
+  onLayoutDeleted,
 }: {
   themes: TemplateTheme[];
   themeId: string;
@@ -70,6 +80,8 @@ export function TemplateEnginePanel({
   onSaved: (layoutId: string) => void;
   onAddBlank: () => void;
   onThemeCreated: (themeId: string) => void;
+  onThemeDeleted: (themeId: string) => void;
+  onLayoutDeleted: (layoutId: string) => void;
 }) {
   const [drafts, setDrafts] = useState<Record<string, LayoutDraft>>({});
   const [saving, setSaving] = useState(false);
@@ -121,6 +133,11 @@ export function TemplateEnginePanel({
         .filter(Boolean) ?? [],
     [themeId, themes],
   );
+
+  const activeThemeLayoutCount = existingIds.length;
+  /** Only an id that actually exists in this theme can be deleted — a draft
+   *  name the author is still typing is not a saved layout. */
+  const canDeleteLayout = Boolean(draft.id) && existingIds.includes(draft.id);
 
   const handleSave = useCallback(async () => {
     if (!activeUi) return;
@@ -186,6 +203,21 @@ export function TemplateEnginePanel({
           existingIds={themes.map((theme) => theme.id)}
           onCreated={onThemeCreated}
         />
+        {themes.length > 1 && (
+          <ConfirmDelete
+            label="Delete this theme"
+            confirmLabel={`Delete ${themeId} and all ${activeThemeLayoutCount} of its layouts`}
+            onConfirm={async () => {
+              const res = await fetch(
+                `/api/template-engine/themes?themeId=${encodeURIComponent(themeId)}`,
+                { method: "DELETE" },
+              );
+              const body = await res.json();
+              if (!res.ok) throw new Error(body?.error ?? "Delete failed");
+              onThemeDeleted(themeId);
+            }}
+          />
+        )}
       </Section>
 
       <Section title="This layout">
@@ -276,6 +308,24 @@ export function TemplateEnginePanel({
             className={inputClass}
           />
         </Field>
+        {canDeleteLayout && (
+          <ConfirmDelete
+            label="Delete this layout"
+            confirmLabel={`Delete ${draft.id} from ${themeId}`}
+            onConfirm={async () => {
+              const res = await fetch(
+                `/api/template-engine/layouts?themeId=${encodeURIComponent(themeId)}&layoutId=${encodeURIComponent(draft.id)}`,
+                { method: "DELETE" },
+              );
+              const body = await res.json();
+              if (!res.ok) throw new Error(body?.error ?? "Delete failed");
+              // The slide stays on the canvas — only the stored template is
+              // gone, so clearing the id turns it back into an unsaved draft.
+              updateDraft({ id: "" });
+              onLayoutDeleted(draft.id);
+            }}
+          />
+        )}
       </Section>
 
       <SlotSection selection={selection} />
@@ -330,6 +380,75 @@ export function TemplateEnginePanel({
         </button>
       </div>
     </aside>
+  );
+}
+
+/** Two-step delete. Deleting removes files from the repo working tree and the
+ *  editor has no undo for it, so the destructive label is only shown after an
+ *  explicit first click and states exactly what will go. */
+function ConfirmDelete({
+  label,
+  confirmLabel,
+  onConfirm,
+}: {
+  label: string;
+  confirmLabel: string;
+  onConfirm: () => Promise<void>;
+}) {
+  const [armed, setArmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!armed) {
+    return (
+      <button
+        onClick={() => {
+          setArmed(true);
+          setError(null);
+        }}
+        className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] text-[var(--text-muted)] transition-colors hover:bg-red-500/10 hover:text-red-300"
+      >
+        <Trash2 size={12} />
+        {label}
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-2 space-y-1.5 rounded-md border border-red-500/30 bg-red-500/5 p-2">
+      <p className="text-[10px] leading-snug text-red-300">{confirmLabel}</p>
+      {error && <p className="text-[10px] text-red-300">{error}</p>}
+      <div className="flex gap-2">
+        <button
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setError(null);
+            try {
+              await onConfirm();
+              setArmed(false);
+            } catch (caught) {
+              setError(caught instanceof Error ? caught.message : "Delete failed");
+            } finally {
+              setBusy(false);
+            }
+          }}
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-md bg-red-500/80 px-2 py-1.5 text-[11px] font-medium text-white disabled:opacity-50"
+        >
+          {busy && <Loader2 size={12} className="animate-spin" />}
+          Delete
+        </button>
+        <button
+          onClick={() => {
+            setArmed(false);
+            setError(null);
+          }}
+          className="rounded-md border border-[var(--border-strong)] px-2 py-1.5 text-[11px] text-[var(--text-secondary)]"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
   );
 }
 

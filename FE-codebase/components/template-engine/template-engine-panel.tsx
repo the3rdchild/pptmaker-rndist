@@ -59,6 +59,7 @@ export function TemplateEnginePanel({
   selection,
   onSaved,
   onAddBlank,
+  onThemeCreated,
 }: {
   themes: TemplateTheme[];
   themeId: string;
@@ -68,6 +69,7 @@ export function TemplateEnginePanel({
   selection: TemplateSelectionPayload | null;
   onSaved: (layoutId: string) => void;
   onAddBlank: () => void;
+  onThemeCreated: (themeId: string) => void;
 }) {
   const [drafts, setDrafts] = useState<Record<string, LayoutDraft>>({});
   const [saving, setSaving] = useState(false);
@@ -180,6 +182,10 @@ export function TemplateEnginePanel({
             </option>
           ))}
         </select>
+        <NewThemeForm
+          existingIds={themes.map((theme) => theme.id)}
+          onCreated={onThemeCreated}
+        />
       </Section>
 
       <Section title="This layout">
@@ -324,6 +330,138 @@ export function TemplateEnginePanel({
         </button>
       </div>
     </aside>
+  );
+}
+
+/** Theme ids become folder names under public/templates and are validated
+ *  server-side against the same shape — mirror it here so a bad name is caught
+ *  while typing instead of on submit. */
+function toThemeId(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^[^a-z0-9]+/, "")
+    .slice(0, 49);
+}
+
+function NewThemeForm({
+  existingIds,
+  onCreated,
+}: {
+  existingIds: string[];
+  onCreated: (themeId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [id, setId] = useState("");
+  const [idTouched, setIdTouched] = useState(false);
+  const [description, setDescription] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const effectiveId = idTouched ? id : toThemeId(name);
+  const duplicate = existingIds.includes(effectiveId);
+  const valid = Boolean(name.trim()) && Boolean(effectiveId) && !duplicate;
+
+  const reset = () => {
+    setOpen(false);
+    setName("");
+    setId("");
+    setIdTouched(false);
+    setDescription("");
+    setError(null);
+  };
+
+  const submit = async () => {
+    if (!valid) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/template-engine/themes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          themeId: effectiveId,
+          name: name.trim(),
+          description: description.trim(),
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body?.error ?? "Could not create the theme");
+      onCreated(effectiveId);
+      reset();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not create the theme");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-[var(--border-strong)] px-3 py-1.5 text-[11px] text-[var(--text-muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text-primary)]"
+      >
+        <Plus size={12} />
+        New theme
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-2 space-y-2 rounded-md border border-[var(--border-strong)] bg-[var(--bg-surface)] p-2">
+      <Field label="Theme name">
+        <input
+          autoFocus
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="Business Formal"
+          className={inputClass}
+        />
+      </Field>
+      <Field label="Folder id" hint="public/templates/<id>/ — lowercase, no spaces.">
+        <input
+          value={effectiveId}
+          onChange={(event) => {
+            setIdTouched(true);
+            setId(toThemeId(event.target.value));
+          }}
+          placeholder="business-formal"
+          className={inputClass}
+        />
+      </Field>
+      <Field label="Description" hint="What this theme is for — the model reads it.">
+        <textarea
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          rows={2}
+          className={inputClass}
+        />
+      </Field>
+      {duplicate && (
+        <p className="text-[10px] text-amber-300">
+          A theme with the id &quot;{effectiveId}&quot; already exists.
+        </p>
+      )}
+      {error && <p className="text-[10px] text-red-300">{error}</p>}
+      <div className="flex gap-2">
+        <button
+          onClick={submit}
+          disabled={!valid || busy}
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-md bg-[var(--accent)] px-2 py-1.5 text-[11px] font-medium text-white disabled:opacity-50"
+        >
+          {busy && <Loader2 size={12} className="animate-spin" />}
+          Create
+        </button>
+        <button
+          onClick={reset}
+          className="rounded-md border border-[var(--border-strong)] px-2 py-1.5 text-[11px] text-[var(--text-secondary)]"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
   );
 }
 

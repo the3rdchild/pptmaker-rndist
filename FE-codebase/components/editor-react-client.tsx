@@ -435,6 +435,15 @@ export default function EditorReactClient({
     [dispatch, safeActive, slides]
   );
 
+  /** A freshly created theme is empty, so switching to it immediately is the
+   *  only useful next step — the author made it to save into. */
+  const handleThemeCreated = useCallback(async (newThemeId: string) => {
+    invalidateThemeCache();
+    setThemes(await loadAllThemes());
+    setTemplateThemeId(newThemeId);
+    notify.success(`Theme "${newThemeId}" created`);
+  }, []);
+
   const handleAddBlankTemplate = useCallback(() => {
     dispatch(addSlide({ ui: blankTemplateLayout(), atIndex: safeActive + 1 }));
     setActiveIndex(safeActive + 1);
@@ -1433,6 +1442,7 @@ export default function EditorReactClient({
             selection={templateSelection}
             onSaved={handleTemplateSaved}
             onAddBlank={handleAddBlankTemplate}
+            onThemeCreated={handleThemeCreated}
           />
         )}
       </div>

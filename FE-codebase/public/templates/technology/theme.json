@@ -1,0 +1,12 @@
+{
+  "id": "technology",
+  "name": "technology",
+  "description": "use this for thecnology theme",
+  "ai": {
+    "when_to_use": "",
+    "avoid_when": "",
+    "tone": [],
+    "keywords": []
+  },
+  "palette": {}
+}

@@ -21,6 +21,7 @@ import {
   Undo2,
   ZoomIn,
   ZoomOut,
+  Hand,
   Maximize2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -218,16 +219,28 @@ export default function EditorReactClient({
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
+  const [handTool, setHandTool] = useState(false);
   const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
   const canvasAreaRef = useRef<HTMLDivElement>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  /** Panning only makes sense once the slide is larger than its viewport. */
+  const canPan = zoom > 1;
+
   const resetView = () => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
   };
+
+  // Below 100% the whole slide fits, so any offset is just the slide sitting
+  // off-centre with no way to notice. Recentre and drop the hand tool.
+  useEffect(() => {
+    if (canPan) return;
+    setHandTool(false);
+    setPan((current) => (current.x === 0 && current.y === 0 ? current : { x: 0, y: 0 }));
+  }, [canPan]);
 
   const startEditingTitle = () => {
     setTitleDraft(presentationData?.title ?? "Untitled Presentation");
@@ -289,9 +302,14 @@ export default function EditorReactClient({
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
 
+  // Panning is opt-in via the hand tool. It used to trigger on any drag while
+  // zoomed in, which meant dragging an element also dragged the canvas out
+  // from under it. Middle-drag still pans without switching tools.
   const onCanvasMouseDown = (e: React.MouseEvent) => {
-    if (zoom <= 1) return;
-    if (e.button !== 0 && e.button !== 1) return;
+    if (!canPan) return;
+    const wantsPan = handTool ? e.button === 0 || e.button === 1 : e.button === 1;
+    if (!wantsPan) return;
+    e.preventDefault();
     setIsPanning(true);
     panStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
   };
@@ -1373,7 +1391,9 @@ export default function EditorReactClient({
           onMouseMove={onCanvasMouseMove}
           onMouseUp={onCanvasMouseUp}
           onMouseLeave={onCanvasMouseUp}
-          style={{ cursor: isPanning ? "grabbing" : zoom > 1 ? "grab" : "default" }}
+          style={{
+            cursor: isPanning ? "grabbing" : handTool ? "grab" : "default",
+          }}
         >
           {slides[safeActive]?.isLocked && (
             <div className="absolute top-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-[var(--border-strong)] bg-[var(--bg-surface)]/95 px-3 py-1 text-xs text-[var(--text-secondary)] shadow-[var(--shadow-panel)] backdrop-blur">
@@ -1387,6 +1407,9 @@ export default function EditorReactClient({
               style={{
                 transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
                 transition: isPanning ? "none" : "transform 0.1s ease-out",
+                // With the hand tool up, the slide must not swallow the drag —
+                // otherwise Konva starts moving an element mid-pan.
+                pointerEvents: handTool ? "none" : undefined,
               }}
             >
               <TemplateV2KonvaSlide
@@ -1471,6 +1494,21 @@ export default function EditorReactClient({
               {Math.round(zoom * 100)}%
             </ToolButton>
             <ToolDivider className="mx-0.5 h-4" />
+            <ToolButton
+              size="sm"
+              active={handTool}
+              disabled={!canPan}
+              onClick={() => setHandTool((v) => !v)}
+              title={
+                canPan
+                  ? handTool
+                    ? "Hand tool on — drag to move the slide"
+                    : "Hand tool — drag to move the slide"
+                  : "Zoom past 100% to pan"
+              }
+            >
+              <Hand size={13} />
+            </ToolButton>
             <ToolButton size="sm" onClick={resetView} title="Fit to screen">
               <Maximize2 size={13} />
             </ToolButton>

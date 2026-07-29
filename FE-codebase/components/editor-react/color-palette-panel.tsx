@@ -277,6 +277,57 @@ function persistSavedPalettes(palettes: SavedPalette[]) {
 
 /* ------------------------------ Swatch button -------------------------------- */
 
+/** Minimal shape of the browser's EyeDropper API, which TS does not ship. */
+type EyeDropperApi = { open: () => Promise<{ sRGBHex: string }> };
+
+/** Samples any pixel on screen — the canvas, a reference image in another
+ *  window, anything — and feeds it back as the picker's base colour, so the
+ *  whole scheme regenerates from a colour you saw rather than one you guessed.
+ *
+ *  Chromium-only; hidden where the API is missing rather than offered and then
+ *  failing. */
+function EyedropperButton({ onPick }: { onPick: (hex: string) => void }) {
+  const [supported, setSupported] = useState(false);
+  const [picking, setPicking] = useState(false);
+
+  // Checked after mount: the constructor does not exist during SSR, and
+  // reading it during render would make the markup differ between the two.
+  useEffect(() => {
+    setSupported(typeof window !== "undefined" && "EyeDropper" in window);
+  }, []);
+
+  if (!supported) return null;
+
+  return (
+    <button
+      type="button"
+      disabled={picking}
+      title="Pick a colour from anywhere on screen"
+      onClick={async () => {
+        setPicking(true);
+        try {
+          const Ctor = (window as unknown as {
+            EyeDropper: new () => EyeDropperApi;
+          }).EyeDropper;
+          const { sRGBHex } = await new Ctor().open();
+          if (sRGBHex) onPick(sRGBHex.toUpperCase());
+        } catch {
+          // Dismissing the picker rejects; that is a choice, not a failure.
+        } finally {
+          setPicking(false);
+        }
+      }}
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--border-strong)] bg-[var(--bg-surface)] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text-primary)] disabled:opacity-50"
+    >
+      {picking ? (
+        <Loader2 size={13} className="animate-spin" />
+      ) : (
+        <Pipette size={13} />
+      )}
+    </button>
+  );
+}
+
 function PaletteSwatchButton({
   color,
   copied,
@@ -530,6 +581,7 @@ export default function ColorPalettePanel({
             className="h-7 flex-1 rounded-md border border-[var(--border-strong)] bg-[var(--bg-surface)] px-2 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
             spellCheck={false}
           />
+          <EyedropperButton onPick={handleHexInput} />
         </label>
         <label className="flex items-center gap-2">
           <span className="w-9 text-[11px] text-[var(--text-secondary)]">RGB</span>

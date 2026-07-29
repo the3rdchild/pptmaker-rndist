@@ -17,15 +17,17 @@ export function SaveToLibraryDialog({
   image,
   onClose,
   onSaved,
+  defaultLabel = "Pasted image",
 }: {
   image: PastedImage;
   onClose: () => void;
   onSaved: (categoryLabel: string) => void;
+  defaultLabel?: string;
 }) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryId, setCategoryId] = useState("");
   const [newCategory, setNewCategory] = useState("");
-  const [label, setLabel] = useState("Pasted image");
+  const [label, setLabel] = useState(defaultLabel);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

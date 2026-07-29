@@ -37,6 +37,8 @@ import {
   type TemplateV2SelectElementDetail,
 } from "@/components/slide-editor/events/events";
 import { ThemePaletteEditor } from "@/components/template-engine/theme-palette-editor";
+import { SaveToLibraryDialog } from "@/components/editor-react/save-to-library-dialog";
+import type { PastedImage } from "@/components/editor-react/paste-image";
 
 type Rec = Record<string, unknown>;
 
@@ -53,6 +55,16 @@ type LayoutDraft = {
 function isRecord(value: unknown): value is Rec {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
+
+/** The three things being edited here apply at different scopes, and mixing
+ *  them in one column made it unclear what a given field would affect. */
+type Scope = "theme" | "page" | "element";
+
+const SCOPES: { id: Scope; label: string; hint: string }[] = [
+  { id: "theme", label: "Theme", hint: "Palette, typography and guidance for the whole theme" },
+  { id: "page", label: "Page", hint: "This layout: its role, topics and item counts" },
+  { id: "element", label: "Element", hint: "Elements on this page and the one selected" },
+];
 
 function draftFromUi(ui: Rec | null, index: number): LayoutDraft {
   const id = typeof ui?.id === "string" ? ui.id : "";
@@ -93,6 +105,7 @@ export function TemplateEnginePanel({
   onLayoutDeleted: (layoutId: string) => void;
   onThemeUpdated: () => void;
 }) {
+  const [scope, setScope] = useState<Scope>("page");
   const [drafts, setDrafts] = useState<Record<string, LayoutDraft>>({});
   const [saving, setSaving] = useState(false);
   const [warnings, setWarnings] = useState<ExportWarning[]>([]);
@@ -192,6 +205,28 @@ export function TemplateEnginePanel({
     // Mounted inside the rail's flyout, which supplies the title bar and the
     // close button — hence no header and no width of its own.
     <aside className="flex min-h-full w-full flex-col">
+      {/* Three scopes, three tabs. Stacked, they made one long column where
+          theme-wide settings and a single element's label sat at the same
+          visual level despite applying to completely different things. */}
+      <div className="flex shrink-0 gap-1 border-b border-[var(--border)] p-2">
+        {SCOPES.map((option) => (
+          <button
+            key={option.id}
+            onClick={() => setScope(option.id)}
+            title={option.hint}
+            className={
+              scope === option.id
+                ? "flex-1 rounded-md bg-[var(--accent)] px-2 py-1.5 text-[11px] font-medium text-white"
+                : "flex-1 rounded-md px-2 py-1.5 text-[11px] font-medium text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
+            }
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+
+      {scope === "theme" && (
+        <>
       <Section title="Theme">
         <select
           value={themeId}
@@ -231,7 +266,11 @@ export function TemplateEnginePanel({
           onSaved={onThemeUpdated}
         />
       </Section>
+        </>
+      )}
 
+      {scope === "page" && (
+        <>
       <Section title="This layout">
         <p className="text-[10px] leading-snug text-[var(--text-muted)]">
           {draft.id
@@ -339,14 +378,19 @@ export function TemplateEnginePanel({
           />
         )}
       </Section>
+        </>
+      )}
 
-      <ElementOutlineSection
-        activeUi={activeUi}
-        slideIndex={activeIndex}
-        selection={selection}
-      />
-
-      <SlotSection selection={selection} />
+      {scope === "element" && (
+        <>
+          <ElementOutlineSection
+            activeUi={activeUi}
+            slideIndex={activeIndex}
+            selection={selection}
+          />
+          <SlotSection selection={selection} />
+        </>
+      )}
 
       <div className="mt-auto shrink-0 border-t border-[var(--border)] p-3">
         {warnings.length > 0 && (
@@ -701,6 +745,75 @@ function ElementOutlineSection({
   );
 }
 
+/** Files the selected image into the reusable library.
+ *
+ *  This used to live only in the toast that follows a paste, which auto-closes
+ *  after a few seconds — an action that needs a decision had a deadline. Here
+ *  it stays put, and it also covers images that arrived any other way. */
+function SaveImageToLibrary({
+  src,
+  width,
+  height,
+  suggestedLabel,
+}: {
+  src: string;
+  width: number;
+  height: number;
+  suggestedLabel: string;
+}) {
+  const [image, setImage] = useState<PastedImage | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const open = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      // The library stores bytes, so a referenced image has to be fetched and
+      // inlined first; a pasted one is already a data URL.
+      const dataUrl = src.startsWith("data:") ? src : await toDataUrl(src);
+      setImage({ dataUrl, width, height });
+    } catch {
+      setError("Could not read this image.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        onClick={open}
+        disabled={busy}
+        className="flex w-full items-center justify-center gap-1.5 rounded-md border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 py-1.5 text-[11px] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text-primary)] disabled:opacity-50"
+      >
+        {busy ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+        Save to My elements
+      </button>
+      {error && <p className="text-[10px] text-red-300">{error}</p>}
+      {image && (
+        <SaveToLibraryDialog
+          image={image}
+          onClose={() => setImage(null)}
+          onSaved={() => setImage(null)}
+          defaultLabel={suggestedLabel}
+        />
+      )}
+    </>
+  );
+}
+
+async function toDataUrl(src: string): Promise<string> {
+  const response = await fetch(src);
+  const blob = await response.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("read failed"));
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.readAsDataURL(blob);
+  });
+}
+
 function SlotSection({ selection }: { selection: TemplateSelectionPayload | null }) {
   if (!selection) {
     return (
@@ -744,6 +857,17 @@ function SlotSection({ selection }: { selection: TemplateSelectionPayload | null
 
   return (
     <Section title={`Selected slot — ${type}`}>
+      {type === "image" && typeof element.data === "string" && (
+        <SaveImageToLibrary
+          src={element.data}
+          width={isRecord(element.size) ? Number(element.size.width) || 200 : 200}
+          height={isRecord(element.size) ? Number(element.size.height) || 200 : 200}
+          suggestedLabel={
+            typeof element.name === "string" ? element.name : "Element"
+          }
+        />
+      )}
+
       <Field
         label="Slot name"
         hint="How the generator addresses this slot. Unnamed slots can't be targeted."

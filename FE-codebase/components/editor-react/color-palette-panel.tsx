@@ -17,6 +17,7 @@ import {
   PaintBucket,
   Pin,
   Pipette,
+  Plus,
   Trash2,
   X,
 } from "lucide-react";
@@ -24,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { notify } from "@/components/ui/sonner";
 import { PanelLabel } from "@/components/editor-react/ui";
 import { generateManualPalette, hexToHsl } from "@/lib/palette";
+import { createPaletteSwatchComponents } from "@/components/slide-editor/insert/palette-swatches";
 import {
   TEMPLATE_V2_EXTRACT_IMAGE_COLORS_EVENT,
   TEMPLATE_V2_IMAGE_COLORS_RESULT_EVENT,
@@ -311,11 +313,14 @@ function PaletteSwatchButton({
 export interface ColorPalettePanelProps {
   onApplyColorToSelection: (color: string) => void;
   onApplyColorToBackground: (color: string) => void;
+  /** Places the generated palette on the slide as labelled swatches. */
+  onInsertComponents?: (components: Record<string, unknown>[]) => void;
 }
 
 export default function ColorPalettePanel({
   onApplyColorToSelection,
   onApplyColorToBackground,
+  onInsertComponents,
 }: ColorPalettePanelProps) {
   const [hue, setHue] = useState(272);
   const [saturation, setSaturation] = useState(100);
@@ -678,12 +683,30 @@ export default function ColorPalettePanel({
         ))}
       </div>
 
-      <button
-        onClick={copyPalette}
-        className="mx-2.5 mt-1.5 flex h-8 w-[calc(100%-20px)] items-center justify-center gap-1.5 rounded-lg bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)]"
-      >
-        <Copy size={12} /> Copy palette
-      </button>
+      <div className="mx-2.5 mt-1.5 flex gap-1.5">
+        {onInsertComponents && (
+          <button
+            onClick={() => {
+              onInsertComponents(
+                createPaletteSwatchComponents(palette, (hex) => {
+                  const { h, s, l } = hexToHsl(hex);
+                  return colorName(h, s, l);
+                }),
+              );
+            }}
+            title="Place the whole palette on the slide as labelled swatches"
+            className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg bg-[var(--accent)] text-xs font-medium text-white transition-opacity hover:opacity-90"
+          >
+            <Plus size={12} /> Add to canvas
+          </button>
+        )}
+        <button
+          onClick={copyPalette}
+          className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)]"
+        >
+          <Copy size={12} /> Copy palette
+        </button>
+      </div>
 
       <PanelLabel>Saved palettes</PanelLabel>
       {savingName !== null ? (

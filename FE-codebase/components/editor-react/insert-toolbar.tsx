@@ -189,6 +189,17 @@ export default function InsertToolbar({
     onInsert(next);
   };
 
+  /** Several components in one go, as one undo step. */
+  const runInsertComponents = (components: Record<string, unknown>[]) => {
+    if (components.length === 0) return;
+    const next = appendInsertedContent(
+      activeUi as RawUi,
+      [],
+      components as TemplateV2InsertComponent[],
+    );
+    onInsert(next);
+  };
+
   const handleElementInsert = (entry: ElementCatalogEntry) => {
     const built = entry.build();
     if (Array.isArray(built)) {
@@ -329,6 +340,7 @@ export default function InsertToolbar({
               <ColorPalettePanel
                 onApplyColorToSelection={onApplyColorToSelection}
                 onApplyColorToBackground={handleApplyColorToBackground}
+                onInsertComponents={runInsertComponents}
               />
             )}
             {openTab === "background" && (

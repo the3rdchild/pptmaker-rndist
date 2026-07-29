@@ -73,6 +73,14 @@ import {
 } from "@/lib/templates/themes";
 import { TemplateEnginePanel } from "@/components/template-engine/template-engine-panel";
 import type { TemplateSelectionPayload } from "@/components/slide-editor/surface/TemplateV2KonvaSlide";
+import {
+  imageFileFromClipboard,
+  isTextEntryTarget,
+  readImageFile,
+  withPastedImage,
+  type PastedImage,
+} from "@/components/editor-react/paste-image";
+import { SaveToLibraryDialog } from "@/components/editor-react/save-to-library-dialog";
 import { Toaster, notify } from "@/components/ui/sonner";
 import {
   DropdownMenu,
@@ -206,6 +214,8 @@ export default function EditorReactClient({
   );
   const [templateSelection, setTemplateSelection] =
     useState<TemplateSelectionPayload | null>(null);
+  /** A pasted image the author chose to keep in the reusable element library. */
+  const [libraryImage, setLibraryImage] = useState<PastedImage | null>(null);
   const [generationError, setGenerationError] = useState<{
     message: string;
     topic: string;
@@ -616,6 +626,50 @@ export default function EditorReactClient({
   const handleInsert = (ui: Record<string, unknown>) => {
     dispatch(updateSlideUi({ index: safeActive, ui }));
   };
+
+  // Held in refs so the paste listener is registered once instead of on every
+  // slide change, while still acting on the slide that is current when the
+  // image finishes decoding.
+  const activeUiRef = useRef(activeUi);
+  activeUiRef.current = activeUi;
+  const handleInsertRef = useRef(handleInsert);
+  handleInsertRef.current = handleInsert;
+
+  // Ctrl+V for an image copied from anywhere else. The surface's own clipboard
+  // hook handles the editor's element payload and ignores image files, so this
+  // fills that gap without disturbing element paste; a paste aimed at a text
+  // field is left to that field.
+  useEffect(() => {
+    const handlePaste = (event: ClipboardEvent) => {
+      if (event.defaultPrevented || isTextEntryTarget(event.target)) return;
+      const file = imageFileFromClipboard(event.clipboardData);
+      if (!file || !activeUiRef.current) return;
+      event.preventDefault();
+      void readImageFile(file)
+        .then((image) => {
+          const ui = activeUiRef.current;
+          if (!ui) return;
+          handleInsertRef.current(
+            withPastedImage(ui as never, image) as Record<string, unknown>
+          );
+          // Onto the slide by default; keeping it for future templates is one
+          // click away rather than a separate upload trip.
+          notify.success("Image pasted", undefined, {
+            action: {
+              label: "Save to My elements",
+              onClick: () => setLibraryImage(image),
+            },
+          });
+        })
+        .catch((error: unknown) =>
+          notify.error(
+            error instanceof Error ? error.message : "Could not paste the image"
+          )
+        );
+    };
+    document.addEventListener("paste", handlePaste);
+    return () => document.removeEventListener("paste", handlePaste);
+  }, []);
 
   // Streams AIPPTSlide JSONL for a topic and appends each mapped slide.
   // Shared by the AI Assistant's create_deck tool and the one-time
@@ -1558,6 +1612,13 @@ export default function EditorReactClient({
           onToggleHide={handleToggleHide}
         />
       </div>
+      {libraryImage && (
+        <SaveToLibraryDialog
+          image={libraryImage}
+          onClose={() => setLibraryImage(null)}
+          onSaved={(category) => notify.success(`Saved to "${category}"`)}
+        />
+      )}
       <Toaster />
       {presenting && (
         <PresentMode

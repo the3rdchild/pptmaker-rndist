@@ -10,11 +10,15 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Layers, Loader2, Plus } from "lucide-react";
+import { ArrowRight, Layers, Loader2, Plus, Trash2 } from "lucide-react";
 
 import { AppShell } from "@/components/layout/app-shell";
 import { LazyLayoutThumbnail } from "@/components/editor-react/lazy-layout-thumbnail";
-import { loadAllThemes, type TemplateTheme } from "@/lib/templates/themes";
+import {
+  invalidateThemeCache,
+  loadAllThemes,
+  type TemplateTheme,
+} from "@/lib/templates/themes";
 
 /** One preview per theme, and no more.
  *
@@ -49,6 +53,22 @@ export function TemplateListPage() {
 
   const openTheme = (themeId: string) => {
     router.push(`/template-engine?theme=${encodeURIComponent(themeId)}`);
+  };
+
+  /** Mirrors the server: deleteTheme() itself refuses the last theme, but
+   *  disabling the button ahead of time means the author sees why instead of
+   *  arming a confirm that can only ever fail. */
+  const canDeleteThemes = (themes?.length ?? 0) > 1;
+
+  const handleDeleteTheme = async (themeId: string) => {
+    const res = await fetch(
+      `/api/template-engine/themes?themeId=${encodeURIComponent(themeId)}`,
+      { method: "DELETE" },
+    );
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error ?? "Delete failed");
+    invalidateThemeCache();
+    setThemes(await loadAllThemes());
   };
 
   return (
@@ -98,7 +118,9 @@ export function TemplateListPage() {
               key={theme.id}
               theme={theme}
               eager={index < 2}
+              canDelete={canDeleteThemes}
               onOpen={() => openTheme(theme.id)}
+              onDelete={() => handleDeleteTheme(theme.id)}
             />
           ))}
         </div>
@@ -143,53 +165,123 @@ function useMeasuredWidth(fallback: number) {
 function ThemeCard({
   theme,
   eager,
+  canDelete,
   onOpen,
+  onDelete,
 }: {
   theme: TemplateTheme;
   eager: boolean;
+  /** False when this is the only theme left — deleteTheme() refuses that
+   *  server-side too, but disabling ahead of time tells the author why
+   *  instead of arming a confirm that can only fail. */
+  canDelete: boolean;
   onOpen: () => void;
+  onDelete: () => Promise<void>;
 }) {
   const cover = theme.layouts[0];
   const [previewRef, previewWidth] = useMeasuredWidth(PREVIEW_WIDTH);
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const handleConfirmDelete = async () => {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await onDelete();
+      // No further state to reset on success — the card unmounts with the
+      // theme it belonged to.
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "Delete failed");
+      setDeleting(false);
+    }
+  };
 
   return (
-    <button
-      onClick={onOpen}
-      className="group flex flex-col overflow-hidden rounded-xl border border-[#2d2e42] bg-[#13131f] text-left transition-colors hover:border-[#6c5ce7]"
-    >
-      <div
-        ref={previewRef}
-        className="flex aspect-video w-full items-center justify-center overflow-hidden bg-[#1a1b2e]"
+    // Not a <button>: it holds the open control, the delete control, and (
+    // while confirming) a third strip of controls, and buttons cannot nest.
+    <div className="group relative flex flex-col overflow-hidden rounded-xl border border-[#2d2e42] bg-[#13131f] transition-colors hover:border-[#6c5ce7]">
+      <button
+        onClick={onOpen}
+        disabled={confirming}
+        className="flex flex-col text-left disabled:pointer-events-none"
       >
-        {cover ? (
-          <LazyLayoutThumbnail
-            layout={cover as Record<string, unknown>}
-            width={previewWidth}
-            eager={eager}
-          />
-        ) : (
-          <span className="text-xs text-zinc-600">Belum ada layout</span>
-        )}
-      </div>
+        <div
+          ref={previewRef}
+          className="flex aspect-video w-full items-center justify-center overflow-hidden bg-[#1a1b2e]"
+        >
+          {cover ? (
+            <LazyLayoutThumbnail
+              layout={cover as Record<string, unknown>}
+              width={previewWidth}
+              eager={eager}
+            />
+          ) : (
+            <span className="text-xs text-zinc-600">Belum ada layout</span>
+          )}
+        </div>
 
-      <div className="flex items-center gap-3 border-t border-[#1e1e30] p-4">
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold text-white">
-            {theme.name}
+        <div className="flex items-center gap-3 border-t border-[#1e1e30] p-4">
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-semibold text-white">
+              {theme.name}
+            </div>
+            <p className="mt-0.5 line-clamp-2 text-xs text-zinc-500">
+              {theme.description || "Tanpa deskripsi."}
+            </p>
+            <div className="mt-2 flex items-center gap-3 text-[11px] text-zinc-500">
+              <span className="flex items-center gap-1">
+                <Layers className="h-3 w-3" />
+                {theme.layouts.length} page
+              </span>
+              <span className="font-mono text-zinc-600">{theme.id}</span>
+            </div>
           </div>
-          <p className="mt-0.5 line-clamp-2 text-xs text-zinc-500">
-            {theme.description || "Tanpa deskripsi."}
+          <ArrowRight className="h-4 w-4 shrink-0 text-zinc-600 transition-colors group-hover:text-[#a29bfe]" />
+        </div>
+      </button>
+
+      {canDelete && !confirming && (
+        <button
+          onClick={() => setConfirming(true)}
+          title={`Delete ${theme.name}`}
+          className="absolute right-2 top-2 rounded-md bg-black/60 p-1.5 text-zinc-300 opacity-0 backdrop-blur transition-opacity hover:bg-red-500/80 hover:text-white focus-visible:opacity-100 group-hover:opacity-100"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      )}
+
+      {confirming && (
+        <div className="absolute inset-x-2 top-2 rounded-md border border-red-500/30 bg-[#13131f] p-2 shadow-xl">
+          <p className="text-[11px] leading-snug text-red-300">
+            Delete &quot;{theme.name}&quot; and all {theme.layouts.length} of its
+            layouts? This removes the folder from disk and cannot be undone.
           </p>
-          <div className="mt-2 flex items-center gap-3 text-[11px] text-zinc-500">
-            <span className="flex items-center gap-1">
-              <Layers className="h-3 w-3" />
-              {theme.layouts.length} page
-            </span>
-            <span className="font-mono text-zinc-600">{theme.id}</span>
+          {deleteError && (
+            <p className="mt-1 text-[11px] text-red-300">{deleteError}</p>
+          )}
+          <div className="mt-2 flex gap-2">
+            <button
+              disabled={deleting}
+              onClick={handleConfirmDelete}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-md bg-red-500/80 px-2 py-1.5 text-[11px] font-medium text-white disabled:opacity-50"
+            >
+              {deleting && <Loader2 className="h-3 w-3 animate-spin" />}
+              Delete
+            </button>
+            <button
+              disabled={deleting}
+              onClick={() => {
+                setConfirming(false);
+                setDeleteError(null);
+              }}
+              className="rounded-md border border-[#2d2e42] px-2 py-1.5 text-[11px] text-zinc-300 disabled:opacity-50"
+            >
+              Cancel
+            </button>
           </div>
         </div>
-        <ArrowRight className="h-4 w-4 shrink-0 text-zinc-600 transition-colors group-hover:text-[#a29bfe]" />
-      </div>
-    </button>
+      )}
+    </div>
   );
 }

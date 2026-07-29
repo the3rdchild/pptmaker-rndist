@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { useDispatch, useSelector } from "react-redux";
@@ -445,6 +445,18 @@ export default function EditorReactClient({
   const handleTemplateSelection = useCallback(
     (payload: TemplateSelectionPayload | null) => setTemplateSelection(payload),
     []
+  );
+
+  /** Every page on the template canvas — the engine's Theme scope saves the
+   *  whole canvas at once, not just the page being looked at. */
+  const templatePageUis = useMemo(
+    () =>
+      templateMode
+        ? slides.map(
+            (slide) => (slide?.ui ?? null) as Record<string, unknown> | null
+          )
+        : [],
+    [slides, templateMode]
   );
 
   // A saved layout changes the theme's layout list (and its id set), so pull
@@ -1445,6 +1457,7 @@ export default function EditorReactClient({
                 onThemeChange={setTemplateThemeId}
                 activeIndex={safeActive}
                 activeUi={activeUi as Record<string, unknown> | null}
+                pageUis={templatePageUis}
                 selection={templateSelection}
                 onSaved={handleTemplateSaved}
                 onAddBlank={handleAddBlankTemplate}

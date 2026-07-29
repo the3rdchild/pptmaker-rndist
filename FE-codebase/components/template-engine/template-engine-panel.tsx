@@ -92,6 +92,7 @@ export function TemplateEnginePanel({
   onThemeChange,
   activeIndex,
   activeUi,
+  pageUis,
   selection,
   onSaved,
   onAddBlank,
@@ -106,6 +107,8 @@ export function TemplateEnginePanel({
   onThemeChange: (themeId: string) => void;
   activeIndex: number;
   activeUi: Rec | null;
+  /** Every page on the canvas, in order — what the Theme scope's save writes. */
+  pageUis: (Rec | null)[];
   selection: TemplateSelectionPayload | null;
   onSaved: (layoutId: string) => void;
   onAddBlank: () => void;
@@ -119,7 +122,7 @@ export function TemplateEnginePanel({
   const [drafts, setDrafts] = useState<Record<string, LayoutDraft>>({});
   const [saving, setSaving] = useState(false);
   const [warnings, setWarnings] = useState<ExportWarning[]>([]);
-  const [savedId, setSavedId] = useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [importProgress, setImportProgress] =
     useState<TemplateImportProgress | null>(null);
@@ -138,7 +141,7 @@ export function TemplateEnginePanel({
         ? current
         : { ...current, [draftKey]: draftFromUi(activeUi, activeIndex) },
     );
-    setSavedId(null);
+    setSaveMessage(null);
     setWarnings([]);
     setSaveError(null);
   }, [activeIndex, activeUi, draftKey]);
@@ -151,7 +154,7 @@ export function TemplateEnginePanel({
         ...current,
         [draftKey]: { ...(current[draftKey] ?? draft), ...patch },
       }));
-      setSavedId(null);
+      setSaveMessage(null);
     },
     [draft, draftKey],
   );
@@ -207,7 +210,7 @@ export function TemplateEnginePanel({
       const body = await res.json();
       if (!res.ok) throw new Error(body?.error ?? "Save failed");
       updateDraft({ id: layout.id });
-      setSavedId(layout.id);
+      setSaveMessage(`Saved as ${layout.id}`);
       onSaved(layout.id);
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "Save failed");
@@ -215,6 +218,91 @@ export function TemplateEnginePanel({
       setSaving(false);
     }
   }, [activeUi, draft, existingIds, onSaved, themeId, updateDraft]);
+
+  /** Saves every page on the canvas into the theme in one go.
+   *
+   *  This is the Theme scope's save: the author is working on the theme as a
+   *  whole there, and after importing a deck it is the difference between one
+   *  click and stepping through ten pages. Each page still becomes its own
+   *  layout under its own name — the only thing being batched is the saving.
+   *  A page that fails to export (an empty one, say) is skipped and named in
+   *  the warnings rather than aborting the pages after it. */
+  const handleSaveAll = useCallback(async () => {
+    if (pageUis.length === 0) return;
+    setSaving(true);
+    setSaveError(null);
+    setSaveMessage(null);
+
+    // Ids are allocated as we go so two same-named pages in one batch can't
+    // collide on the id derived from that name.
+    const allocatedIds = [...existingIds];
+    const collected: ExportWarning[] = [];
+    const draftPatches: Record<string, LayoutDraft> = {};
+    let saved = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    for (let index = 0; index < pageUis.length; index++) {
+      const ui = pageUis[index];
+      if (!ui) continue;
+
+      const key = `${index}::${String(ui.id ?? "")}`;
+      const pageDraft = drafts[key] ?? draftFromUi(ui, index);
+      const label = pageDraft.name || `Page ${index + 1}`;
+      const { layout, warnings: exportWarnings } = exportSlideAsLayout(ui, {
+        theme: themeId,
+        id: pageDraft.id || makeLayoutId(pageDraft.name, allocatedIds),
+        name: pageDraft.name,
+        description: pageDraft.description,
+        meta: pageDraft.meta,
+        existingIds: allocatedIds,
+      });
+      collected.push(
+        ...exportWarnings.map((warning) => ({
+          ...warning,
+          message: `${label}: ${warning.message}`,
+        })),
+      );
+      if (exportWarnings.some((warning) => warning.level === "error")) {
+        skipped += 1;
+        continue;
+      }
+
+      try {
+        const res = await fetch("/api/template-engine/layouts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ themeId, layout }),
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body?.error ?? "Save failed");
+        allocatedIds.push(layout.id);
+        draftPatches[key] = { ...pageDraft, id: layout.id };
+        saved += 1;
+      } catch (error) {
+        failed += 1;
+        collected.push({
+          level: "error",
+          message: `${label}: ${error instanceof Error ? error.message : "Save failed"}`,
+        });
+      }
+    }
+
+    // Recording the assigned ids means a second run overwrites those layouts
+    // instead of saving a second copy of every page under a fresh id.
+    if (Object.keys(draftPatches).length > 0) {
+      setDrafts((current) => ({ ...current, ...draftPatches }));
+    }
+    setWarnings(collected);
+    if (failed > 0) setSaveError(`${failed} page${failed === 1 ? "" : "s"} could not be saved.`);
+    if (saved > 0) {
+      const notes = [`Saved ${saved} of ${pageUis.length} pages to ${themeId}`];
+      if (skipped > 0) notes.push(`${skipped} skipped`);
+      setSaveMessage(`${notes.join(" · ")}.`);
+      onSaved(allocatedIds[allocatedIds.length - 1] ?? "");
+    }
+    setSaving(false);
+  }, [drafts, existingIds, onSaved, pageUis, themeId]);
 
   /** Turns a .pptx into pages on the canvas. Every slide lands as an unsaved
    *  layout so the author can label its slots and save the ones worth keeping —
@@ -267,6 +355,8 @@ export function TemplateEnginePanel({
     [onImportPages, themeId],
   );
 
+  const pageCount = pageUis.filter(Boolean).length;
+  const savesWholeTheme = scope === "theme";
   const importing = importProgress !== null;
   const importLabel =
     importProgress?.stage === "assets" && importProgress.total > 0
@@ -489,10 +579,10 @@ export function TemplateEnginePanel({
             {saveError}
           </p>
         )}
-        {savedId && !saveError && (
-          <p className="mb-2 flex items-center gap-1.5 rounded-md bg-emerald-500/10 px-2 py-1.5 text-[11px] text-emerald-300">
-            <Check size={12} />
-            Saved as {savedId}
+        {saveMessage && !saveError && (
+          <p className="mb-2 flex gap-1.5 rounded-md bg-emerald-500/10 px-2 py-1.5 text-[11px] text-emerald-300">
+            <Check size={12} className="mt-0.5 shrink-0" />
+            <span>{saveMessage}</span>
           </p>
         )}
         {importError && (
@@ -539,9 +629,17 @@ export function TemplateEnginePanel({
             <span className="truncate">{importing ? importLabel : "Import .pptx"}</span>
           </button>
         </div>
+        {/* The save follows the scope: on Theme the author is working on the
+            whole theme, so it writes every page; on Page and Element they are
+            working on one layout, so it writes only that one. */}
         <button
-          onClick={handleSave}
-          disabled={saving || !activeUi}
+          onClick={savesWholeTheme ? handleSaveAll : handleSave}
+          disabled={saving || (savesWholeTheme ? pageCount === 0 : !activeUi)}
+          title={
+            savesWholeTheme
+              ? `Save all ${pageCount} pages on the canvas into ${themeId}, each as its own layout.`
+              : `Save only this page into ${themeId}.`
+          }
           className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--accent)] px-3 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           {saving ? (
@@ -549,7 +647,9 @@ export function TemplateEnginePanel({
           ) : (
             <Save size={13} />
           )}
-          Save to {themeId}
+          {savesWholeTheme
+            ? `Save all ${pageCount} page${pageCount === 1 ? "" : "s"} to ${themeId}`
+            : `Save this page to ${themeId}`}
         </button>
       </div>
     </aside>

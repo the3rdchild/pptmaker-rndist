@@ -8,6 +8,7 @@
 // template produces a reviewable diff instead of a one-line churn in a 500KB
 // bundle; keeping the merged bundle means nothing downstream had to change.
 
+import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
@@ -61,6 +62,66 @@ export async function writeThemeIndex(): Promise<string[]> {
   const themes = await listThemeIds();
   await writeJson(path.join(templatesRoot(), "index.json"), { themes });
   return themes;
+}
+
+/** Extensions a theme asset may be written with. Imported decks bring their
+ *  media along, and this is a write into the repo working tree — so the file
+ *  type is whitelisted rather than taken from whatever the caller claims. */
+const ASSET_EXTENSIONS: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/gif": "gif",
+  "image/webp": "webp",
+  "image/bmp": "bmp",
+  "image/svg+xml": "svg",
+};
+
+export function assetExtensionFor(mimeType: string): string | null {
+  return ASSET_EXTENSIONS[mimeType.toLowerCase()] ?? null;
+}
+
+/** Writes one image into `<theme>/static/<folder>/` under a content-addressed
+ *  name and returns its pack-absolute URL.
+ *
+ *  Content addressing is what keeps an imported deck small: a Canva export
+ *  references the same tile image from hundreds of shapes across every slide,
+ *  and they all collapse onto one file here instead of one base64 copy per
+ *  reference in the layout JSON. */
+export async function saveThemeAsset({
+  themeId,
+  bytes,
+  extension,
+  folder = "imported",
+}: {
+  themeId: string;
+  bytes: Buffer;
+  extension: string;
+  folder?: string;
+}): Promise<{ url: string; bytes: number; reused: boolean }> {
+  assertSafeThemeId(themeId);
+  if (!Object.values(ASSET_EXTENSIONS).includes(extension)) {
+    throw new Error(`Unsupported asset type: ${extension}`);
+  }
+  if (!/^[a-z0-9][a-z0-9_-]{0,48}$/.test(folder)) {
+    throw new Error(`Invalid asset folder: ${JSON.stringify(folder)}`);
+  }
+
+  const digest = createHash("sha256").update(bytes).digest("hex").slice(0, 16);
+  const fileName = `${digest}.${extension}`;
+  const dir = path.join(templatesRoot(), themeId, "static", folder);
+  const filePath = path.join(dir, fileName);
+  const url = `/templates/${themeId}/static/${folder}/${fileName}`;
+
+  try {
+    await fs.access(filePath);
+    return { url, bytes: bytes.length, reused: true };
+  } catch {
+    // Not written yet — fall through.
+  }
+
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(filePath, bytes);
+  return { url, bytes: bytes.length, reused: false };
 }
 
 export type SaveLayoutInput = {

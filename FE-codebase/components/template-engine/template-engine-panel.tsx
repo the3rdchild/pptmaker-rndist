@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Check,
+  FileUp,
   Loader2,
   Plus,
   Save,
@@ -36,6 +37,10 @@ import {
   TEMPLATE_V2_SELECT_ELEMENT_EVENT,
   type TemplateV2SelectElementDetail,
 } from "@/components/slide-editor/events/events";
+import {
+  importPptxAsTemplatePages,
+  type TemplateImportProgress,
+} from "@/components/slide-editor/importing/pptx-template-pages";
 import { ThemePaletteEditor } from "@/components/template-engine/theme-palette-editor";
 import { SaveToLibraryDialog } from "@/components/editor-react/save-to-library-dialog";
 import type { PastedImage } from "@/components/editor-react/paste-image";
@@ -70,9 +75,12 @@ function draftFromUi(ui: Rec | null, index: number): LayoutDraft {
   const id = typeof ui?.id === "string" ? ui.id : "";
   const description = typeof ui?.description === "string" ? ui.description : "";
   const meta = isRecord(ui?.meta) ? (ui.meta as LayoutMeta) : {};
+  // An imported page carries a suggested name (the source file and slide
+  // number) but no id — it is a new layout until the author saves it.
+  const suggestedName = typeof ui?.name === "string" ? ui.name : "";
   return {
     id,
-    name: id || `layout_${index + 1}`,
+    name: id || suggestedName || `layout_${index + 1}`,
     description,
     meta,
   };
@@ -87,6 +95,7 @@ export function TemplateEnginePanel({
   selection,
   onSaved,
   onAddBlank,
+  onImportPages,
   onThemeCreated,
   onThemeDeleted,
   onLayoutDeleted,
@@ -100,6 +109,7 @@ export function TemplateEnginePanel({
   selection: TemplateSelectionPayload | null;
   onSaved: (layoutId: string) => void;
   onAddBlank: () => void;
+  onImportPages: (pages: Rec[]) => void;
   onThemeCreated: (themeId: string) => void;
   onThemeDeleted: (themeId: string) => void;
   onLayoutDeleted: (layoutId: string) => void;
@@ -111,6 +121,11 @@ export function TemplateEnginePanel({
   const [warnings, setWarnings] = useState<ExportWarning[]>([]);
   const [savedId, setSavedId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [importProgress, setImportProgress] =
+    useState<TemplateImportProgress | null>(null);
+  const [importNote, setImportNote] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Keyed by slide AND the layout loaded into it: applying an existing template
   // over the current slide has to re-seed the fields from that layout, or the
@@ -200,6 +215,65 @@ export function TemplateEnginePanel({
       setSaving(false);
     }
   }, [activeUi, draft, existingIds, onSaved, themeId, updateDraft]);
+
+  /** Turns a .pptx into pages on the canvas. Every slide lands as an unsaved
+   *  layout so the author can label its slots and save the ones worth keeping —
+   *  importing is a starting point for authoring, not a bulk publish. */
+  const handleImportPptx = useCallback(
+    async (file: File | null | undefined) => {
+      if (!file) return;
+      if (!file.name.toLowerCase().endsWith(".pptx")) {
+        setImportError("Pick a .pptx file.");
+        return;
+      }
+
+      setImportError(null);
+      setImportNote(null);
+      setImportProgress({ stage: "parsing", done: 0, total: 0 });
+      try {
+        const result = await importPptxAsTemplatePages(
+          file,
+          themeId,
+          setImportProgress,
+        );
+        if (result.pages.length === 0) {
+          setImportError("That file has no slides.");
+          return;
+        }
+        onImportPages(result.pages);
+
+        const notes = [
+          `${result.pages.length} page${result.pages.length === 1 ? "" : "s"} added`,
+          `${result.assetCount} image${result.assetCount === 1 ? "" : "s"} stored in ${themeId}/static/imported`,
+        ];
+        if (result.reusedAssetCount > 0) {
+          notes.push(`${result.reusedAssetCount} already on disk`);
+        }
+        if (result.failedAssetCount > 0) {
+          notes.push(`${result.failedAssetCount} could not be stored and stayed inline`);
+        }
+        if (result.skippedShapeCount > 0) {
+          notes.push(`${result.skippedShapeCount} chart/table shape${result.skippedShapeCount === 1 ? "" : "s"} skipped`);
+        }
+        setImportNote(`${notes.join(" · ")}.`);
+      } catch (error) {
+        setImportError(
+          error instanceof Error ? error.message : "Could not import that file",
+        );
+      } finally {
+        setImportProgress(null);
+      }
+    },
+    [onImportPages, themeId],
+  );
+
+  const importing = importProgress !== null;
+  const importLabel =
+    importProgress?.stage === "assets" && importProgress.total > 0
+      ? `Storing images ${importProgress.done}/${importProgress.total}`
+      : importProgress
+        ? "Reading .pptx"
+        : "Import .pptx as pages";
 
   return (
     // Mounted inside the rail's flyout, which supplies the title bar and the
@@ -421,13 +495,50 @@ export function TemplateEnginePanel({
             Saved as {savedId}
           </p>
         )}
-        <button
-          onClick={onAddBlank}
-          className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 py-2 text-[11px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text-primary)]"
-        >
-          <Plus size={13} />
-          New blank layout
-        </button>
+        {importError && (
+          <p className="mb-2 rounded-md bg-red-500/10 px-2 py-1.5 text-[11px] text-red-300">
+            {importError}
+          </p>
+        )}
+        {importNote && !importError && (
+          <p className="mb-2 flex gap-1.5 rounded-md bg-emerald-500/10 px-2 py-1.5 text-[11px] text-emerald-300">
+            <Check size={12} className="mt-0.5 shrink-0" />
+            <span>{importNote}</span>
+          </p>
+        )}
+        <div className="mb-2 grid grid-cols-2 gap-2">
+          <button
+            onClick={onAddBlank}
+            disabled={importing}
+            className={secondaryButtonClass}
+          >
+            <Plus size={13} />
+            New blank
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pptx"
+            className="hidden"
+            onChange={(event) => {
+              void handleImportPptx(event.target.files?.[0]);
+              event.target.value = "";
+            }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importing}
+            title={`Add every slide of a .pptx as a page. Its images are written into public/templates/${themeId}/static/imported/.`}
+            className={secondaryButtonClass}
+          >
+            {importing ? (
+              <Loader2 size={13} className="animate-spin" />
+            ) : (
+              <FileUp size={13} />
+            )}
+            <span className="truncate">{importing ? importLabel : "Import .pptx"}</span>
+          </button>
+        </div>
         <button
           onClick={handleSave}
           disabled={saving || !activeUi}
@@ -1013,6 +1124,9 @@ function SlotSection({ selection }: { selection: TemplateSelectionPayload | null
 
 const inputClass =
   "w-full rounded-md border border-[var(--border-strong)] bg-[var(--bg-surface)] px-2 py-1.5 text-[11px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]";
+
+const secondaryButtonClass =
+  "flex w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 py-2 text-[11px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text-primary)] disabled:opacity-50";
 
 function Section({
   title,

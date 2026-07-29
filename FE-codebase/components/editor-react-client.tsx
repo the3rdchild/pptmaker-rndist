@@ -510,6 +510,24 @@ export default function EditorReactClient({
     setActiveIndex(safeActive + 1);
   }, [dispatch, safeActive]);
 
+  /** Drops the pages of an imported .pptx onto the template canvas. The
+   *  untouched blank the engine opens on is replaced rather than kept — it is a
+   *  starting point, not something the author put there. */
+  const handleImportTemplatePages = useCallback(
+    (pages: Record<string, unknown>[]) => {
+      if (pages.length === 0) return;
+      const replaceBlank = slides.length === 1 && isBlankTemplateUi(slides[0]?.ui);
+      const insertAt = replaceBlank ? 0 : safeActive + 1;
+
+      pages.forEach((ui, offset) => {
+        dispatch(addSlide({ ui, atIndex: insertAt + offset }));
+      });
+      if (replaceBlank) dispatch(deleteSlide(pages.length));
+      setActiveIndex(insertAt);
+    },
+    [dispatch, safeActive, slides],
+  );
+
   const handleAdd = (layout: Record<string, unknown>) => {
     dispatch(addSlide({ ui: layout, atIndex: safeActive + 1 }));
     setActiveIndex(safeActive + 1);
@@ -1430,6 +1448,7 @@ export default function EditorReactClient({
                 selection={templateSelection}
                 onSaved={handleTemplateSaved}
                 onAddBlank={handleAddBlankTemplate}
+                onImportPages={handleImportTemplatePages}
                 onThemeCreated={handleThemeCreated}
                 onThemeDeleted={handleThemeDeleted}
                 onLayoutDeleted={handleLayoutDeleted}

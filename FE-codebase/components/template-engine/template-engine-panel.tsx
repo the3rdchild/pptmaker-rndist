@@ -95,6 +95,7 @@ export function TemplateEnginePanel({
   pageUis,
   selection,
   onSaved,
+  onPagesPersisted,
   onAddBlank,
   onImportPages,
   onThemeCreated,
@@ -111,6 +112,17 @@ export function TemplateEnginePanel({
   pageUis: (Rec | null)[];
   selection: TemplateSelectionPayload | null;
   onSaved: (layoutId: string) => void;
+  /** Writes the identity a save assigned back onto the pages themselves. This
+   *  panel is unmounted every time its flyout closes, so anything it remembers
+   *  about what a page was saved as is gone by the next save. */
+  onPagesPersisted: (
+    pages: {
+      index: number;
+      id: string;
+      description: string;
+      meta: LayoutMeta;
+    }[],
+  ) => void;
   onAddBlank: () => void;
   onImportPages: (pages: Rec[]) => void;
   onThemeCreated: (themeId: string) => void;
@@ -135,12 +147,18 @@ export function TemplateEnginePanel({
   // author would be editing one template's metadata while looking at another.
   const draftKey = `${activeIndex}::${String(activeUi?.id ?? "")}`;
 
+  /** Keys whose ui changed because a save just stamped it, not because the
+   *  author moved to another page — those must not clear the save result the
+   *  same click produced. */
+  const selfWrittenKeys = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     setDrafts((current) =>
       current[draftKey]
         ? current
         : { ...current, [draftKey]: draftFromUi(activeUi, activeIndex) },
     );
+    if (selfWrittenKeys.current.delete(draftKey)) return;
     setSaveMessage(null);
     setWarnings([]);
     setSaveError(null);
@@ -210,6 +228,15 @@ export function TemplateEnginePanel({
       const body = await res.json();
       if (!res.ok) throw new Error(body?.error ?? "Save failed");
       updateDraft({ id: layout.id });
+      selfWrittenKeys.current.add(`${activeIndex}::${layout.id}`);
+      onPagesPersisted([
+        {
+          index: activeIndex,
+          id: layout.id,
+          description: draft.description,
+          meta: draft.meta,
+        },
+      ]);
       setSaveMessage(`Saved as ${layout.id}`);
       onSaved(layout.id);
     } catch (error) {
@@ -217,7 +244,16 @@ export function TemplateEnginePanel({
     } finally {
       setSaving(false);
     }
-  }, [activeUi, draft, existingIds, onSaved, themeId, updateDraft]);
+  }, [
+    activeIndex,
+    activeUi,
+    draft,
+    existingIds,
+    onPagesPersisted,
+    onSaved,
+    themeId,
+    updateDraft,
+  ]);
 
   /** Saves every page on the canvas into the theme in one go.
    *
@@ -238,6 +274,12 @@ export function TemplateEnginePanel({
     const allocatedIds = [...existingIds];
     const collected: ExportWarning[] = [];
     const draftPatches: Record<string, LayoutDraft> = {};
+    const persisted: {
+      index: number;
+      id: string;
+      description: string;
+      meta: LayoutMeta;
+    }[] = [];
     let saved = 0;
     let skipped = 0;
     let failed = 0;
@@ -278,6 +320,15 @@ export function TemplateEnginePanel({
         if (!res.ok) throw new Error(body?.error ?? "Save failed");
         allocatedIds.push(layout.id);
         draftPatches[key] = { ...pageDraft, id: layout.id };
+        persisted.push({
+          index,
+          id: layout.id,
+          description: pageDraft.description,
+          meta: pageDraft.meta,
+        });
+        if (index === activeIndex) {
+          selfWrittenKeys.current.add(`${activeIndex}::${layout.id}`);
+        }
         saved += 1;
       } catch (error) {
         failed += 1;
@@ -293,6 +344,7 @@ export function TemplateEnginePanel({
     if (Object.keys(draftPatches).length > 0) {
       setDrafts((current) => ({ ...current, ...draftPatches }));
     }
+    if (persisted.length > 0) onPagesPersisted(persisted);
     setWarnings(collected);
     if (failed > 0) setSaveError(`${failed} page${failed === 1 ? "" : "s"} could not be saved.`);
     if (saved > 0) {
@@ -302,7 +354,15 @@ export function TemplateEnginePanel({
       onSaved(allocatedIds[allocatedIds.length - 1] ?? "");
     }
     setSaving(false);
-  }, [drafts, existingIds, onSaved, pageUis, themeId]);
+  }, [
+    activeIndex,
+    drafts,
+    existingIds,
+    onPagesPersisted,
+    onSaved,
+    pageUis,
+    themeId,
+  ]);
 
   /** Turns a .pptx into pages on the canvas. Every slide lands as an unsaved
    *  layout so the author can label its slots and save the ones worth keeping —

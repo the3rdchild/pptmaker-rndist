@@ -71,6 +71,22 @@ interface PresentationGenerationState {
           state.presentationData.slides[index].ui = ui;
         }
       },
+      /** Merges a few top-level fields into a slide's ui instead of replacing
+       *  it. The template engine stamps the layout identity a save assigned,
+       *  and a read-modify-write from the caller would carry whatever the ui
+       *  looked like when the save started — losing any edit made while it
+       *  was in flight. */
+      patchSlideUi: (
+        state,
+        action: PayloadAction<{
+          index: number;
+          patch: Record<string, unknown>;
+        }>
+      ) => {
+        const slide = state.presentationData?.slides[action.payload.index];
+        if (!slide?.ui) return;
+        slide.ui = { ...slide.ui, ...action.payload.patch };
+      },
       addSlide: (
         state,
         action: PayloadAction<{ ui: Record<string, unknown>; atIndex?: number }>
@@ -180,6 +196,7 @@ interface PresentationGenerationState {
   export const {
     setPresentationData,
     updateSlideUi,
+    patchSlideUi,
     addSlide,
     addSlides,
     deleteSlide,

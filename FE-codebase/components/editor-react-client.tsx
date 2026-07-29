@@ -40,6 +40,7 @@ import type { RootState, AppDispatch } from "@/store/editorStore";
 import {
   setPresentationData,
   updateSlideUi,
+  patchSlideUi,
   addSlide,
   addSlides,
   deleteSlide,
@@ -474,6 +475,33 @@ export default function EditorReactClient({
           )
         : [],
     [slides, templateMode]
+  );
+
+  /** Stamps the layout identity a save assigned onto the pages themselves.
+   *
+   *  The panel is unmounted whenever its flyout closes, so an id it only held
+   *  in its own state was gone by the next save — which then allocated a fresh
+   *  id per page and wrote a second copy of the whole theme. The page carries
+   *  it now, which is also how a theme opened from /template-list arrives. */
+  const handleTemplatePagesPersisted = useCallback(
+    (
+      pages: {
+        index: number;
+        id: string;
+        description: string;
+        meta: Record<string, unknown>;
+      }[]
+    ) => {
+      pages.forEach(({ index, id, description, meta }) => {
+        dispatch(
+          patchSlideUi({
+            index,
+            patch: { id, description, ...(meta ? { meta } : {}) },
+          })
+        );
+      });
+    },
+    [dispatch]
   );
 
   // A saved layout changes the theme's layout list (and its id set), so pull
@@ -1478,6 +1506,7 @@ export default function EditorReactClient({
                 pageUis={templatePageUis}
                 selection={templateSelection}
                 onSaved={handleTemplateSaved}
+                onPagesPersisted={handleTemplatePagesPersisted}
                 onAddBlank={handleAddBlankTemplate}
                 onImportPages={handleImportTemplatePages}
                 onThemeCreated={handleThemeCreated}

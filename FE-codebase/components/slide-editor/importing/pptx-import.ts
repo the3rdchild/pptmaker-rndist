@@ -2,24 +2,27 @@
 // (the same {id, components:[{id, position, size, elements:[...]}]} shape
 // AI generation and manual template inserts already produce).
 //
-// Scope (deliberately limited for v1 — matches what export-pptx.ts can even
-// round-trip today, see that file's element-type switch): text, images,
-// rectangles, ellipses, lines, and basic group flattening. Charts, tables,
-// SmartArt, and theme-color resolution are NOT supported — such shapes are
+// Scope: text, images, rectangles, ellipses, lines and group flattening.
+// Charts, tables and SmartArt (p:graphicFrame) are NOT supported — those are
 // silently skipped (counted and reported back to the caller) rather than
 // crashing the import or producing a garbled shape. A .pptx's real internal
-// format is a zip of OOXML/DrawingML XML files; this only reads the small
-// slice of that schema needed for the shape types above.
+// format is a zip of OOXML/DrawingML XML files; this only reads the slice of
+// that schema needed for the element types above.
 //
 // EMU (English Metric Units, 914400/inch) is PowerPoint's native unit for
 // every position/size in the XML. The editor's canvas is a fixed 1280x720px
-// stage representing a 10in x 5.625in slide (matching export-pptx.ts's own
-// SLIDE_W_IN/SLIDE_H_IN) — since custom canvas ratios aren't supported yet,
-// an imported deck's own slide size (read from presentation.xml, which varies
-// per source file: 4:3, 16:9, custom) is uniformly scaled to CONTAIN within
-// 1280x720 and centered, rather than stretched — this keeps every shape's
-// aspect ratio intact at the cost of letterboxing when the source ratio
-// differs from 16:9.
+// stage; the source deck's own slide size (read from presentation.xml, which
+// varies per file: 4:3, 16:9, or an oversized 2x canvas as exported by Canva)
+// is uniformly scaled to CONTAIN within 1280x720 and centered, rather than
+// stretched — this keeps every shape's aspect ratio intact at the cost of
+// letterboxing when the source ratio differs from 16:9.
+//
+// That same slide scale MUST also be applied to font sizes and line widths:
+// a 96pt heading on a 20in-wide Canva slide occupies the same fraction of the
+// canvas as a 48pt heading on a 10in slide. Converting points to pixels with a
+// fixed px-per-inch (as this importer originally did) renders every deck whose
+// slide isn't exactly 10in wide at the wrong text size — 2x too large for a
+// Canva export, which is what made imported decks look like they exploded.
 
 import { XMLParser } from "fast-xml-parser";
 import JSZip from "jszip";
@@ -28,15 +31,17 @@ import { EDITOR_STAGE_WIDTH, EDITOR_STAGE_HEIGHT } from "@/components/slide-edit
 type Rec = Record<string, unknown>;
 
 const EMU_PER_INCH = 914400;
-const CANVAS_PX_PER_INCH = EDITOR_STAGE_WIDTH / 10; // matches export-pptx.ts's 10in slide width
-const PT_TO_PX = CANVAS_PX_PER_INCH / 72;
+const EMU_PER_POINT = EMU_PER_INCH / 72;
+/** Fallback slide size (16:9, 13.33in) for decks with no readable p:sldSz. */
+const DEFAULT_SLIDE_W_EMU = 12192000;
+const DEFAULT_SLIDE_H_EMU = 6858000;
 
 export interface PptxImportResult {
   title: string;
   slides: { ui: Rec }[];
-  /** Shapes (charts/tables/SmartArt/unsupported geometry) that were dropped
-   * rather than mis-rendered — surfaced so the caller can tell the user
-   * fidelity was reduced instead of silently losing content. */
+  /** Shapes (charts/tables/SmartArt) that were dropped rather than
+   * mis-rendered — surfaced so the caller can tell the user fidelity was
+   * reduced instead of silently losing content. */
   skippedShapeCount: number;
 }
 
@@ -45,9 +50,19 @@ const xmlParser = new XMLParser({
   attributeNamePrefix: "@_",
   textNodeName: "#text",
   isArray: (name) =>
-    ["a:p", "a:r", "p:sp", "p:pic", "p:cxnSp", "p:grpSp", "p:sldIdLst", "sldId", "Relationship"].includes(
-      name,
-    ),
+    [
+      "a:p",
+      "a:r",
+      "a:gs",
+      "p:sp",
+      "p:pic",
+      "p:cxnSp",
+      "p:grpSp",
+      "p:graphicFrame",
+      "p:sldIdLst",
+      "sldId",
+      "Relationship",
+    ].includes(name),
 });
 
 function parseXml(text: string): Rec {
@@ -62,6 +77,44 @@ async function readZipText(zip: JSZip, path: string): Promise<string | null> {
   return entry.async("text");
 }
 
+type GeoContext = { scale: number; offsetPxX: number; offsetPxY: number };
+
+/** A resolved relationship: both maps are keyed for the two lookups the
+ * importer needs — by r:id (images, layouts) and by relationship type
+ * (walking slide -> layout -> master -> theme). Targets are already resolved
+ * to absolute zip paths. */
+type Rels = { byId: Map<string, string>; byType: Map<string, string[]> };
+
+const EMPTY_RELS: Rels = { byId: new Map(), byType: new Map() };
+
+/** Theme + master colour mapping, needed to resolve `a:schemeClr` references.
+ * Decks authored in PowerPoint express nearly every colour that way, so
+ * without this every such shape falls back to a placeholder grey. */
+type ThemeContext = {
+  colors: Map<string, string>;
+  clrMap: Record<string, string>;
+  majorFont: string | null;
+  minorFont: string | null;
+};
+
+/** Everything a slide needs that is shared across the whole deck. */
+type DeckContext = {
+  zip: JSZip;
+  geo: GeoContext;
+  themeCache: Map<string, ThemeContext>;
+  mediaCache: Map<string, string | null>;
+};
+
+/** Per-part context: the rels of the XML part a shape came from (a slide, or
+ * a layout/master when inheriting a background) plus the resolved theme. */
+type PartContext = {
+  deck: DeckContext;
+  rels: Rels;
+  theme: ThemeContext | null;
+  /** Shape id -> position in the slide XML, see `shapeOrderIndex`. */
+  order: Map<string, number>;
+};
+
 export async function importPptxFile(file: File): Promise<PptxImportResult> {
   const zip = await JSZip.loadAsync(await file.arrayBuffer());
 
@@ -70,24 +123,26 @@ export async function importPptxFile(file: File): Promise<PptxImportResult> {
   const presentation = parseXml(presentationXml);
   const presRoot = asRecord(presentation["p:presentation"]);
   const sldSz = asRecord(presRoot?.["p:sldSz"]);
-  const srcWidthEmu = readAttrNumber(sldSz, "@_cx") ?? 12192000;
-  const srcHeightEmu = readAttrNumber(sldSz, "@_cy") ?? 6858000;
+  const srcWidthEmu = readAttrNumber(sldSz, "@_cx") ?? DEFAULT_SLIDE_W_EMU;
+  const srcHeightEmu = readAttrNumber(sldSz, "@_cy") ?? DEFAULT_SLIDE_H_EMU;
 
   // Uniform contain-fit into the fixed 1280x720 canvas, centered.
   const scale = Math.min(EDITOR_STAGE_WIDTH / srcWidthEmu, EDITOR_STAGE_HEIGHT / srcHeightEmu);
-  const offsetPxX = (EDITOR_STAGE_WIDTH - srcWidthEmu * scale) / 2;
-  const offsetPxY = (EDITOR_STAGE_HEIGHT - srcHeightEmu * scale) / 2;
-  const geo: GeoContext = { scale, offsetPxX, offsetPxY };
+  const geo: GeoContext = {
+    scale,
+    offsetPxX: (EDITOR_STAGE_WIDTH - srcWidthEmu * scale) / 2,
+    offsetPxY: (EDITOR_STAGE_HEIGHT - srcHeightEmu * scale) / 2,
+  };
 
-  const presRelsXml = await readZipText(zip, "ppt/_rels/presentation.xml.rels");
-  const presRels = presRelsXml ? relationshipMap(parseXml(presRelsXml)) : new Map<string, string>();
+  const deck: DeckContext = { zip, geo, themeCache: new Map(), mediaCache: new Map() };
 
+  const presRels = await readRels(zip, "ppt/presentation.xml");
   const sldIdList = asArray(asRecord(presRoot?.["p:sldIdLst"])?.["p:sldId"]);
   const slidePaths: string[] = [];
   for (const sldId of sldIdList) {
     const rid = readAttrString(asRecord(sldId), "@_r:id");
-    const target = rid ? presRels.get(rid) : null;
-    if (target) slidePaths.push(resolvePath("ppt", target));
+    const target = rid ? presRels.byId.get(rid) : null;
+    if (target) slidePaths.push(target);
   }
   // Fallback: presentation.xml malformed/unreadable list — just take every
   // slideN.xml part in numeric order rather than failing the whole import.
@@ -101,7 +156,7 @@ export async function importPptxFile(file: File): Promise<PptxImportResult> {
   let skippedShapeCount = 0;
   const slides: { ui: Rec }[] = [];
   for (let i = 0; i < slidePaths.length; i++) {
-    const result = await importOneSlide(zip, slidePaths[i], geo, i);
+    const result = await importOneSlide(deck, slidePaths[i], i);
     slides.push({ ui: result.ui });
     skippedShapeCount += result.skipped;
   }
@@ -113,65 +168,43 @@ export async function importPptxFile(file: File): Promise<PptxImportResult> {
   };
 }
 
-type GeoContext = { scale: number; offsetPxX: number; offsetPxY: number };
-
 async function importOneSlide(
-  zip: JSZip,
+  deck: DeckContext,
   slidePath: string,
-  geo: GeoContext,
   index: number,
 ): Promise<{ ui: Rec; skipped: number }> {
-  const slideXml = await readZipText(zip, slidePath);
+  const slideXml = await readZipText(deck.zip, slidePath);
   const components: Rec[] = [];
   let skipped = 0;
   if (!slideXml) return { ui: { id: `imported_slide_${index + 1}`, components }, skipped };
 
-  const slideDir = slidePath.slice(0, slidePath.lastIndexOf("/"));
-  const slideFile = slidePath.slice(slidePath.lastIndexOf("/") + 1);
-  const relsXml = await readZipText(zip, `${slideDir}/_rels/${slideFile}.rels`);
-  const rels = relsXml ? relationshipMap(parseXml(relsXml)) : new Map<string, string>();
+  const rels = await readRels(deck.zip, slidePath);
+  const layoutPath = rels.byType.get("slideLayout")?.[0] ?? null;
+  const theme = await loadTheme(deck, layoutPath);
+  const ctx: PartContext = { deck, rels, theme, order: shapeOrderIndex(slideXml) };
 
   const slide = parseXml(slideXml);
   const cSld = asRecord(asRecord(slide["p:sld"])?.["p:cSld"]);
+
+  const background = await slideBackground(ctx, cSld, layoutPath, index);
+  components.push(background);
+
   const spTree = asRecord(cSld?.["p:spTree"]);
-
-  // Slide background: solid fill only (gradient/image backgrounds are common
-  // but non-trivial to map faithfully — default to white, matching what a
-  // shape-only import already looks reasonable against).
-  const bg = asRecord(asRecord(cSld?.["p:bg"])?.["p:bgPr"]);
-  const bgColor = bg ? solidFillColor(asRecord(bg["a:solidFill"])) : null;
-  components.push({
-    id: `imported_bg_${index + 1}`,
-    position: { x: 0, y: 0 },
-    size: { width: EDITOR_STAGE_WIDTH, height: EDITOR_STAGE_HEIGHT },
-    elements: [
-      {
-        type: "rectangle",
-        name: "background",
-        decorative: true,
-        position: { x: 0, y: 0 },
-        size: { width: EDITOR_STAGE_WIDTH, height: EDITOR_STAGE_HEIGHT },
-        fill: { color: bgColor ?? "#FFFFFF", opacity: 1 },
-      },
-    ],
-  });
-
   if (spTree) {
-    const shapes = topLevelShapes(spTree);
     let counter = 0;
-    for (const { key, node } of shapes) {
-      const built = await buildShapesFromNode(key, node, geo, zip, slideDir, rels);
+    for (const { key, node } of childShapes(spTree, ctx.order)) {
+      const built = await buildShapesFromNode(key, node, ctx, IDENTITY_TRANSFORM);
       for (const element of built.elements) {
         counter++;
         components.push({
           id: `imported_${index + 1}_${counter}`,
-          position: { x: element.position.x, y: element.position.y },
-          size: { width: element.size.width, height: element.size.height },
+          position: { x: element.box.x, y: element.box.y },
+          size: { width: element.box.width, height: element.box.height },
           elements: [
             {
               ...element.el,
               position: { x: 0, y: 0 },
-              size: { width: element.size.width, height: element.size.height },
+              size: { width: element.box.width, height: element.box.height },
               __presenton_manual_position: true,
             },
           ],
@@ -184,7 +217,84 @@ async function importOneSlide(
   return { ui: { id: `imported_slide_${index + 1}`, components }, skipped };
 }
 
-type BuiltElement = { el: Rec; position: { x: number; y: number }; size: { width: number; height: number } };
+// ---------------------------------------------------------------- background
+
+/** Slide background, falling back to the layout's and then the master's when
+ * the slide itself declares none — which is how most PowerPoint decks store
+ * it. Solid fills and picture fills are both honoured; anything else lands on
+ * white, which shape content still reads acceptably against. */
+async function slideBackground(
+  ctx: PartContext,
+  cSld: Rec | null,
+  layoutPath: string | null,
+  index: number,
+): Promise<Rec> {
+  const full = { x: 0, y: 0, width: EDITOR_STAGE_WIDTH, height: EDITOR_STAGE_HEIGHT };
+  const chain: { bg: Rec | null; ctx: PartContext }[] = [{ bg: asRecord(cSld?.["p:bg"]), ctx }];
+
+  if (!chain[0].bg && layoutPath) {
+    const layoutCtx: PartContext = { ...ctx, rels: await readRels(ctx.deck.zip, layoutPath) };
+    const layout = parseXml((await readZipText(ctx.deck.zip, layoutPath)) ?? "");
+    const layoutCSld = asRecord(asRecord(layout["p:sldLayout"])?.["p:cSld"]);
+    chain.push({ bg: asRecord(layoutCSld?.["p:bg"]), ctx: layoutCtx });
+
+    const masterPath = layoutCtx.rels.byType.get("slideMaster")?.[0] ?? null;
+    if (masterPath) {
+      const masterCtx: PartContext = { ...ctx, rels: await readRels(ctx.deck.zip, masterPath) };
+      const master = parseXml((await readZipText(ctx.deck.zip, masterPath)) ?? "");
+      const masterCSld = asRecord(asRecord(master["p:sldMaster"])?.["p:cSld"]);
+      chain.push({ bg: asRecord(masterCSld?.["p:bg"]), ctx: masterCtx });
+    }
+  }
+
+  for (const step of chain) {
+    if (!step.bg) continue;
+    const bgPr = asRecord(step.bg["p:bgPr"]);
+    if (bgPr) {
+      const picture = await imageFromBlipFill(asRecord(bgPr["a:blipFill"]), step.ctx, full);
+      if (picture) return backgroundComponent(index, { ...picture, name: "background", decorative: true });
+      const fill = fillOf(bgPr, step.ctx.theme);
+      if (fill) return backgroundComponent(index, backgroundRect(fill));
+    }
+    // <p:bgRef idx=".."><a:schemeClr val="lt1"/></p:bgRef> — the indexed theme
+    // fill style is approximated by its colour, which is what it resolves to
+    // for the overwhelmingly common "solid fill" entries.
+    const bgRef = asRecord(step.bg["p:bgRef"]);
+    const refColor = bgRef ? colorOf(bgRef, step.ctx.theme) : null;
+    if (refColor) return backgroundComponent(index, backgroundRect(refColor));
+  }
+
+  return backgroundComponent(index, backgroundRect({ color: "#FFFFFF", opacity: 1 }));
+}
+
+function backgroundRect(fill: { color: string; opacity: number }): Rec {
+  return {
+    type: "rectangle",
+    name: "background",
+    decorative: true,
+    fill,
+  };
+}
+
+function backgroundComponent(index: number, element: Rec): Rec {
+  return {
+    id: `imported_bg_${index + 1}`,
+    position: { x: 0, y: 0 },
+    size: { width: EDITOR_STAGE_WIDTH, height: EDITOR_STAGE_HEIGHT },
+    elements: [
+      {
+        ...element,
+        position: { x: 0, y: 0 },
+        size: { width: EDITOR_STAGE_WIDTH, height: EDITOR_STAGE_HEIGHT },
+      },
+    ],
+  };
+}
+
+// -------------------------------------------------------------------- shapes
+
+type Box = { x: number; y: number; width: number; height: number };
+type BuiltElement = { el: Rec; box: Box };
 
 /** A node's own transform composed with whatever group transform it's
  * nested inside (identity at the top level). Lets group children resolve to
@@ -193,55 +303,69 @@ type NodeTransform = { offX: number; offY: number; scaleX: number; scaleY: numbe
 
 const IDENTITY_TRANSFORM: NodeTransform = { offX: 0, offY: 0, scaleX: 1, scaleY: 1 };
 
-function topLevelShapes(spTree: Rec): { key: string; node: Rec }[] {
-  const out: { key: string; node: Rec }[] = [];
+/** Ranks every shape by where its `p:cNvPr` appears in the raw slide XML.
+ * The XML parser groups siblings by tag name, which loses the document order
+ * that IS the z-order — without this, every grouped shape would paint on top
+ * of every ungrouped one and cover the text underneath. Shape ids are unique
+ * within a slide, so the first `cNvPr` of each shape ranks it. */
+function shapeOrderIndex(xml: string): Map<string, number> {
+  const order = new Map<string, number>();
+  let rank = 0;
+  for (const match of xml.matchAll(/<p:cNvPr\b[^>]*\bid="([^"]+)"/g)) {
+    if (!order.has(match[1])) order.set(match[1], rank);
+    rank++;
+  }
+  return order;
+}
+
+function shapeId(node: Rec): string | null {
+  for (const [key, value] of Object.entries(node)) {
+    if (!key.startsWith("p:nv")) continue;
+    const id = readAttrString(asRecord(asRecord(value)?.["p:cNvPr"]), "@_id");
+    if (id) return id;
+  }
+  return null;
+}
+
+function childShapes(tree: Rec, order: Map<string, number>): { key: string; node: Rec }[] {
+  const out: { key: string; node: Rec; rank: number }[] = [];
   for (const key of ["p:sp", "p:pic", "p:cxnSp", "p:grpSp", "p:graphicFrame"]) {
-    for (const node of asArray(spTree[key])) {
+    for (const node of asArray(tree[key])) {
       const rec = asRecord(node);
-      if (rec) out.push({ key, node: rec });
+      if (!rec) continue;
+      const id = shapeId(rec);
+      out.push({ key, node: rec, rank: (id ? order.get(id) : null) ?? Number.MAX_SAFE_INTEGER });
     }
   }
-  return out;
+  return out.sort((a, b) => a.rank - b.rank).map(({ key, node }) => ({ key, node }));
 }
 
 async function buildShapesFromNode(
   key: string,
   node: Rec,
-  geo: GeoContext,
-  zip: JSZip,
-  slideDir: string,
-  rels: Map<string, string>,
-  parentTransform: NodeTransform = IDENTITY_TRANSFORM,
+  ctx: PartContext,
+  transform: NodeTransform,
 ): Promise<{ elements: BuiltElement[]; skipped: number }> {
-  if (key === "p:grpSp") {
-    return buildGroup(node, geo, zip, slideDir, rels, parentTransform);
-  }
-  if (key === "p:sp") {
-    const shape = buildShape(node, geo, parentTransform);
-    return shape ? { elements: [shape], skipped: 0 } : { elements: [], skipped: 1 };
-  }
+  if (key === "p:grpSp") return buildGroup(node, ctx, transform);
+  if (key === "p:sp") return buildShape(node, ctx, transform);
   if (key === "p:cxnSp") {
-    const line = buildLine(node, geo, parentTransform);
-    return line ? { elements: [line], skipped: 0 } : { elements: [], skipped: 1 };
+    const line = buildLine(node, ctx, transform);
+    return { elements: line ? [line] : [], skipped: 0 };
   }
   if (key === "p:pic") {
-    const image = await buildPicture(node, geo, zip, slideDir, rels, parentTransform);
-    return image ? { elements: [image], skipped: 0 } : { elements: [], skipped: 1 };
+    const image = await buildPicture(node, ctx, transform);
+    return { elements: image ? [image] : [], skipped: image ? 0 : 1 };
   }
-  // p:graphicFrame (charts/tables/SmartArt) — explicitly out of scope for v1.
+  // p:graphicFrame (charts/tables/SmartArt) — out of scope, reported instead.
   return { elements: [], skipped: 1 };
 }
 
 async function buildGroup(
   node: Rec,
-  geo: GeoContext,
-  zip: JSZip,
-  slideDir: string,
-  rels: Map<string, string>,
+  ctx: PartContext,
   parentTransform: NodeTransform,
 ): Promise<{ elements: BuiltElement[]; skipped: number }> {
-  const grpPr = asRecord(node["p:grpSpPr"]);
-  const xfrm = asRecord(grpPr?.["a:xfrm"]);
+  const xfrm = asRecord(asRecord(node["p:grpSpPr"])?.["a:xfrm"]);
   const off = asRecord(xfrm?.["a:off"]);
   const ext = asRecord(xfrm?.["a:ext"]);
   const chOff = asRecord(xfrm?.["a:chOff"]);
@@ -268,8 +392,8 @@ async function buildGroup(
 
   const elements: BuiltElement[] = [];
   let skipped = 0;
-  for (const { key, node: child } of topLevelShapes(node)) {
-    const built = await buildShapesFromNode(key, child, geo, zip, slideDir, rels, transform);
+  for (const { key, node: child } of childShapes(node, ctx.order)) {
+    const built = await buildShapesFromNode(key, child, ctx, transform);
     elements.push(...built.elements);
     skipped += built.skipped;
   }
@@ -281,11 +405,7 @@ function emuToPx(emu: number, geo: GeoContext, transform: NodeTransform, axis: "
   return axis === "x" ? geo.offsetPxX + composed * geo.scale : geo.offsetPxY + composed * geo.scale;
 }
 
-function shapeBox(
-  spPr: Rec | null,
-  geo: GeoContext,
-  transform: NodeTransform,
-): { x: number; y: number; width: number; height: number } | null {
+function shapeBox(spPr: Rec | null, geo: GeoContext, transform: NodeTransform): Box | null {
   const xfrm = asRecord(spPr?.["a:xfrm"]);
   const off = asRecord(xfrm?.["a:off"]);
   const ext = asRecord(xfrm?.["a:ext"]);
@@ -294,98 +414,148 @@ function shapeBox(
   const cxEmu = readAttrNumber(ext, "@_cx");
   const cyEmu = readAttrNumber(ext, "@_cy");
   if (xEmu == null || yEmu == null || cxEmu == null || cyEmu == null) return null;
-  const x = emuToPx(xEmu, geo, transform, "x");
-  const y = emuToPx(yEmu, geo, transform, "y");
-  const width = Math.max(1, cxEmu * transform.scaleX * geo.scale);
-  const height = Math.max(1, cyEmu * transform.scaleY * geo.scale);
-  return { x, y, width, height };
+  return {
+    x: emuToPx(xEmu, geo, transform, "x"),
+    y: emuToPx(yEmu, geo, transform, "y"),
+    width: Math.max(1, cxEmu * transform.scaleX * geo.scale),
+    height: Math.max(1, cyEmu * transform.scaleY * geo.scale),
+  };
 }
 
-function buildShape(node: Rec, geo: GeoContext, transform: NodeTransform): BuiltElement | null {
-  const spPr = asRecord(node["p:spPr"]);
-  const box = shapeBox(spPr, geo, transform);
-  if (!box) return null;
+/** `rot` is stored in 60000ths of a degree. Both the editor and PowerPoint
+ * rotate around the shape's centre, so no offset compensation is needed. */
+function shapeRotation(spPr: Rec | null): number | null {
+  const rot = readAttrNumber(asRecord(spPr?.["a:xfrm"]), "@_rot");
+  if (rot == null || rot === 0) return null;
+  const degrees = ((rot / 60000) % 360 + 360) % 360;
+  return degrees === 0 ? null : degrees;
+}
 
-  const txBody = asRecord(node["p:txBody"]);
-  const runs = txBody ? textRunsFromBody(txBody) : [];
-  if (runs.length) {
-    const fill = solidFillColor(asRecord(spPr?.["a:solidFill"]));
-    const el: Rec = {
-      type: "text",
-      runs,
-      position: { x: 0, y: 0 },
-      size: { width: box.width, height: box.height },
-      ...(fill ? { fill: { color: fill, opacity: 1 } } : {}),
-    };
-    return { el, position: box, size: box };
+function shapeFlip(spPr: Rec | null): { flip_h?: boolean; flip_v?: boolean } {
+  const xfrm = asRecord(spPr?.["a:xfrm"]);
+  const out: { flip_h?: boolean; flip_v?: boolean } = {};
+  if (readAttrBoolean(xfrm, "@_flipH")) out.flip_h = true;
+  if (readAttrBoolean(xfrm, "@_flipV")) out.flip_v = true;
+  return out;
+}
+
+async function buildShape(
+  node: Rec,
+  ctx: PartContext,
+  transform: NodeTransform,
+): Promise<{ elements: BuiltElement[]; skipped: number }> {
+  const spPr = asRecord(node["p:spPr"]);
+  const box = shapeBox(spPr, ctx.deck.geo, transform);
+  if (!box) return { elements: [], skipped: 0 };
+
+  const rotation = shapeRotation(spPr);
+  const elements: BuiltElement[] = [];
+
+  // A shape can carry a picture fill instead of a colour — Canva exports every
+  // photo that way (as a custGeom with a:blipFill) and uses p:pic almost never,
+  // so treating these as plain rectangles loses all the imagery in the deck.
+  const picture = await imageFromBlipFill(asRecord(spPr?.["a:blipFill"]), ctx, box);
+  if (picture) {
+    elements.push({ el: withRotation({ ...picture, ...shapeFlip(spPr) }, rotation), box });
   }
 
-  // No text — a plain autoshape. Approximate every non-rect/ellipse preset
-  // geometry (rounded rect, chevron, star, ...) as a rectangle rather than
-  // dropping it; a slightly-wrong shape reads better than a missing one.
-  const prstGeom = asRecord(spPr?.["a:prstGeom"]);
-  const prst = readAttrString(prstGeom, "@_prst");
-  const isEllipse = prst === "ellipse";
-  const fill = solidFillColor(asRecord(spPr?.["a:solidFill"]));
-  const stroke = solidLineColor(asRecord(spPr?.["a:ln"]));
-  const el: Rec = {
-    type: isEllipse ? "ellipse" : "rectangle",
-    position: { x: 0, y: 0 },
-    size: { width: box.width, height: box.height },
-    fill: { color: fill ?? "#CBD2D9", opacity: fill ? 1 : 0.6 },
-    ...(stroke ? { stroke } : {}),
-  };
-  return { el, position: box, size: box };
+  const text = textElement(node, ctx, box);
+  if (text) {
+    elements.push({ el: withRotation(text, rotation), box });
+    return { elements, skipped: 0 };
+  }
+  if (picture) return { elements, skipped: 0 };
+
+  // No text and no picture — a plain autoshape. Approximate every non-ellipse
+  // preset geometry (rounded rect, chevron, star, ...) as a rectangle rather
+  // than dropping it; a slightly-wrong shape reads better than a missing one.
+  const fill = fillOf(spPr, ctx.theme) ?? styleRefFill(node, ctx.theme);
+  const stroke = strokeOf(asRecord(spPr?.["a:ln"]), ctx.theme, ctx.deck.geo);
+  // Invisible by design (no fill, no outline): drawing a placeholder box would
+  // add clutter the source deck never showed, so drop it — and don't count it
+  // as skipped, since nothing visible was lost.
+  if (!fill && !stroke) return { elements, skipped: 0 };
+
+  const prst = readAttrString(asRecord(spPr?.["a:prstGeom"]), "@_prst");
+  elements.push({
+    el: withRotation(
+      {
+        type: prst === "ellipse" ? "ellipse" : "rectangle",
+        ...(fill ? { fill } : {}),
+        ...(stroke ? { stroke } : {}),
+      },
+      rotation,
+    ),
+    box,
+  });
+  return { elements, skipped: 0 };
 }
 
-function buildLine(node: Rec, geo: GeoContext, transform: NodeTransform): BuiltElement | null {
+function buildLine(node: Rec, ctx: PartContext, transform: NodeTransform): BuiltElement | null {
   const spPr = asRecord(node["p:spPr"]);
-  const box = shapeBox(spPr, geo, transform);
+  const box = shapeBox(spPr, ctx.deck.geo, transform);
   if (!box) return null;
-  const stroke = solidLineColor(asRecord(spPr?.["a:ln"])) ?? { color: "#111827", opacity: 1, width: 2 };
-  const el: Rec = {
-    type: "line",
-    position: { x: 0, y: 0 },
-    size: { width: box.width, height: box.height },
-    stroke,
-  };
-  return { el, position: box, size: box };
+  const stroke =
+    strokeOf(asRecord(spPr?.["a:ln"]), ctx.theme, ctx.deck.geo) ??
+    styleRefStroke(node, ctx.theme) ?? { color: "#111827", opacity: 1, width: 2 };
+  return { el: withRotation({ type: "line", stroke }, shapeRotation(spPr)), box };
 }
 
 async function buildPicture(
   node: Rec,
-  geo: GeoContext,
-  zip: JSZip,
-  slideDir: string,
-  rels: Map<string, string>,
+  ctx: PartContext,
   transform: NodeTransform,
 ): Promise<BuiltElement | null> {
   const spPr = asRecord(node["p:spPr"]);
-  const box = shapeBox(spPr, geo, transform);
+  const box = shapeBox(spPr, ctx.deck.geo, transform);
   if (!box) return null;
+  const picture = await imageFromBlipFill(asRecord(node["p:blipFill"]), ctx, box);
+  if (!picture) return null;
+  return { el: withRotation({ ...picture, ...shapeFlip(spPr) }, shapeRotation(spPr)), box };
+}
 
-  const blipFill = asRecord(node["p:blipFill"]);
+function withRotation(el: Rec, rotation: number | null): Rec {
+  return rotation == null ? el : { ...el, rotation };
+}
+
+async function imageFromBlipFill(
+  blipFill: Rec | null,
+  ctx: PartContext,
+  box: Box,
+): Promise<Rec | null> {
   const blip = asRecord(blipFill?.["a:blip"]);
   const rid = readAttrString(blip, "@_r:embed");
-  const target = rid ? rels.get(rid) : null;
+  const target = rid ? ctx.rels.byId.get(rid) : null;
   if (!target) return null;
-  const mediaPath = resolvePath(slideDir, target);
-  const entry = zip.file(mediaPath);
-  if (!entry) return null;
 
-  const base64 = await entry.async("base64");
-  const mime = mimeTypeFor(mediaPath);
-  if (!mime) return null; // unsupported/vector media (e.g. .wmf/.emf) — skip rather than embed garbage
-  const dataUrl = `data:${mime};base64,${base64}`;
+  const dataUrl = await mediaDataUrl(ctx.deck, target);
+  if (!dataUrl) return null; // unsupported/vector media (.wmf/.emf) — skip rather than embed garbage
 
-  const el: Rec = {
+  // `alphaModFix` is how a translucent picture fill is stored (Canva uses it
+  // for the faint tiled patterns behind a slide); ignoring it renders those at
+  // full strength and buries the actual content underneath.
+  const alpha = readAttrNumber(asRecord(blip?.["a:alphaModFix"]), "@_amt");
+  const opacity = alpha == null ? null : clamp01(alpha / 100000);
+
+  return {
     type: "image",
     data: dataUrl,
     fit: "fill",
-    position: { x: 0, y: 0 },
     size: { width: box.width, height: box.height },
+    ...(opacity != null && opacity < 1 ? { opacity } : {}),
   };
-  return { el, position: box, size: box };
+}
+
+async function mediaDataUrl(deck: DeckContext, path: string): Promise<string | null> {
+  const cached = deck.mediaCache.get(path);
+  if (cached !== undefined) return cached;
+
+  const entry = deck.zip.file(path);
+  const mime = mimeTypeFor(path);
+  let dataUrl: string | null = null;
+  if (entry && mime) dataUrl = `data:${mime};base64,${await entry.async("base64")}`;
+  deck.mediaCache.set(path, dataUrl);
+  return dataUrl;
 }
 
 function mimeTypeFor(path: string): string | null {
@@ -401,68 +571,422 @@ function mimeTypeFor(path: string): string | null {
   }
 }
 
-function textRunsFromBody(txBody: Rec): Rec[] {
-  const paragraphs = asArray(txBody["a:p"]);
-  const runs: Rec[] = [];
-  paragraphs.forEach((p, pIndex) => {
+// ---------------------------------------------------------------------- text
+
+function textElement(node: Rec, ctx: PartContext, box: Box): Rec | null {
+  const txBody = asRecord(node["p:txBody"]);
+  if (!txBody) return null;
+
+  const bodyPr = asRecord(txBody["a:bodyPr"]);
+  // Body-level defaults a run inherits when it doesn't set its own properties.
+  const bodyDefaults = asRecord(
+    asRecord(asRecord(txBody["a:lstStyle"])?.["a:lvl1pPr"])?.["a:defRPr"],
+  );
+  const styleColor = styleRefFontColor(node, ctx.theme);
+
+  let firstFont: Rec | null = null;
+  let firstFontPt: number | null = null;
+  let lineSpacing: { pct?: number; pts?: number } | null = null;
+  let align: string | null = null;
+
+  // Paragraphs are collected separately so trailing empty ones (very common —
+  // they only exist to hold cursor state) don't leave stray blank lines.
+  const paragraphRuns: Rec[][] = [];
+  for (const p of asArray(txBody["a:p"])) {
     const para = asRecord(p);
-    if (!para) return;
-    if (pIndex > 0) runs.push({ text: "\n" });
+    if (!para) continue;
+    const pPr = asRecord(para["a:pPr"]);
+    const paraDefaults = asRecord(pPr?.["a:defRPr"]) ?? bodyDefaults;
+    if (align == null) align = readAttrString(pPr, "@_algn");
+    if (lineSpacing == null) lineSpacing = lineSpacingOf(pPr);
+
+    const current: Rec[] = [];
     for (const r of asArray(para["a:r"])) {
       const run = asRecord(r);
       if (!run) continue;
       const text = readText(run["a:t"]);
       if (!text) continue;
       const rPr = asRecord(run["a:rPr"]);
-      const font = fontFromRunProps(rPr);
-      runs.push(font ? { text, font } : { text });
+      const sizePt = readAttrNumber(rPr, "@_sz") ?? readAttrNumber(paraDefaults, "@_sz");
+      const font = runFont(rPr, paraDefaults, ctx, styleColor);
+      if (!firstFont && font) {
+        firstFont = font;
+        firstFontPt = sizePt == null ? null : sizePt / 100;
+      }
+      current.push(font ? { text, font } : { text });
     }
+    paragraphRuns.push(current);
+  }
+  while (paragraphRuns.length > 0 && paragraphRuns[paragraphRuns.length - 1].length === 0) {
+    paragraphRuns.pop();
+  }
+
+  const runs: Rec[] = [];
+  paragraphRuns.forEach((paragraph, pIndex) => {
+    if (pIndex > 0) runs.push({ text: "\n" });
+    runs.push(...paragraph);
   });
-  return runs;
+
+  if (runs.length === 0) return null;
+
+  const lineHeight = lineHeightOf(lineSpacing, firstFontPt);
+  const elementFont: Rec = { ...(firstFont ?? {}) };
+  if (lineHeight != null) elementFont.line_height = lineHeight;
+
+  const alignment: Rec = {};
+  const horizontal = horizontalAlignment(align);
+  const vertical = verticalAlignment(readAttrString(bodyPr, "@_anchor"));
+  if (horizontal) alignment.horizontal = horizontal;
+  if (vertical) alignment.vertical = vertical;
+
+  const fill = fillOf(asRecord(node["p:spPr"]), ctx.theme);
+
+  return {
+    type: "text",
+    runs,
+    ...(Object.keys(elementFont).length ? { font: elementFont } : {}),
+    ...(Object.keys(alignment).length ? { alignment } : {}),
+    ...(fill ? { fill } : {}),
+    size: { width: box.width, height: box.height },
+  };
 }
 
-function fontFromRunProps(rPr: Rec | null): Rec | null {
-  if (!rPr) return null;
-  const szCentipoints = readAttrNumber(rPr, "@_sz");
-  const bold = readAttrString(rPr, "@_b") === "1";
-  const italic = readAttrString(rPr, "@_i") === "1";
-  const underline = readAttrString(rPr, "@_u") != null && readAttrString(rPr, "@_u") !== "none";
-  const color = solidFillColor(asRecord(rPr["a:solidFill"]));
+function runFont(
+  rPr: Rec | null,
+  defaults: Rec | null,
+  ctx: PartContext,
+  styleColor: { color: string; opacity: number } | null,
+): Rec | null {
   const font: Rec = {};
-  if (szCentipoints != null) font.size = Math.round((szCentipoints / 100) * PT_TO_PX);
+  const sizePt = readAttrNumber(rPr, "@_sz") ?? readAttrNumber(defaults, "@_sz");
+  if (sizePt != null) font.size = fontPx(sizePt, ctx.deck.geo);
+
+  const bold = readAttrBoolean(rPr, "@_b") ?? readAttrBoolean(defaults, "@_b");
   if (bold) font.bold = true;
+  const italic = readAttrBoolean(rPr, "@_i") ?? readAttrBoolean(defaults, "@_i");
   if (italic) font.italic = true;
-  if (underline) font.underline = true;
-  if (color) font.color = color;
+  const underline = readAttrString(rPr, "@_u") ?? readAttrString(defaults, "@_u");
+  if (underline && underline !== "none") font.underline = true;
+
+  const color =
+    (rPr ? colorOf(asRecord(rPr["a:solidFill"]), ctx.theme) : null) ??
+    (defaults ? colorOf(asRecord(defaults["a:solidFill"]), ctx.theme) : null) ??
+    styleColor;
+  if (color) {
+    font.color = color.color;
+    if (color.opacity < 1) font.opacity = color.opacity;
+  }
+
+  const family = fontFamilyOf(rPr, ctx.theme) ?? fontFamilyOf(defaults, ctx.theme);
+  if (family) font.family = family;
+
   return Object.keys(font).length ? font : null;
 }
 
-function solidFillColor(solidFill: Rec | null): string | null {
-  if (!solidFill) return null;
-  const srgb = asRecord(solidFill["a:srgbClr"]);
-  const val = readAttrString(srgb, "@_val");
-  return val ? `#${val.toUpperCase()}` : null; // theme colors (a:schemeClr) intentionally unresolved for v1
+/** Point sizes are relative to the source slide, so they scale by exactly the
+ * same factor as every position and length on it. */
+function fontPx(sizeHundredthsPt: number, geo: GeoContext): number {
+  return Math.max(1, Math.round((sizeHundredthsPt / 100) * EMU_PER_POINT * geo.scale));
 }
 
-function solidLineColor(ln: Rec | null): Rec | null {
+function fontFamilyOf(rPr: Rec | null, theme: ThemeContext | null): string | null {
+  const typeface = readAttrString(asRecord(rPr?.["a:latin"]), "@_typeface");
+  if (!typeface) return null;
+  if (typeface === "+mj-lt") return theme?.majorFont ?? null;
+  if (typeface === "+mn-lt") return theme?.minorFont ?? null;
+  return typeface;
+}
+
+function lineSpacingOf(pPr: Rec | null): { pct?: number; pts?: number } | null {
+  const lnSpc = asRecord(pPr?.["a:lnSpc"]);
+  if (!lnSpc) return null;
+  const pct = readAttrNumber(asRecord(lnSpc["a:spcPct"]), "@_val");
+  if (pct != null) return { pct: pct / 100000 };
+  const pts = readAttrNumber(asRecord(lnSpc["a:spcPts"]), "@_val");
+  if (pts != null) return { pts: pts / 100 };
+  return null;
+}
+
+/** Exact (`spcPts`) line spacing is an absolute point height, so it only maps
+ * onto the editor's multiplier once divided by the font size it applies to. */
+function lineHeightOf(
+  spacing: { pct?: number; pts?: number } | null,
+  fontPt: number | null,
+): number | null {
+  if (!spacing) return null;
+  if (spacing.pct != null) return round2(spacing.pct);
+  if (spacing.pts != null && fontPt && fontPt > 0) return round2(spacing.pts / fontPt);
+  return null;
+}
+
+function horizontalAlignment(algn: string | null): string | null {
+  switch (algn) {
+    case "ctr": return "center";
+    case "r": return "right";
+    case "l": case "just": case "justLow": case "dist": return "left";
+    default: return null;
+  }
+}
+
+function verticalAlignment(anchor: string | null): string | null {
+  switch (anchor) {
+    case "ctr": return "middle";
+    case "b": return "bottom";
+    case "t": return "top";
+    default: return null;
+  }
+}
+
+// -------------------------------------------------------------------- colors
+
+/** Reads whichever colour choice a fill/reference element carries, applying
+ * the DrawingML colour transforms (alpha/lum/shade/tint) layered on top. */
+function colorOf(container: Rec | null, theme: ThemeContext | null): { color: string; opacity: number } | null {
+  if (!container) return null;
+
+  const srgb = asRecord(container["a:srgbClr"]);
+  const scheme = asRecord(container["a:schemeClr"]);
+  const sys = asRecord(container["a:sysClr"]);
+  const scrgb = asRecord(container["a:scrgbClr"]);
+  const node = srgb ?? scheme ?? sys ?? scrgb;
+  if (!node) return null;
+
+  let base: string | null = null;
+  if (srgb) {
+    const val = readAttrString(srgb, "@_val");
+    base = val ? `#${val.toUpperCase()}` : null;
+  } else if (scheme) {
+    base = schemeColor(readAttrString(scheme, "@_val"), theme);
+  } else if (sys) {
+    const val = readAttrString(sys, "@_lastClr");
+    base = val ? `#${val.toUpperCase()}` : null;
+  } else if (scrgb) {
+    const r = readAttrNumber(scrgb, "@_r");
+    const g = readAttrNumber(scrgb, "@_g");
+    const b = readAttrNumber(scrgb, "@_b");
+    if (r != null && g != null && b != null) {
+      base = rgbToHex([
+        Math.round((r / 100000) * 255),
+        Math.round((g / 100000) * 255),
+        Math.round((b / 100000) * 255),
+      ]);
+    }
+  }
+  if (!base) return null;
+
+  let rgb = hexToRgb(base);
+  const lumMod = readAttrNumber(asRecord(node["a:lumMod"]), "@_val");
+  const lumOff = readAttrNumber(asRecord(node["a:lumOff"]), "@_val");
+  const shade = readAttrNumber(asRecord(node["a:shade"]), "@_val");
+  const tint = readAttrNumber(asRecord(node["a:tint"]), "@_val");
+  if (lumMod != null || lumOff != null) rgb = applyLuminance(rgb, lumMod, lumOff);
+  if (shade != null) rgb = rgb.map((c) => clampByte(c * (shade / 100000))) as [number, number, number];
+  if (tint != null) {
+    const k = tint / 100000;
+    rgb = rgb.map((c) => clampByte(c * k + 255 * (1 - k))) as [number, number, number];
+  }
+
+  const alpha = readAttrNumber(asRecord(node["a:alpha"]), "@_val");
+  return { color: rgbToHex(rgb), opacity: alpha == null ? 1 : clamp01(alpha / 100000) };
+}
+
+function schemeColor(val: string | null, theme: ThemeContext | null): string | null {
+  if (!val || !theme) return null;
+  // bg1/tx1/bg2/tx2 are indirections the master's colour map resolves.
+  const mapped = theme.clrMap[val] ?? val;
+  return theme.colors.get(mapped) ?? theme.colors.get(val) ?? null;
+}
+
+/** Solid fill, or a gradient approximated by its first stop — a flat colour in
+ * roughly the right hue beats the grey placeholder a dropped fill produced. */
+function fillOf(spPr: Rec | null, theme: ThemeContext | null): { color: string; opacity: number } | null {
+  if (!spPr) return null;
+  if (spPr["a:noFill"] !== undefined) return null;
+  const solid = colorOf(asRecord(spPr["a:solidFill"]), theme);
+  if (solid) return solid;
+  const stops = asArray(asRecord(asRecord(spPr["a:gradFill"])?.["a:gsLst"])?.["a:gs"]);
+  for (const stop of stops) {
+    const color = colorOf(asRecord(stop), theme);
+    if (color) return color;
+  }
+  return null;
+}
+
+function strokeOf(
+  ln: Rec | null,
+  theme: ThemeContext | null,
+  geo: GeoContext,
+): { color: string; opacity: number; width: number } | null {
   if (!ln) return null;
-  const color = solidFillColor(asRecord(ln["a:solidFill"]));
+  if (ln["a:noFill"] !== undefined) return null;
+  const color = colorOf(asRecord(ln["a:solidFill"]), theme);
   if (!color) return null;
   const widthEmu = readAttrNumber(ln, "@_w");
-  const widthPx = widthEmu ? Math.max(1, (widthEmu / EMU_PER_INCH) * CANVAS_PX_PER_INCH) : 1;
-  return { color, opacity: 1, width: widthPx };
+  return {
+    ...color,
+    width: widthEmu ? Math.max(1, Math.round(widthEmu * geo.scale)) : 1,
+  };
 }
 
-function relationshipMap(relsDoc: Rec): Map<string, string> {
-  const map = new Map<string, string>();
-  const rels = asRecord(relsDoc["Relationships"]);
-  for (const rel of asArray(rels?.["Relationship"])) {
+/** PowerPoint shapes very often carry no explicit fill and get their colour
+ * from the theme's style matrix instead (`p:style`). The indexed matrix entry
+ * isn't resolved here, but its colour reference is — which is the part that
+ * actually determines what the shape looks like. */
+function styleRefFill(node: Rec, theme: ThemeContext | null): { color: string; opacity: number } | null {
+  return colorOf(asRecord(asRecord(node["p:style"])?.["a:fillRef"]), theme);
+}
+
+function styleRefStroke(
+  node: Rec,
+  theme: ThemeContext | null,
+): { color: string; opacity: number; width: number } | null {
+  const color = colorOf(asRecord(asRecord(node["p:style"])?.["a:lnRef"]), theme);
+  return color ? { ...color, width: 1 } : null;
+}
+
+function styleRefFontColor(node: Rec, theme: ThemeContext | null): { color: string; opacity: number } | null {
+  return colorOf(asRecord(asRecord(node["p:style"])?.["a:fontRef"]), theme);
+}
+
+function applyLuminance(
+  rgb: [number, number, number],
+  lumMod: number | null,
+  lumOff: number | null,
+): [number, number, number] {
+  const [h, s, l] = rgbToHsl(rgb);
+  let lum = l;
+  if (lumMod != null) lum *= lumMod / 100000;
+  if (lumOff != null) lum += lumOff / 100000;
+  return hslToRgb(h, s, clamp01(lum));
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  const value = hex.replace("#", "");
+  const full = value.length === 3 ? value.split("").map((c) => c + c).join("") : value.padEnd(6, "0");
+  return [
+    parseInt(full.slice(0, 2), 16) || 0,
+    parseInt(full.slice(2, 4), 16) || 0,
+    parseInt(full.slice(4, 6), 16) || 0,
+  ];
+}
+
+function rgbToHex(rgb: [number, number, number] | number[]): string {
+  return `#${rgb.map((c) => clampByte(c).toString(16).padStart(2, "0")).join("").toUpperCase()}`;
+}
+
+function rgbToHsl([r, g, b]: [number, number, number]): [number, number, number] {
+  const rn = r / 255;
+  const gn = g / 255;
+  const bn = b / 255;
+  const max = Math.max(rn, gn, bn);
+  const min = Math.min(rn, gn, bn);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h: number;
+  if (max === rn) h = ((gn - bn) / d + (gn < bn ? 6 : 0)) / 6;
+  else if (max === gn) h = ((bn - rn) / d + 2) / 6;
+  else h = ((rn - gn) / d + 4) / 6;
+  return [h, s, l];
+}
+
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  if (s === 0) {
+    const v = clampByte(l * 255);
+    return [v, v, v];
+  }
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const channel = (t: number) => {
+    let x = t;
+    if (x < 0) x += 1;
+    if (x > 1) x -= 1;
+    if (x < 1 / 6) return p + (q - p) * 6 * x;
+    if (x < 1 / 2) return q;
+    if (x < 2 / 3) return p + (q - p) * (2 / 3 - x) * 6;
+    return p;
+  };
+  return [
+    clampByte(channel(h + 1 / 3) * 255),
+    clampByte(channel(h) * 255),
+    clampByte(channel(h - 1 / 3) * 255),
+  ];
+}
+
+// -------------------------------------------------------- parts & references
+
+async function readRels(zip: JSZip, partPath: string): Promise<Rels> {
+  const dir = partPath.slice(0, partPath.lastIndexOf("/"));
+  const file = partPath.slice(partPath.lastIndexOf("/") + 1);
+  const xml = await readZipText(zip, `${dir}/_rels/${file}.rels`);
+  if (!xml) return EMPTY_RELS;
+
+  const byId = new Map<string, string>();
+  const byType = new Map<string, string[]>();
+  const relationships = asRecord(parseXml(xml)["Relationships"]);
+  for (const rel of asArray(relationships?.["Relationship"])) {
     const rec = asRecord(rel);
     const id = readAttrString(rec, "@_Id");
     const target = readAttrString(rec, "@_Target");
-    if (id && target) map.set(id, target);
+    if (!target || readAttrString(rec, "@_TargetMode") === "External") continue;
+    const resolved = resolvePath(dir, target);
+    if (id) byId.set(id, resolved);
+    const type = readAttrString(rec, "@_Type")?.split("/").pop();
+    if (type) byType.set(type, [...(byType.get(type) ?? []), resolved]);
   }
-  return map;
+  return { byId, byType };
+}
+
+async function loadTheme(deck: DeckContext, layoutPath: string | null): Promise<ThemeContext | null> {
+  if (!layoutPath) return null;
+  const cached = deck.themeCache.get(layoutPath);
+  if (cached !== undefined) return cached;
+
+  const layoutRels = await readRels(deck.zip, layoutPath);
+  const masterPath = layoutRels.byType.get("slideMaster")?.[0] ?? null;
+  let clrMap: Record<string, string> = {};
+  let themePath: string | null = null;
+
+  if (masterPath) {
+    const masterXml = await readZipText(deck.zip, masterPath);
+    if (masterXml) {
+      const master = asRecord(parseXml(masterXml)["p:sldMaster"]);
+      const map = asRecord(master?.["p:clrMap"]);
+      if (map) {
+        for (const [key, value] of Object.entries(map)) {
+          if (key.startsWith("@_") && typeof value === "string") clrMap[key.slice(2)] = value;
+        }
+      }
+    }
+    themePath = (await readRels(deck.zip, masterPath)).byType.get("theme")?.[0] ?? null;
+  }
+
+  const colors = new Map<string, string>();
+  let majorFont: string | null = null;
+  let minorFont: string | null = null;
+  const themeXml = themePath ? await readZipText(deck.zip, themePath) : null;
+  if (themeXml) {
+    const elements = asRecord(asRecord(parseXml(themeXml)["a:theme"])?.["a:themeElements"]);
+    const scheme = asRecord(elements?.["a:clrScheme"]);
+    if (scheme) {
+      for (const slot of ["dk1", "lt1", "dk2", "lt2", "accent1", "accent2", "accent3", "accent4", "accent5", "accent6", "hlink", "folHlink"]) {
+        const color = colorOf(asRecord(scheme[`a:${slot}`]), null);
+        if (color) colors.set(slot, color.color);
+      }
+    }
+    const fonts = asRecord(elements?.["a:fontScheme"]);
+    majorFont = readAttrString(asRecord(asRecord(fonts?.["a:majorFont"])?.["a:latin"]), "@_typeface");
+    minorFont = readAttrString(asRecord(asRecord(fonts?.["a:minorFont"])?.["a:latin"]), "@_typeface");
+  }
+
+  // `bg1`/`tx1` are the names shapes actually reference; without a master they
+  // still map to the conventional light/dark slots.
+  clrMap = { bg1: "lt1", tx1: "dk1", bg2: "lt2", tx2: "dk2", ...clrMap };
+
+  const theme: ThemeContext = { colors, clrMap, majorFont, minorFont };
+  deck.themeCache.set(layoutPath, theme);
+  return theme;
 }
 
 /** Resolves a (possibly ../-relative) OOXML relationship target against the
@@ -482,11 +1006,14 @@ function slideNumberOf(path: string): number {
   return match ? Number(match[1]) : 0;
 }
 
+// --------------------------------------------------------------- xml helpers
+
 function readText(value: unknown): string {
   if (typeof value === "string") return value;
+  if (typeof value === "number") return String(value);
   const rec = asRecord(value);
   const text = rec?.["#text"];
-  return typeof text === "string" ? text : "";
+  return typeof text === "string" ? text : typeof text === "number" ? String(text) : "";
 }
 
 function readAttrString(rec: Rec | null, attr: string): string | null {
@@ -502,6 +1029,16 @@ function readAttrNumber(rec: Rec | null, attr: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** OOXML booleans appear as both `1`/`0` and `true`/`false` depending on the
+ * exporter — Canva writes `b="true"`, PowerPoint writes `b="1"`. */
+function readAttrBoolean(rec: Rec | null, attr: string): boolean | null {
+  const value = readAttrString(rec, attr);
+  if (value == null) return null;
+  if (value === "1" || value === "true") return true;
+  if (value === "0" || value === "false") return false;
+  return null;
+}
+
 function asRecord(value: unknown): Rec | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Rec) : null;
 }
@@ -510,4 +1047,16 @@ function asArray(value: unknown): unknown[] {
   if (Array.isArray(value)) return value;
   if (value == null) return [];
   return [value];
+}
+
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, value));
+}
+
+function clampByte(value: number): number {
+  return Math.min(255, Math.max(0, Math.round(value)));
+}
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
 }

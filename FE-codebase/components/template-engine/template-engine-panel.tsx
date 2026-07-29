@@ -463,6 +463,10 @@ export function TemplateEnginePanel({
             </option>
           ))}
         </select>
+        <RenameThemeForm
+          theme={themes.find((theme) => theme.id === themeId) ?? null}
+          onRenamed={onThemeUpdated}
+        />
         <NewThemeForm
           existingIds={themes.map((theme) => theme.id)}
           onCreated={onThemeCreated}
@@ -794,6 +798,81 @@ function toThemeId(value: string): string {
     .replace(/[^a-z0-9_-]+/g, "-")
     .replace(/^[^a-z0-9]+/, "")
     .slice(0, 49);
+}
+
+/** Renames the theme's display name — the folder id (public/templates/<id>/)
+ *  stays put, since that id is what every layout's stored asset paths and a
+ *  saved deck's theme tag are keyed on; changing it would be a much bigger
+ *  operation than what "rename" asks for here. */
+function RenameThemeForm({
+  theme,
+  onRenamed,
+}: {
+  theme: TemplateTheme | null;
+  onRenamed: () => void;
+}) {
+  const [name, setName] = useState(theme?.name ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setName(theme?.name ?? "");
+    setError(null);
+  }, [theme?.id, theme?.name]);
+
+  const trimmed = name.trim();
+  const dirty = Boolean(theme) && trimmed.length > 0 && trimmed !== theme?.name;
+
+  const submit = async () => {
+    if (!theme || !dirty) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/template-engine/themes", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ themeId: theme.id, patch: { name: trimmed } }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body?.error ?? "Rename failed");
+      onRenamed();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Rename failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!theme) return null;
+
+  return (
+    <div className="mt-2 space-y-1">
+      <Field
+        label="Theme name"
+        hint="Shown in the picker and on /template-list — the folder id stays the same."
+      >
+        <div className="flex gap-1.5">
+          <input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") submit();
+            }}
+            className={inputClass}
+          />
+          <button
+            onClick={submit}
+            disabled={!dirty || busy}
+            title="Rename this theme"
+            className="flex shrink-0 items-center justify-center gap-1 rounded-md bg-[var(--accent)] px-2.5 text-[11px] font-medium text-white disabled:opacity-50"
+          >
+            {busy ? <Loader2 size={12} className="animate-spin" /> : "Save"}
+          </button>
+        </div>
+      </Field>
+      {error && <p className="text-[10px] text-red-300">{error}</p>}
+    </div>
+  );
 }
 
 function NewThemeForm({

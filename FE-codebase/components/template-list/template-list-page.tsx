@@ -10,7 +10,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Layers, Loader2, Plus, Trash2 } from "lucide-react";
+import { ArrowRight, Layers, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 
 import { AppShell } from "@/components/layout/app-shell";
 import { LazyLayoutThumbnail } from "@/components/editor-react/lazy-layout-thumbnail";
@@ -71,6 +71,21 @@ export function TemplateListPage() {
     setThemes(await loadAllThemes());
   };
 
+  /** Renames the theme's display name only — same PATCH the engine's own
+   *  rename field uses. The folder id is untouched, since layout asset paths
+   *  and a saved deck's theme tag are keyed on it. */
+  const handleRenameTheme = async (themeId: string, name: string) => {
+    const res = await fetch("/api/template-engine/themes", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ themeId, patch: { name } }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error ?? "Rename failed");
+    invalidateThemeCache();
+    setThemes(await loadAllThemes());
+  };
+
   return (
     <AppShell>
       <div className="mx-auto max-w-6xl px-8 py-10">
@@ -121,6 +136,7 @@ export function TemplateListPage() {
               canDelete={canDeleteThemes}
               onOpen={() => openTheme(theme.id)}
               onDelete={() => handleDeleteTheme(theme.id)}
+              onRename={(name) => handleRenameTheme(theme.id, name)}
             />
           ))}
         </div>
@@ -162,12 +178,17 @@ function useMeasuredWidth(fallback: number) {
   return [ref, width] as const;
 }
 
+/** Which overlay panel sits on top of the preview — at most one at a time,
+ *  since rename and delete each take over the same corner of the card. */
+type CardMode = "idle" | "rename" | "delete";
+
 function ThemeCard({
   theme,
   eager,
   canDelete,
   onOpen,
   onDelete,
+  onRename,
 }: {
   theme: TemplateTheme;
   eager: boolean;
@@ -177,33 +198,66 @@ function ThemeCard({
   canDelete: boolean;
   onOpen: () => void;
   onDelete: () => Promise<void>;
+  onRename: (name: string) => Promise<void>;
 }) {
   const cover = theme.layouts[0];
   const [previewRef, previewWidth] = useMeasuredWidth(PREVIEW_WIDTH);
-  const [confirming, setConfirming] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [mode, setMode] = useState<CardMode>("idle");
+  const [name, setName] = useState(theme.name);
+  const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
-  const handleConfirmDelete = async () => {
-    setDeleting(true);
-    setDeleteError(null);
+  // Resyncs the rename field if the name changes from elsewhere (the engine's
+  // own rename field, another tab) while this card isn't the one editing it.
+  useEffect(() => {
+    if (mode !== "rename") setName(theme.name);
+  }, [mode, theme.name]);
+
+  const closeOverlay = () => {
+    setMode("idle");
+    setFormError(null);
+    setName(theme.name);
+  };
+
+  const handleRenameSubmit = async () => {
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === theme.name) {
+      closeOverlay();
+      return;
+    }
+    setBusy(true);
+    setFormError(null);
+    try {
+      await onRename(trimmed);
+      setMode("idle");
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "Rename failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDeleteSubmit = async () => {
+    setBusy(true);
+    setFormError(null);
     try {
       await onDelete();
       // No further state to reset on success — the card unmounts with the
       // theme it belonged to.
     } catch (error) {
-      setDeleteError(error instanceof Error ? error.message : "Delete failed");
-      setDeleting(false);
+      setFormError(error instanceof Error ? error.message : "Delete failed");
+      setBusy(false);
     }
   };
 
   return (
-    // Not a <button>: it holds the open control, the delete control, and (
-    // while confirming) a third strip of controls, and buttons cannot nest.
+    // Not a <button>: it holds the open control, the rename/delete controls,
+    // and (while either is active) a strip of its own controls, and buttons
+    // cannot nest.
     <div className="group relative flex flex-col overflow-hidden rounded-xl border border-[#2d2e42] bg-[#13131f] transition-colors hover:border-[#6c5ce7]">
       <button
         onClick={onOpen}
-        disabled={confirming}
+        disabled={mode !== "idle"}
         className="flex flex-col text-left disabled:pointer-events-none"
       >
         <div
@@ -241,40 +295,83 @@ function ThemeCard({
         </div>
       </button>
 
-      {canDelete && !confirming && (
-        <button
-          onClick={() => setConfirming(true)}
-          title={`Delete ${theme.name}`}
-          className="absolute right-2 top-2 rounded-md bg-black/60 p-1.5 text-zinc-300 opacity-0 backdrop-blur transition-opacity hover:bg-red-500/80 hover:text-white focus-visible:opacity-100 group-hover:opacity-100"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+      {mode === "idle" && (
+        <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+          <button
+            onClick={() => setMode("rename")}
+            title={`Rename ${theme.name}`}
+            className="rounded-md bg-black/60 p-1.5 text-zinc-300 backdrop-blur hover:bg-[#6c5ce7]/80 hover:text-white"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          {canDelete && (
+            <button
+              onClick={() => setMode("delete")}
+              title={`Delete ${theme.name}`}
+              className="rounded-md bg-black/60 p-1.5 text-zinc-300 backdrop-blur hover:bg-red-500/80 hover:text-white"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
       )}
 
-      {confirming && (
+      {mode === "rename" && (
+        <div className="absolute inset-x-2 top-2 rounded-md border border-[#2d2e42] bg-[#13131f] p-2 shadow-xl">
+          <input
+            autoFocus
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") handleRenameSubmit();
+              if (event.key === "Escape") closeOverlay();
+            }}
+            className="w-full rounded-md border border-[#2d2e42] bg-[#1a1b2e] px-2 py-1.5 text-xs text-white outline-none focus:border-[#6c5ce7]"
+          />
+          {formError && (
+            <p className="mt-1 text-[11px] text-red-300">{formError}</p>
+          )}
+          <div className="mt-2 flex gap-2">
+            <button
+              disabled={busy}
+              onClick={handleRenameSubmit}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-md bg-[#6c5ce7] px-2 py-1.5 text-[11px] font-medium text-white disabled:opacity-50"
+            >
+              {busy && <Loader2 className="h-3 w-3 animate-spin" />}
+              Save
+            </button>
+            <button
+              disabled={busy}
+              onClick={closeOverlay}
+              className="rounded-md border border-[#2d2e42] px-2 py-1.5 text-[11px] text-zinc-300 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {mode === "delete" && (
         <div className="absolute inset-x-2 top-2 rounded-md border border-red-500/30 bg-[#13131f] p-2 shadow-xl">
           <p className="text-[11px] leading-snug text-red-300">
             Delete &quot;{theme.name}&quot; and all {theme.layouts.length} of its
             layouts? This removes the folder from disk and cannot be undone.
           </p>
-          {deleteError && (
-            <p className="mt-1 text-[11px] text-red-300">{deleteError}</p>
+          {formError && (
+            <p className="mt-1 text-[11px] text-red-300">{formError}</p>
           )}
           <div className="mt-2 flex gap-2">
             <button
-              disabled={deleting}
-              onClick={handleConfirmDelete}
+              disabled={busy}
+              onClick={handleDeleteSubmit}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-md bg-red-500/80 px-2 py-1.5 text-[11px] font-medium text-white disabled:opacity-50"
             >
-              {deleting && <Loader2 className="h-3 w-3 animate-spin" />}
+              {busy && <Loader2 className="h-3 w-3 animate-spin" />}
               Delete
             </button>
             <button
-              disabled={deleting}
-              onClick={() => {
-                setConfirming(false);
-                setDeleteError(null);
-              }}
+              disabled={busy}
+              onClick={closeOverlay}
               className="rounded-md border border-[#2d2e42] px-2 py-1.5 text-[11px] text-zinc-300 disabled:opacity-50"
             >
               Cancel

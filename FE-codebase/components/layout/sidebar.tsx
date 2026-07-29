@@ -1,17 +1,21 @@
 'use client'
 
 import Link from 'next/link'
-import { Home, Folder, History, Sparkles } from 'lucide-react'
+import { usePathname } from 'next/navigation'
+import { Home, Folder, History, LayoutTemplate, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/shared/button'
 
 const navItems = [
-	{ icon: Home, label: 'Beranda', href: '/', active: true },
+	{ icon: Home, label: 'Beranda', href: '/' },
+	{ icon: LayoutTemplate, label: 'Template', href: '/template-list' },
 	{ icon: Folder, label: 'Projects', href: '/' },
 	{ icon: History, label: 'Riwayat', href: '/' },
 ]
 
 export function Sidebar() {
+	const pathname = usePathname()
+
 	return (
 		<aside className="flex h-full w-[220px] shrink-0 flex-col border-r border-[#1e1e30] bg-[#13131f]">
 			{/* Logo */}
@@ -42,7 +46,7 @@ export function Sidebar() {
 						href={item.href}
 						className={cn(
 							'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
-							item.active
+							pathname === item.href
 								? 'bg-[#2d2e42] text-white'
 								: 'text-zinc-400 hover:bg-[#1e1e30] hover:text-zinc-200',
 						)}

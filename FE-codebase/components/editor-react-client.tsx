@@ -335,11 +335,14 @@ export default function EditorReactClient({
   const onCanvasMouseUp = () => setIsPanning(false);
   const isFirstSave = useRef(true);
 
-  // Template mode starts on an empty canvas — the point is authoring a new
-  // template, so preloading the theme's existing layouts would just be a pile
-  // of slides to delete first. Existing layouts are opened on demand from the
-  // panel instead. The theme selector only picks the save target; switching it
-  // deliberately does not touch the canvas.
+  // Template mode opens either a whole theme or an empty canvas.
+  //
+  // `?theme=<id>` — how /template-list links here — loads every layout of that
+  // theme as a page, so an existing pack can be reopened and edited rather than
+  // only added to. Without it (or for a theme with no layouts yet) the canvas
+  // starts blank, which is what authoring a new template wants. Either way the
+  // theme selector picks the save target; switching it does not touch the
+  // canvas.
   useEffect(() => {
     if (!templateMode) return;
     let cancelled = false;
@@ -352,11 +355,25 @@ export default function EditorReactClient({
         setLoading(false);
         return;
       }
+
+      const requestedId = searchParams?.get("theme") ?? null;
+      const requested = requestedId
+        ? all.find((theme) => theme.id === requestedId) ?? null
+        : null;
+      // Cloned: these records are the theme registry's cached copies, and the
+      // canvas is about to be edited in place from here on.
+      const pages = (requested?.layouts ?? []).map(
+        (layout) => structuredClone(layout) as Record<string, unknown>
+      );
+
       dispatch(
         setPresentationData({
           id: "template-engine",
-          title: "Untitled template",
-          slides: [{ ui: blankTemplateLayout() }],
+          title: requested ? requested.name : "Untitled template",
+          slides:
+            pages.length > 0
+              ? pages.map((ui) => ({ ui }))
+              : [{ ui: blankTemplateLayout() }],
         } as never)
       );
       setLoading(false);
@@ -364,7 +381,7 @@ export default function EditorReactClient({
     return () => {
       cancelled = true;
     };
-  }, [dispatch, templateMode]);
+  }, [dispatch, searchParams, templateMode]);
 
   // Load deck → init Redux presentationData (or fall back to default template).
   useEffect(() => {
@@ -529,13 +546,14 @@ export default function EditorReactClient({
     (pages: Record<string, unknown>[]) => {
       if (pages.length === 0) return;
       const replaceBlank = slides.length === 1 && isBlankTemplateUi(slides[0]?.ui);
-      const insertAt = replaceBlank ? 0 : safeActive + 1;
-
-      pages.forEach((ui, offset) => {
-        dispatch(addSlide({ ui, atIndex: insertAt + offset }));
-      });
-      if (replaceBlank) dispatch(deleteSlide(pages.length));
-      setActiveIndex(insertAt);
+      dispatch(
+        addSlides({
+          uis: pages,
+          atIndex: safeActive + 1,
+          replaceAll: replaceBlank,
+        })
+      );
+      setActiveIndex(replaceBlank ? 0 : safeActive + 1);
     },
     [dispatch, safeActive, slides],
   );

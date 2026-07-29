@@ -45,6 +45,8 @@ type Rec = Record<string, unknown>;
 interface TemplateLayout {
   id: string;
   description?: string;
+  /** Authoring metadata from the template engine (slide_role, topics, items). */
+  meta?: Rec;
   components: Rec[];
 }
 
@@ -78,18 +80,89 @@ async function loadPackNames(): Promise<string[]> {
   return packNamesCache;
 }
 
+/** Lowercased, punctuation collapsed to single spaces, padded — so a key can be
+ *  looked up with indexOf and still only match on whole words. */
+function themeText(value: string): string {
+  return ` ${value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()} `;
+}
+
+/** Finds the theme the author asked for in the generation prompt, e.g.
+ *  "buatkan ppt tentang kerjaan, gunakan theme cassual".
+ *
+ *  Matching is deliberately anchored to an explicit theme/tema/template word
+ *  rather than scanning the whole prompt: theme NAMES here include `modern`,
+ *  `general` and `standard`, so a deck that merely talks about "arsitektur
+ *  modern" must not silently switch packs. Text after the anchor wins over text
+ *  before it, which is what separates "…arsitektur modern, gunakan theme
+ *  cassual" (cassual) from "use the modern theme" (modern).
+ *
+ *  Returns null when no theme is named, leaving the seed hash in charge. */
+export async function resolveThemeFromPrompt(
+  prompt: string,
+): Promise<string | null> {
+  if (!prompt) return null;
+  const themes = await loadAllThemes();
+  if (themes.length === 0) return null;
+
+  // Longest first so a name that contains another still wins outright.
+  const keys = themes
+    .flatMap((theme) => {
+      const names = [theme.name ?? "", theme.id].filter(Boolean);
+      return names.map((name) => ({ id: theme.id, key: themeText(name) }));
+    })
+    .filter((entry) => entry.key.trim().length > 0)
+    .sort((a, b) => b.key.length - a.key.length);
+
+  const lower = prompt.toLowerCase();
+  const anchor = /\b(?:themes?|tema(?:nya)?|templates?)\b/g;
+
+  const pick = (window: string, fromEnd: boolean): string | null => {
+    const haystack = themeText(window);
+    let best: { id: string; at: number } | null = null;
+    for (const { id, key } of keys) {
+      const at = fromEnd ? haystack.lastIndexOf(key) : haystack.indexOf(key);
+      if (at < 0) continue;
+      const closer = fromEnd ? at > (best?.at ?? -1) : at < (best?.at ?? Infinity);
+      if (!best || closer) best = { id, at };
+    }
+    return best?.id ?? null;
+  };
+
+  for (let m = anchor.exec(lower); m; m = anchor.exec(lower)) {
+    const end = m.index + m[0].length;
+    const after = pick(lower.slice(end, end + 32), false);
+    if (after) return after;
+    const before = pick(lower.slice(Math.max(0, m.index - 26), m.index), true);
+    if (before) return before;
+  }
+  return null;
+}
+
 function hashSeed(seed: string): number {
   let hash = 5381;
   for (let i = 0; i < seed.length; i++) hash = (hash * 33) ^ seed.charCodeAt(i);
   return hash >>> 0;
 }
 
+/** The author's own `slide_role`, when the layout carries one. Authored in the
+ *  template engine, so it beats guessing from id/description text. */
+function slideRoleOf(layout: TemplateLayout): string | null {
+  const meta = layout.meta;
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return null;
+  const role = (meta as Rec).slide_role;
+  return typeof role === "string" && role ? role : null;
+}
+
 function isCoverLayout(layout: TemplateLayout): boolean {
+  const role = slideRoleOf(layout);
+  if (role) return role === "cover";
   const s = `${layout.id} ${layout.description ?? ""}`.toLowerCase();
   return s.includes("cover");
 }
 
 function isContentsLayout(layout: TemplateLayout): boolean {
+  const role = slideRoleOf(layout);
+  if (role) return role === "agenda";
   const s = `${layout.id} ${layout.description ?? ""}`.toLowerCase();
   return s.includes("index") || s.includes("contents") || s.includes("agenda") || s.includes("toc");
 }
@@ -97,6 +170,12 @@ function isContentsLayout(layout: TemplateLayout): boolean {
 interface Buckets {
   cover: TemplateLayout[];
   contents: TemplateLayout[];
+  /** Sign-off layouts. Without these an `end` slide fell back to the cover, so
+   *  a deck opened and closed on the same design. */
+  closing: TemplateLayout[];
+  /** Chapter breaks. Same story: `transition` used to reuse the cover, which is
+   *  why a deck showed its cover design three or four times over. */
+  section: TemplateLayout[];
   content: TemplateLayout[];
   /** Layouts that need numeric/stat data the AI can't supply yet. Parked
    *  here so the picker never rotates them into a generated deck; they stay
@@ -167,15 +246,23 @@ function subtreeHasMetricLeaf(node: Rec | null | undefined): boolean {
 function bucketLayouts(layouts: TemplateLayout[]): Buckets {
   const cover: TemplateLayout[] = [];
   const contents: TemplateLayout[] = [];
+  const closing: TemplateLayout[] = [];
+  const section: TemplateLayout[] = [];
   const content: TemplateLayout[] = [];
   const metrics: TemplateLayout[] = [];
   for (const l of layouts) {
+    const role = slideRoleOf(l);
     if (isCoverLayout(l)) cover.push(l);
     else if (isContentsLayout(l)) contents.push(l);
-    else if (hasMetricCardSlot(l)) metrics.push(l);
+    else if (role === "closing") closing.push(l);
+    else if (role === "section") section.push(l);
+    // An authored `metrics` role is the layout author saying outright that this
+    // one needs real figures — the structural sniff below only catches metric
+    // cards nested in a grid/flex, which flat imported layouts never have.
+    else if (role === "metrics" || hasMetricCardSlot(l)) metrics.push(l);
     else content.push(l);
   }
-  return { cover, contents, content, metrics };
+  return { cover, contents, closing, section, content, metrics };
 }
 
 /** Picks one template pack per deck (deterministic from a seed) and rotates
@@ -189,15 +276,22 @@ export class DeckLayoutPicker {
   private packName: string | null = null;
   private packFonts: Record<string, string> | null = null;
 
-  constructor(seed: string) {
+  /** A theme the author named in the prompt. Wins over the seed hash, which is
+   *  arbitrary by design (it only exists to spread decks across the packs). */
+  private preferred: string | null;
+
+  constructor(seed: string, preferredThemeId?: string | null) {
     this.seed = seed;
+    this.preferred = preferredThemeId ?? null;
   }
 
   async ensureLoaded(): Promise<void> {
     if (this.buckets) return;
     const names = await loadPackNames();
+    const asked =
+      this.preferred && names.includes(this.preferred) ? this.preferred : null;
     this.packName =
-      this.packName ?? names[hashSeed(this.seed) % Math.max(1, names.length)];
+      this.packName ?? asked ?? names[hashSeed(this.seed) % Math.max(1, names.length)];
     const packs = await loadAllPacks();
     const pack = packs[this.packName] ?? packs[DEFAULT_THEME_ID];
     this.buckets = bucketLayouts(pack.layouts);
@@ -229,12 +323,17 @@ export class DeckLayoutPicker {
     if (!b) throw new Error("DeckLayoutPicker not loaded — call ensureLoaded() first");
     switch (type) {
       case "cover":
-      case "end":
         return b.cover[0] ?? this.fallbackContent();
+      case "end":
+        // Falling through to the cover is the last resort, not the default: a
+        // deck that opens and closes on the same slide design reads as a bug.
+        return b.closing[0] ?? b.cover[0] ?? this.fallbackContent();
       case "contents":
         return b.contents[0] ?? this.fallbackContent();
       case "transition":
-        return b.cover[0] ?? this.fallbackContent();
+        // A chapter break is not a cover. With no section layout authored,
+        // rotating a content layout still beats showing the cover again.
+        return b.section[0] ?? this.fallbackContent();
       case "content":
       default:
         return this.fallbackContent();

@@ -73,10 +73,14 @@ export function useTemplateV2Clipboard({
         return;
       }
 
-      if (key === "v") {
-        stopShortcutEvent(event);
-        void pasteFromShortcut(onPaste);
-      }
+      // Ctrl+V is deliberately NOT claimed here. Swallowing the keydown calls
+      // preventDefault, which suppresses the browser's native paste event
+      // entirely — so once the surface had been touched, pasting an image from
+      // the OS clipboard silently did nothing. `handlePaste` below is the
+      // single paste path: it reads the real clipboard contents and only falls
+      // back to the cached in-app payload when the event carries nothing,
+      // which also keeps a stale cached element from beating a freshly copied
+      // image.
     };
 
     document.addEventListener("copy", handleCopy);
@@ -121,30 +125,6 @@ function writeNavigatorClipboard(serialized: string) {
   } catch {
     // The in-app clipboard cache still supports paste when browser clipboard
     // permissions are unavailable.
-  }
-}
-
-async function pasteFromShortcut(
-  onPaste: (payload: TemplateV2ClipboardPayload, offset: number) => void,
-) {
-  const payload = readCachedPayload() ?? (await readNavigatorClipboardPayload());
-  if (!payload) return;
-  pasteSequence += 1;
-  onPaste(payload, PASTE_OFFSET * pasteSequence);
-}
-
-async function readNavigatorClipboardPayload() {
-  if (
-    typeof navigator === "undefined" ||
-    !navigator.clipboard?.readText
-  ) {
-    return null;
-  }
-  try {
-    const text = await navigator.clipboard.readText();
-    return readSerializedPayload(text);
-  } catch {
-    return null;
   }
 }
 

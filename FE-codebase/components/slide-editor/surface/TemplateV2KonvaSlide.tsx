@@ -287,9 +287,13 @@ type TemplateV2KonvaSlideProps = {
 };
 
 export type TemplateSelectionPayload = {
-  selection: ElementSelection;
+  /** The element being edited, or null when a multi-element component is
+   *  selected and no single element is implied. */
+  selection: ElementSelection | null;
+  /** Always set — the component the selection sits in. */
+  componentIndex: number;
   element: RawElement | null;
-  patch: (updater: (element: RawElement) => RawElement) => void;
+  patch: ((updater: (element: RawElement) => RawElement) => void) | null;
 };
 
 function TemplateV2KonvaSlideComponent({
@@ -1370,17 +1374,55 @@ function TemplateV2KonvaSlideComponent({
   // change so the panel always edits the element the author is looking at.
   useEffect(() => {
     if (!onTemplateSelection) return;
-    if (selection?.kind !== "element") {
-      onTemplateSelection(null);
+
+    if (selection?.kind === "element") {
+      const elementSelection = selection;
+      onTemplateSelection({
+        selection: elementSelection,
+        componentIndex: elementSelection.componentIndex,
+        element: selectedElement,
+        patch: (updater) => updateElement(elementSelection, updater),
+      });
       return;
     }
-    const elementSelection = selection;
-    onTemplateSelection({
-      selection: elementSelection,
-      element: selectedElement,
-      patch: (updater) => updateElement(elementSelection, updater),
-    });
-  }, [onTemplateSelection, selectedElement, selection, updateElement]);
+
+    // A plain click selects the *component*, not the element inside it, so
+    // reporting only element selections left the panel blank while the canvas
+    // clearly showed something selected. A component wrapping a single element
+    // — a pasted image, an inserted shape — is that element for labelling
+    // purposes, so bind straight to it; otherwise report the component so the
+    // panel can at least highlight what it contains.
+    if (selection?.kind === "component") {
+      const component = asRecord(
+        readArray(uiDraft.components)[selection.componentIndex],
+      );
+      const elements = component ? readArray(component.elements) : [];
+      const only = elements.length === 1 ? asRecord(elements[0]) : null;
+      if (only) {
+        const target: ElementSelection = {
+          kind: "element",
+          componentIndex: selection.componentIndex,
+          elementPath: [0],
+        };
+        onTemplateSelection({
+          selection: target,
+          componentIndex: selection.componentIndex,
+          element: only as RawElement,
+          patch: (updater) => updateElement(target, updater),
+        });
+        return;
+      }
+      onTemplateSelection({
+        selection: null,
+        componentIndex: selection.componentIndex,
+        element: null,
+        patch: null,
+      });
+      return;
+    }
+
+    onTemplateSelection(null);
+  }, [onTemplateSelection, selectedElement, selection, uiDraft, updateElement]);
 
   const closeChartEditor = useCallback(() => {
     setChartEditorSelection(null);

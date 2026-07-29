@@ -686,6 +686,12 @@ function ElementOutlineSection({
       <ul className="max-h-[320px] space-y-px overflow-y-auto">
         {entries.map((entry) => {
           const isSelected = sameAddress(selected, entry);
+          // A multi-element component selected on canvas has no single element
+          // to point at, so mark everything it holds instead of nothing.
+          const inSelectedComponent =
+            !selected &&
+            selection != null &&
+            entry.componentIndex === selection.componentIndex;
           const needsLabel = entry.fillable && (!entry.name || !entry.slot?.role);
           return (
             <li key={`${entry.componentIndex}:${entry.elementPath.join(".")}`}>
@@ -708,7 +714,9 @@ function ElementOutlineSection({
                 className={
                   isSelected
                     ? "flex w-full items-center gap-1.5 rounded-md bg-[var(--accent-soft)] py-1 pr-2 text-left text-[11px] text-[var(--accent-light)]"
-                    : "flex w-full items-center gap-1.5 rounded-md py-1 pr-2 text-left text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
+                    : inSelectedComponent
+                      ? "flex w-full items-center gap-1.5 rounded-md bg-[var(--bg-elevated)] py-1 pr-2 text-left text-[11px] text-[var(--text-primary)]"
+                      : "flex w-full items-center gap-1.5 rounded-md py-1 pr-2 text-left text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
                 }
               >
                 <span className="w-[52px] shrink-0 truncate text-[9px] uppercase tracking-wide text-[var(--text-muted)]">
@@ -826,13 +834,25 @@ function SlotSection({ selection }: { selection: TemplateSelectionPayload | null
     );
   }
 
-  const element = (selection.element ?? {}) as Rec;
+  if (!selection.element || !selection.patch) {
+    return (
+      <Section title="Selected slot">
+        <p className="text-[11px] leading-relaxed text-[var(--text-muted)]">
+          This component holds several elements — pick one from the list above
+          to label it.
+        </p>
+      </Section>
+    );
+  }
+
+  const element = selection.element as Rec;
+  const applyPatch = selection.patch;
   const slot: SlotMeta = isRecord(element.slot) ? (element.slot as SlotMeta) : {};
   const type = typeof element.type === "string" ? element.type : "element";
   const isTextual = type === "text" || type === "text-list";
 
   const patchSlot = (patch: Partial<SlotMeta>) => {
-    selection.patch((current) => {
+    applyPatch((current) => {
       const currentSlot = isRecord((current as Rec).slot)
         ? ((current as Rec).slot as SlotMeta)
         : {};
@@ -852,7 +872,7 @@ function SlotSection({ selection }: { selection: TemplateSelectionPayload | null
   };
 
   const patchElement = (patch: Rec) => {
-    selection.patch((current) => ({ ...(current as Rec), ...patch }) as RawElement);
+    applyPatch((current) => ({ ...(current as Rec), ...patch }) as RawElement);
   };
 
   return (

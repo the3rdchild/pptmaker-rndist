@@ -1,9 +1,9 @@
 {
   "themes": [
+    "cassual-2",
     "general",
     "modern",
     "standard",
-    "swift",
-    "technology"
+    "swift"
   ]
 }

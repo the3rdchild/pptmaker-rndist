@@ -1,0 +1,960 @@
+{
+  "id": "untitled_design_1_5_5174",
+  "description": "Two-by-two grid of numbered notes, with the heading and subheading anchored bottom-left.",
+  "meta": {
+    "slide_role": "process",
+    "topics": [
+      "ideation",
+      "method",
+      "stages"
+    ],
+    "min_items": 4,
+    "max_items": 4,
+    "ideal_items": 4,
+    "notes": "Four short numbered notes in a 2x2 grid. All four cells must be filled — an empty cell breaks the grid."
+  },
+  "components": [
+    {
+      "id": "imported_bg_5",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "size": {
+        "width": 1280,
+        "height": 720
+      },
+      "elements": [
+        {
+          "type": "rectangle",
+          "name": "background",
+          "decorative": true,
+          "fill": {
+            "color": "#F2F7FA",
+            "opacity": 1
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 1280,
+            "height": 720
+          }
+        }
+      ]
+    },
+    {
+      "id": "imported_5_1",
+      "position": {
+        "x": 696.45,
+        "y": 502.36
+      },
+      "size": {
+        "width": 888.98,
+        "height": 376.71
+      },
+      "elements": [
+        {
+          "type": "image",
+          "data": "/templates/cassual-2/static/imported/cae2aafc1e23249b.png",
+          "fit": "fill",
+          "size": {
+            "width": 888.98,
+            "height": 376.71
+          },
+          "rotation": 3.75,
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "decor_gradient",
+          "decorative": true
+        }
+      ]
+    },
+    {
+      "id": "imported_5_2",
+      "position": {
+        "x": -40.31,
+        "y": -45.32
+      },
+      "size": {
+        "width": 541.42,
+        "height": 324.17
+      },
+      "elements": [
+        {
+          "type": "image",
+          "data": "/templates/cassual-2/static/imported/a6c566dbdf66bd14.png",
+          "fit": "fill",
+          "size": {
+            "width": 541.42,
+            "height": 324.17
+          },
+          "rotation": 29.74,
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "decor_gradient",
+          "decorative": true
+        }
+      ]
+    },
+    {
+      "id": "imported_5_3",
+      "position": {
+        "x": 0,
+        "y": -27.47
+      },
+      "size": {
+        "width": 155.56,
+        "height": 774.94
+      },
+      "elements": [
+        {
+          "type": "rectangle",
+          "fill": {
+            "color": "#E4B795",
+            "opacity": 1
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 155.56,
+            "height": 774.94
+          },
+          "__presenton_manual_position": true,
+          "name": "decor_panel",
+          "decorative": true
+        }
+      ]
+    },
+    {
+      "id": "imported_5_4",
+      "position": {
+        "x": 592.71,
+        "y": 83.48
+      },
+      "size": {
+        "width": 23.33,
+        "height": 23.33
+      },
+      "elements": [
+        {
+          "type": "rectangle",
+          "fill": {
+            "color": "#E4B795",
+            "opacity": 1
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 23.33,
+            "height": 23.33
+          },
+          "__presenton_manual_position": true,
+          "name": "item_marker",
+          "decorative": true
+        }
+      ]
+    },
+    {
+      "id": "imported_5_5",
+      "position": {
+        "x": 923.78,
+        "y": 83.48
+      },
+      "size": {
+        "width": 23.33,
+        "height": 23.33
+      },
+      "elements": [
+        {
+          "type": "rectangle",
+          "fill": {
+            "color": "#E4B795",
+            "opacity": 1
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 23.33,
+            "height": 23.33
+          },
+          "__presenton_manual_position": true,
+          "name": "item_marker",
+          "decorative": true
+        }
+      ]
+    },
+    {
+      "id": "imported_5_6",
+      "position": {
+        "x": 592.71,
+        "y": 252.83
+      },
+      "size": {
+        "width": 23.33,
+        "height": 23.33
+      },
+      "elements": [
+        {
+          "type": "rectangle",
+          "fill": {
+            "color": "#E4B795",
+            "opacity": 1
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 23.33,
+            "height": 23.33
+          },
+          "__presenton_manual_position": true,
+          "name": "item_marker",
+          "decorative": true
+        }
+      ]
+    },
+    {
+      "id": "imported_5_7",
+      "position": {
+        "x": 923.78,
+        "y": 252.83
+      },
+      "size": {
+        "width": 23.33,
+        "height": 23.33
+      },
+      "elements": [
+        {
+          "type": "rectangle",
+          "fill": {
+            "color": "#E4B795",
+            "opacity": 1
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 23.33,
+            "height": 23.33
+          },
+          "__presenton_manual_position": true,
+          "name": "item_marker",
+          "decorative": true
+        }
+      ]
+    },
+    {
+      "id": "imported_5_8",
+      "position": {
+        "x": 88.14,
+        "y": 246.7
+      },
+      "size": {
+        "width": 45.01,
+        "height": 500.77
+      },
+      "elements": [
+        {
+          "type": "rectangle",
+          "stroke": {
+            "color": "#F2F7FA",
+            "opacity": 1,
+            "width": 1
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 45.01,
+            "height": 500.77
+          },
+          "__presenton_manual_position": true,
+          "name": "decor_frame",
+          "decorative": true
+        }
+      ]
+    },
+    {
+      "id": "imported_5_9",
+      "position": {
+        "x": 21.07,
+        "y": 529.16
+      },
+      "size": {
+        "width": 174.48,
+        "height": 24.62
+      },
+      "elements": [
+        {
+          "type": "text",
+          "runs": [
+            {
+              "text": "Studio Shodwe",
+              "font": {
+                "size": 17,
+                "color": "#F2F7FA",
+                "family": "Telegraf Extra-Light"
+              }
+            }
+          ],
+          "font": {
+            "size": 17,
+            "color": "#F2F7FA",
+            "family": "Telegraf Extra-Light",
+            "line_height": 1.4
+          },
+          "alignment": {
+            "horizontal": "left",
+            "vertical": "top"
+          },
+          "size": {
+            "width": 174.48,
+            "height": 24.62
+          },
+          "rotation": 270,
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "brand_name",
+          "slot": {
+            "role": "label",
+            "hint": "Presenter's studio or company name in the running header.",
+            "fill_condition": "optional",
+            "max_words": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "imported_5_10",
+      "position": {
+        "x": 44.62,
+        "y": 341.02
+      },
+      "size": {
+        "width": 127.38,
+        "height": 24.62
+      },
+      "elements": [
+        {
+          "type": "text",
+          "runs": [
+            {
+              "text": "Project.",
+              "font": {
+                "size": 17,
+                "color": "#F2F7FA",
+                "family": "Telegraf Extra-Light"
+              }
+            }
+          ],
+          "font": {
+            "size": 17,
+            "color": "#F2F7FA",
+            "family": "Telegraf Extra-Light",
+            "line_height": 1.4
+          },
+          "alignment": {
+            "horizontal": "right",
+            "vertical": "top"
+          },
+          "size": {
+            "width": 127.38,
+            "height": 24.62
+          },
+          "rotation": 270,
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "deck_label",
+          "slot": {
+            "role": "label",
+            "hint": "Short running-header word, e.g. 'Project.' — keep the trailing period.",
+            "fill_condition": "optional",
+            "max_words": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "imported_5_11",
+      "position": {
+        "x": -77.74,
+        "y": -37.17
+      },
+      "size": {
+        "width": 509.08,
+        "height": 337.88
+      },
+      "elements": [
+        {
+          "type": "text",
+          "runs": [
+            {
+              "text": "4",
+              "font": {
+                "size": 307,
+                "bold": true,
+                "color": "#F2F7FA",
+                "family": "Telegraf Bold"
+              }
+            }
+          ],
+          "font": {
+            "size": 307,
+            "bold": true,
+            "color": "#F2F7FA",
+            "family": "Telegraf Bold",
+            "line_height": 0.97
+          },
+          "alignment": {
+            "horizontal": "center",
+            "vertical": "top"
+          },
+          "size": {
+            "width": 509.08,
+            "height": 337.88
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "section_number",
+          "decorative": true
+        }
+      ]
+    },
+    {
+      "id": "imported_5_12",
+      "position": {
+        "x": 217.37,
+        "y": 429.51
+      },
+      "size": {
+        "width": 681.52,
+        "height": 172.6
+      },
+      "elements": [
+        {
+          "type": "text",
+          "runs": [
+            {
+              "text": "THE IDEATION JOURNEY",
+              "font": {
+                "size": 83,
+                "bold": true,
+                "color": "#343434",
+                "family": "Telegraf Bold"
+              }
+            }
+          ],
+          "font": {
+            "size": 83,
+            "bold": true,
+            "color": "#343434",
+            "family": "Telegraf Bold",
+            "line_height": 0.97
+          },
+          "alignment": {
+            "horizontal": "left",
+            "vertical": "top"
+          },
+          "size": {
+            "width": 681.52,
+            "height": 172.6
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "section_heading",
+          "slot": {
+            "role": "headline",
+            "fill_condition": "always",
+            "max_words": 5,
+            "max_lines": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "imported_5_13",
+      "position": {
+        "x": 568.75,
+        "y": 118.1
+      },
+      "size": {
+        "width": 71.25,
+        "height": 24.24
+      },
+      "elements": [
+        {
+          "type": "text",
+          "runs": [
+            {
+              "text": "1",
+              "font": {
+                "size": 21,
+                "bold": true,
+                "color": "#343434",
+                "family": "Telegraf Bold"
+              }
+            }
+          ],
+          "font": {
+            "size": 21,
+            "bold": true,
+            "color": "#343434",
+            "family": "Telegraf Bold",
+            "line_height": 0.97
+          },
+          "alignment": {
+            "horizontal": "center",
+            "vertical": "top"
+          },
+          "size": {
+            "width": 71.25,
+            "height": 24.24
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "step_number",
+          "decorative": true
+        }
+      ]
+    },
+    {
+      "id": "imported_5_14",
+      "position": {
+        "x": 899.82,
+        "y": 118.1
+      },
+      "size": {
+        "width": 71.25,
+        "height": 24.24
+      },
+      "elements": [
+        {
+          "type": "text",
+          "runs": [
+            {
+              "text": "2",
+              "font": {
+                "size": 21,
+                "bold": true,
+                "color": "#343434",
+                "family": "Telegraf Bold"
+              }
+            }
+          ],
+          "font": {
+            "size": 21,
+            "bold": true,
+            "color": "#343434",
+            "family": "Telegraf Bold",
+            "line_height": 0.97
+          },
+          "alignment": {
+            "horizontal": "center",
+            "vertical": "top"
+          },
+          "size": {
+            "width": 71.25,
+            "height": 24.24
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "step_number",
+          "decorative": true
+        }
+      ]
+    },
+    {
+      "id": "imported_5_15",
+      "position": {
+        "x": 568.75,
+        "y": 287.45
+      },
+      "size": {
+        "width": 71.25,
+        "height": 24.24
+      },
+      "elements": [
+        {
+          "type": "text",
+          "runs": [
+            {
+              "text": "3",
+              "font": {
+                "size": 21,
+                "bold": true,
+                "color": "#343434",
+                "family": "Telegraf Bold"
+              }
+            }
+          ],
+          "font": {
+            "size": 21,
+            "bold": true,
+            "color": "#343434",
+            "family": "Telegraf Bold",
+            "line_height": 0.97
+          },
+          "alignment": {
+            "horizontal": "center",
+            "vertical": "top"
+          },
+          "size": {
+            "width": 71.25,
+            "height": 24.24
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "step_number",
+          "decorative": true
+        }
+      ]
+    },
+    {
+      "id": "imported_5_16",
+      "position": {
+        "x": 899.82,
+        "y": 287.45
+      },
+      "size": {
+        "width": 71.25,
+        "height": 24.24
+      },
+      "elements": [
+        {
+          "type": "text",
+          "runs": [
+            {
+              "text": "4",
+              "font": {
+                "size": 21,
+                "bold": true,
+                "color": "#343434",
+                "family": "Telegraf Bold"
+              }
+            }
+          ],
+          "font": {
+            "size": 21,
+            "bold": true,
+            "color": "#343434",
+            "family": "Telegraf Bold",
+            "line_height": 0.97
+          },
+          "alignment": {
+            "horizontal": "center",
+            "vertical": "top"
+          },
+          "size": {
+            "width": 71.25,
+            "height": 24.24
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "step_number",
+          "decorative": true
+        }
+      ]
+    },
+    {
+      "id": "imported_5_17",
+      "position": {
+        "x": 217.37,
+        "y": 594.13
+      },
+      "size": {
+        "width": 681.52,
+        "height": 53.87
+      },
+      "elements": [
+        {
+          "type": "text",
+          "runs": [
+            {
+              "text": "BRAINSTORMING TO BRILLIANCE",
+              "font": {
+                "size": 37,
+                "color": "#343434",
+                "family": "Telegraf"
+              }
+            }
+          ],
+          "font": {
+            "size": 37,
+            "color": "#343434",
+            "family": "Telegraf",
+            "line_height": 1.4
+          },
+          "alignment": {
+            "horizontal": "left",
+            "vertical": "top"
+          },
+          "size": {
+            "width": 681.52,
+            "height": 53.87
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "section_subheading",
+          "slot": {
+            "role": "subheadline",
+            "fill_condition": "always",
+            "max_words": 6,
+            "max_lines": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "imported_5_18",
+      "position": {
+        "x": 971.07,
+        "y": 248.83
+      },
+      "size": {
+        "width": 211.59,
+        "height": 104.31
+      },
+      "elements": [
+        {
+          "type": "text",
+          "runs": [
+            {
+              "text": "id eiusmod ex adipisicing reprehenderit eiusmod veniam velit deserunt nisi eu anim non qui esse mollit et nisi deserunt anim consequat",
+              "font": {
+                "size": 15,
+                "color": "#343434",
+                "family": "Telegraf"
+              }
+            }
+          ],
+          "font": {
+            "size": 15,
+            "color": "#343434",
+            "family": "Telegraf",
+            "line_height": 1.4
+          },
+          "alignment": {
+            "horizontal": "left",
+            "vertical": "top"
+          },
+          "size": {
+            "width": 211.59,
+            "height": 104.31
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "step_body",
+          "slot": {
+            "role": "body",
+            "fill_condition": "always",
+            "max_words": 20,
+            "max_lines": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "imported_5_19",
+      "position": {
+        "x": 640,
+        "y": 248.83
+      },
+      "size": {
+        "width": 211.59,
+        "height": 104.31
+      },
+      "elements": [
+        {
+          "type": "text",
+          "runs": [
+            {
+              "text": "id eiusmod ex adipisicing reprehenderit eiusmod veniam velit deserunt nisi eu anim non qui esse mollit et nisi deserunt anim consequat",
+              "font": {
+                "size": 15,
+                "color": "#343434",
+                "family": "Telegraf"
+              }
+            }
+          ],
+          "font": {
+            "size": 15,
+            "color": "#343434",
+            "family": "Telegraf",
+            "line_height": 1.4
+          },
+          "alignment": {
+            "horizontal": "left",
+            "vertical": "top"
+          },
+          "size": {
+            "width": 211.59,
+            "height": 104.31
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "step_body",
+          "slot": {
+            "role": "body",
+            "fill_condition": "always",
+            "max_words": 20,
+            "max_lines": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "imported_5_20",
+      "position": {
+        "x": 640,
+        "y": 79.48
+      },
+      "size": {
+        "width": 211.59,
+        "height": 104.31
+      },
+      "elements": [
+        {
+          "type": "text",
+          "runs": [
+            {
+              "text": "id eiusmod ex adipisicing reprehenderit eiusmod veniam velit deserunt nisi eu anim non qui esse mollit et nisi deserunt anim consequat",
+              "font": {
+                "size": 15,
+                "color": "#343434",
+                "family": "Telegraf"
+              }
+            }
+          ],
+          "font": {
+            "size": 15,
+            "color": "#343434",
+            "family": "Telegraf",
+            "line_height": 1.4
+          },
+          "alignment": {
+            "horizontal": "left",
+            "vertical": "top"
+          },
+          "size": {
+            "width": 211.59,
+            "height": 104.31
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "step_body",
+          "slot": {
+            "role": "body",
+            "fill_condition": "always",
+            "max_words": 20,
+            "max_lines": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "imported_5_21",
+      "position": {
+        "x": 971.07,
+        "y": 79.48
+      },
+      "size": {
+        "width": 211.59,
+        "height": 104.31
+      },
+      "elements": [
+        {
+          "type": "text",
+          "runs": [
+            {
+              "text": "id eiusmod ex adipisicing reprehenderit eiusmod veniam velit deserunt nisi eu anim non qui esse mollit et nisi deserunt anim consequat",
+              "font": {
+                "size": 15,
+                "color": "#343434",
+                "family": "Telegraf"
+              }
+            }
+          ],
+          "font": {
+            "size": 15,
+            "color": "#343434",
+            "family": "Telegraf",
+            "line_height": 1.4
+          },
+          "alignment": {
+            "horizontal": "left",
+            "vertical": "top"
+          },
+          "size": {
+            "width": 211.59,
+            "height": 104.31
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "step_body",
+          "slot": {
+            "role": "body",
+            "fill_condition": "always",
+            "max_words": 20,
+            "max_lines": 4
+          }
+        }
+      ]
+    }
+  ]
+}

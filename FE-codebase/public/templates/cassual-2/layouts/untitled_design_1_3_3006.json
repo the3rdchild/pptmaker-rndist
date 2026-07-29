@@ -1,0 +1,926 @@
+{
+  "id": "untitled_design_1_3_3006",
+  "description": "Three numbered cards stacked beside a heading, subheading and lead paragraph.",
+  "meta": {
+    "slide_role": "process",
+    "topics": [
+      "vision and mission",
+      "guiding principles",
+      "pillars"
+    ],
+    "min_items": 3,
+    "max_items": 3,
+    "ideal_items": 3,
+    "notes": "Three tinted cards, each a numeral plus one tight sentence. The left column carries the heading and a lead paragraph that frames all three."
+  },
+  "components": [
+    {
+      "id": "imported_bg_3",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "size": {
+        "width": 1280,
+        "height": 720
+      },
+      "elements": [
+        {
+          "type": "rectangle",
+          "name": "background",
+          "decorative": true,
+          "fill": {
+            "color": "#F2F7FA",
+            "opacity": 1
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 1280,
+            "height": 720
+          }
+        }
+      ]
+    },
+    {
+      "id": "imported_3_1",
+      "position": {
+        "x": 847.92,
+        "y": -220.97
+      },
+      "size": {
+        "width": 1107.81,
+        "height": 469.43
+      },
+      "elements": [
+        {
+          "type": "image",
+          "data": "/templates/cassual-2/static/imported/cae2aafc1e23249b.png",
+          "fit": "fill",
+          "size": {
+            "width": 1107.81,
+            "height": 469.43
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "decor_gradient",
+          "decorative": true
+        }
+      ]
+    },
+    {
+      "id": "imported_3_2",
+      "position": {
+        "x": -159.11,
+        "y": 583.13
+      },
+      "size": {
+        "width": 893.1,
+        "height": 378.45
+      },
+      "elements": [
+        {
+          "type": "image",
+          "data": "/templates/cassual-2/static/imported/cae2aafc1e23249b.png",
+          "fit": "fill",
+          "size": {
+            "width": 893.1,
+            "height": 378.45
+          },
+          "flip_h": true,
+          "rotation": 324.66,
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "decor_gradient",
+          "decorative": true
+        }
+      ]
+    },
+    {
+      "id": "imported_3_3",
+      "position": {
+        "x": -28.62,
+        "y": -27.47
+      },
+      "size": {
+        "width": 100.62,
+        "height": 774.94
+      },
+      "elements": [
+        {
+          "type": "rectangle",
+          "fill": {
+            "color": "#E4B795",
+            "opacity": 1
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 100.62,
+            "height": 774.94
+          },
+          "__presenton_manual_position": true,
+          "name": "decor_panel",
+          "decorative": true
+        }
+      ]
+    },
+    {
+      "id": "imported_3_4",
+      "position": {
+        "x": 724.55,
+        "y": 258.37
+      },
+      "size": {
+        "width": 482.63,
+        "height": 106.46
+      },
+      "elements": [
+        {
+          "type": "rectangle",
+          "fill": {
+            "color": "#E4B795",
+            "opacity": 1
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 482.63,
+            "height": 106.46
+          },
+          "__presenton_manual_position": true,
+          "name": "card_surface",
+          "decorative": true
+        }
+      ]
+    },
+    {
+      "id": "imported_3_5",
+      "position": {
+        "x": 724.55,
+        "y": 384.24
+      },
+      "size": {
+        "width": 482.63,
+        "height": 106.46
+      },
+      "elements": [
+        {
+          "type": "rectangle",
+          "fill": {
+            "color": "#E4B795",
+            "opacity": 1
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 482.63,
+            "height": 106.46
+          },
+          "__presenton_manual_position": true,
+          "name": "card_surface",
+          "decorative": true
+        }
+      ]
+    },
+    {
+      "id": "imported_3_6",
+      "position": {
+        "x": 130.84,
+        "y": 145.78
+      },
+      "size": {
+        "width": 658.42,
+        "height": 172.6
+      },
+      "elements": [
+        {
+          "type": "text",
+          "runs": [
+            {
+              "text": "OUR GUIDING STARS",
+              "font": {
+                "size": 83,
+                "bold": true,
+                "color": "#343434",
+                "family": "Telegraf Bold"
+              }
+            }
+          ],
+          "font": {
+            "size": 83,
+            "bold": true,
+            "color": "#343434",
+            "family": "Telegraf Bold",
+            "line_height": 0.97
+          },
+          "alignment": {
+            "horizontal": "left",
+            "vertical": "top"
+          },
+          "size": {
+            "width": 658.42,
+            "height": 172.6
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "section_heading",
+          "slot": {
+            "role": "headline",
+            "fill_condition": "always",
+            "max_words": 5,
+            "max_lines": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "imported_3_7",
+      "position": {
+        "x": 876.95,
+        "y": -40.62
+      },
+      "size": {
+        "width": 509.08,
+        "height": 337.88
+      },
+      "elements": [
+        {
+          "type": "text",
+          "runs": [
+            {
+              "text": "2",
+              "font": {
+                "size": 307,
+                "bold": true,
+                "color": "#F2F7FA",
+                "family": "Telegraf Bold"
+              }
+            }
+          ],
+          "font": {
+            "size": 307,
+            "bold": true,
+            "color": "#F2F7FA",
+            "family": "Telegraf Bold",
+            "line_height": 0.97
+          },
+          "alignment": {
+            "horizontal": "center",
+            "vertical": "top"
+          },
+          "size": {
+            "width": 509.08,
+            "height": 337.88
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "section_number",
+          "decorative": true
+        }
+      ]
+    },
+    {
+      "id": "imported_3_8",
+      "position": {
+        "x": 130.84,
+        "y": 310.4
+      },
+      "size": {
+        "width": 425.65,
+        "height": 105.87
+      },
+      "elements": [
+        {
+          "type": "text",
+          "runs": [
+            {
+              "text": "VISION AND MISSION STATEMENT",
+              "font": {
+                "size": 37,
+                "color": "#343434",
+                "family": "Telegraf"
+              }
+            }
+          ],
+          "font": {
+            "size": 37,
+            "color": "#343434",
+            "family": "Telegraf",
+            "line_height": 1.4
+          },
+          "alignment": {
+            "horizontal": "left",
+            "vertical": "top"
+          },
+          "size": {
+            "width": 425.65,
+            "height": 105.87
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "section_subheading",
+          "slot": {
+            "role": "subheadline",
+            "fill_condition": "always",
+            "max_words": 6,
+            "max_lines": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "imported_3_9",
+      "position": {
+        "x": 724.55,
+        "y": 269.92
+      },
+      "size": {
+        "width": 94.84,
+        "height": 71.38
+      },
+      "elements": [
+        {
+          "type": "text",
+          "runs": [
+            {
+              "text": "1",
+              "font": {
+                "size": 50,
+                "color": "#F2F7FA",
+                "family": "Telegraf"
+              }
+            }
+          ],
+          "font": {
+            "size": 50,
+            "color": "#F2F7FA",
+            "family": "Telegraf",
+            "line_height": 1.4
+          },
+          "alignment": {
+            "horizontal": "center",
+            "vertical": "top"
+          },
+          "size": {
+            "width": 94.84,
+            "height": 71.38
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "step_number",
+          "decorative": true
+        }
+      ]
+    },
+    {
+      "id": "imported_3_10",
+      "position": {
+        "x": 724.55,
+        "y": 395.79
+      },
+      "size": {
+        "width": 94.84,
+        "height": 71.38
+      },
+      "elements": [
+        {
+          "type": "text",
+          "runs": [
+            {
+              "text": "2",
+              "font": {
+                "size": 50,
+                "color": "#F2F7FA",
+                "family": "Telegraf"
+              }
+            }
+          ],
+          "font": {
+            "size": 50,
+            "color": "#F2F7FA",
+            "family": "Telegraf",
+            "line_height": 1.4
+          },
+          "alignment": {
+            "horizontal": "center",
+            "vertical": "top"
+          },
+          "size": {
+            "width": 94.84,
+            "height": 71.38
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "step_number",
+          "decorative": true
+        }
+      ]
+    },
+    {
+      "id": "imported_3_11",
+      "position": {
+        "x": 130.84,
+        "y": 444.39
+      },
+      "size": {
+        "width": 414.2,
+        "height": 141.29
+      },
+      "elements": [
+        {
+          "type": "text",
+          "runs": [
+            {
+              "text": "culpa ullamco qui in occaecat qui magna elit proident duis ut dolore aute enim proident fugiat elit amet consequat excepteur Lorem quis dolore in nulla amet sunt veniam sit ex sunt aliqua consequat ea laborum veniam adipisicing incididunt veniam veniam occaecat",
+              "font": {
+                "size": 17,
+                "color": "#343434",
+                "family": "Telegraf"
+              }
+            }
+          ],
+          "font": {
+            "size": 17,
+            "color": "#343434",
+            "family": "Telegraf",
+            "line_height": 1.4
+          },
+          "alignment": {
+            "horizontal": "left",
+            "vertical": "top"
+          },
+          "size": {
+            "width": 414.2,
+            "height": 141.29
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "body_paragraph",
+          "slot": {
+            "role": "body",
+            "fill_condition": "optional",
+            "max_words": 40,
+            "max_lines": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "imported_3_12",
+      "position": {
+        "x": 834.81,
+        "y": 277.92
+      },
+      "size": {
+        "width": 348.96,
+        "height": 62.98
+      },
+      "elements": [
+        {
+          "type": "text",
+          "runs": [
+            {
+              "text": "culpa ullamco qui in occaecat qui magna elit proident duis ut dolore aute enim proident fugiat elit amet consequat excepteur",
+              "font": {
+                "size": 15,
+                "color": "#F2F7FA",
+                "family": "Telegraf"
+              }
+            }
+          ],
+          "font": {
+            "size": 15,
+            "color": "#F2F7FA",
+            "family": "Telegraf",
+            "line_height": 1.4
+          },
+          "alignment": {
+            "horizontal": "left",
+            "vertical": "top"
+          },
+          "size": {
+            "width": 348.96,
+            "height": 62.98
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "step_body",
+          "slot": {
+            "role": "body",
+            "fill_condition": "always",
+            "max_words": 22,
+            "max_lines": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "imported_3_13",
+      "position": {
+        "x": 834.81,
+        "y": 402.05
+      },
+      "size": {
+        "width": 348.96,
+        "height": 62.98
+      },
+      "elements": [
+        {
+          "type": "text",
+          "runs": [
+            {
+              "text": "culpa ullamco qui in occaecat qui magna elit proident duis ut dolore aute enim proident fugiat elit amet consequat excepteur",
+              "font": {
+                "size": 15,
+                "color": "#F2F7FA",
+                "family": "Telegraf"
+              }
+            }
+          ],
+          "font": {
+            "size": 15,
+            "color": "#F2F7FA",
+            "family": "Telegraf",
+            "line_height": 1.4
+          },
+          "alignment": {
+            "horizontal": "left",
+            "vertical": "top"
+          },
+          "size": {
+            "width": 348.96,
+            "height": 62.98
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "step_body",
+          "slot": {
+            "role": "body",
+            "fill_condition": "always",
+            "max_words": 22,
+            "max_lines": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "imported_3_14",
+      "position": {
+        "x": 209.49,
+        "y": 54.85
+      },
+      "size": {
+        "width": 174.48,
+        "height": 24.62
+      },
+      "elements": [
+        {
+          "type": "text",
+          "runs": [
+            {
+              "text": "Studio Shodwe",
+              "font": {
+                "size": 17,
+                "color": "#164B82",
+                "family": "Telegraf Extra-Light"
+              }
+            }
+          ],
+          "font": {
+            "size": 17,
+            "color": "#164B82",
+            "family": "Telegraf Extra-Light",
+            "line_height": 1.4
+          },
+          "alignment": {
+            "horizontal": "left",
+            "vertical": "top"
+          },
+          "size": {
+            "width": 174.48,
+            "height": 24.62
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "brand_name",
+          "slot": {
+            "role": "label",
+            "hint": "Presenter's studio or company name in the running header.",
+            "fill_condition": "optional",
+            "max_words": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "imported_3_15",
+      "position": {
+        "x": 579.34,
+        "y": 54.85
+      },
+      "size": {
+        "width": 127.38,
+        "height": 24.62
+      },
+      "elements": [
+        {
+          "type": "text",
+          "runs": [
+            {
+              "text": "2024",
+              "font": {
+                "size": 17,
+                "color": "#164B82",
+                "family": "Telegraf Extra-Light"
+              }
+            }
+          ],
+          "font": {
+            "size": 17,
+            "color": "#164B82",
+            "family": "Telegraf Extra-Light",
+            "line_height": 1.4
+          },
+          "alignment": {
+            "horizontal": "right",
+            "vertical": "top"
+          },
+          "size": {
+            "width": 127.38,
+            "height": 24.62
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "deck_year",
+          "slot": {
+            "role": "date",
+            "hint": "Year or period in the running header.",
+            "fill_condition": "if-date-known",
+            "prune_if_unfilled": true,
+            "max_words": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "imported_3_16",
+      "position": {
+        "x": 421.19,
+        "y": 54.85
+      },
+      "size": {
+        "width": 127.38,
+        "height": 24.62
+      },
+      "elements": [
+        {
+          "type": "text",
+          "runs": [
+            {
+              "text": "Project.",
+              "font": {
+                "size": 17,
+                "color": "#164B82",
+                "family": "Telegraf Extra-Light"
+              }
+            }
+          ],
+          "font": {
+            "size": 17,
+            "color": "#164B82",
+            "family": "Telegraf Extra-Light",
+            "line_height": 1.4
+          },
+          "alignment": {
+            "horizontal": "center",
+            "vertical": "top"
+          },
+          "size": {
+            "width": 127.38,
+            "height": 24.62
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "deck_label",
+          "slot": {
+            "role": "label",
+            "hint": "Short running-header word, e.g. 'Project.' — keep the trailing period.",
+            "fill_condition": "optional",
+            "max_words": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "imported_3_17",
+      "position": {
+        "x": 121.61,
+        "y": 30.83
+      },
+      "size": {
+        "width": 602.05,
+        "height": 62.75
+      },
+      "elements": [
+        {
+          "type": "rectangle",
+          "stroke": {
+            "color": "#164B82",
+            "opacity": 1,
+            "width": 1
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 602.05,
+            "height": 62.75
+          },
+          "__presenton_manual_position": true,
+          "name": "decor_frame",
+          "decorative": true
+        }
+      ],
+      "rotation": 0
+    },
+    {
+      "id": "imported_3_18",
+      "position": {
+        "x": 724.55,
+        "y": 510.11
+      },
+      "size": {
+        "width": 482.63,
+        "height": 106.46
+      },
+      "elements": [
+        {
+          "type": "rectangle",
+          "fill": {
+            "color": "#E4B795",
+            "opacity": 1
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 482.63,
+            "height": 106.46
+          },
+          "__presenton_manual_position": true,
+          "name": "card_surface",
+          "decorative": true
+        }
+      ]
+    },
+    {
+      "id": "imported_3_19",
+      "position": {
+        "x": 724.55,
+        "y": 521.66
+      },
+      "size": {
+        "width": 94.84,
+        "height": 71.38
+      },
+      "elements": [
+        {
+          "type": "text",
+          "runs": [
+            {
+              "text": "3",
+              "font": {
+                "size": 50,
+                "color": "#F2F7FA",
+                "family": "Telegraf"
+              }
+            }
+          ],
+          "font": {
+            "size": 50,
+            "color": "#F2F7FA",
+            "family": "Telegraf",
+            "line_height": 1.4
+          },
+          "alignment": {
+            "horizontal": "center",
+            "vertical": "top"
+          },
+          "size": {
+            "width": 94.84,
+            "height": 71.38
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "step_number",
+          "decorative": true
+        }
+      ]
+    },
+    {
+      "id": "imported_3_20",
+      "position": {
+        "x": 834.81,
+        "y": 526.18
+      },
+      "size": {
+        "width": 348.96,
+        "height": 62.98
+      },
+      "elements": [
+        {
+          "type": "text",
+          "runs": [
+            {
+              "text": "culpa ullamco qui in occaecat qui magna elit proident duis ut dolore aute enim proident fugiat elit amet consequat excepteur",
+              "font": {
+                "size": 15,
+                "color": "#F2F7FA",
+                "family": "Telegraf"
+              }
+            }
+          ],
+          "font": {
+            "size": 15,
+            "color": "#F2F7FA",
+            "family": "Telegraf",
+            "line_height": 1.4
+          },
+          "alignment": {
+            "horizontal": "left",
+            "vertical": "top"
+          },
+          "size": {
+            "width": 348.96,
+            "height": 62.98
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "__presenton_manual_position": true,
+          "name": "step_body",
+          "slot": {
+            "role": "body",
+            "fill_condition": "always",
+            "max_words": 22,
+            "max_lines": 3
+          }
+        }
+      ]
+    }
+  ]
+}

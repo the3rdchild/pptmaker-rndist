@@ -102,6 +102,7 @@ export function TemplateEnginePanel({
   onThemeDeleted,
   onLayoutDeleted,
   onThemeUpdated,
+  originThemeId,
 }: {
   themes: TemplateTheme[];
   themeId: string;
@@ -129,6 +130,11 @@ export function TemplateEnginePanel({
   onThemeDeleted: (themeId: string) => void;
   onLayoutDeleted: (layoutId: string) => void;
   onThemeUpdated: () => void;
+  /** The theme the canvas was hydrated from (`?theme=` on the engine URL), or
+   *  null for a blank canvas. Only when this matches the save target do the
+   *  pages on the canvas stand for the WHOLE theme — which is what makes it
+   *  safe for the Theme scope's save to delete layouts the author removed. */
+  originThemeId: string | null;
 }) {
   const [scope, setScope] = useState<Scope>("page");
   const [drafts, setDrafts] = useState<Record<string, LayoutDraft>>({});
@@ -190,6 +196,14 @@ export function TemplateEnginePanel({
         .find((theme) => theme.id === themeId)
         ?.layouts.map((layout) => String(layout.id ?? ""))
         .filter(Boolean) ?? [],
+    [themeId, themes],
+  );
+
+  /** Themes are addressed by folder id but the author named them — showing the
+   *  id in the save controls reads as a different theme entirely once a theme
+   *  has been renamed (id `cassual-2`, name `Cassual`). */
+  const themeLabel = useMemo(
+    () => themes.find((theme) => theme.id === themeId)?.name || themeId,
     [themeId, themes],
   );
 
@@ -345,11 +359,51 @@ export function TemplateEnginePanel({
       setDrafts((current) => ({ ...current, ...draftPatches }));
     }
     if (persisted.length > 0) onPagesPersisted(persisted);
+
+    // Removing a page from the canvas and saving the theme has to remove the
+    // layout too — the save loop above only ever upserts, and rebuildThemeBundle
+    // merges by id, so a deleted page used to survive in both layouts/ and the
+    // bundle and reappear in /template-list.
+    //
+    // Two guards, because this deletes files. The canvas only stands for the
+    // whole theme when it was hydrated from THIS theme, so a blank canvas that
+    // merely has a theme selected can't wipe it. And a run with failures or
+    // skips has an incomplete saved set, where every unsaved page would look
+    // like a deletion.
+    const pruned: string[] = [];
+    const canPrune = originThemeId === themeId && failed === 0 && skipped === 0;
+    if (canPrune) {
+      const keep = new Set(persisted.map((page) => page.id));
+      const orphans = existingIds.filter((id) => !keep.has(id));
+      for (const layoutId of orphans) {
+        try {
+          const res = await fetch(
+            `/api/template-engine/layouts?themeId=${encodeURIComponent(themeId)}&layoutId=${encodeURIComponent(layoutId)}`,
+            { method: "DELETE" },
+          );
+          if (!res.ok) {
+            const body = await res.json().catch(() => null);
+            throw new Error(body?.error ?? "Delete failed");
+          }
+          pruned.push(layoutId);
+          onLayoutDeleted(layoutId);
+        } catch (error) {
+          collected.push({
+            level: "error",
+            message: `Removing ${layoutId}: ${error instanceof Error ? error.message : "Delete failed"}`,
+          });
+        }
+      }
+    }
+
     setWarnings(collected);
     if (failed > 0) setSaveError(`${failed} page${failed === 1 ? "" : "s"} could not be saved.`);
     if (saved > 0) {
-      const notes = [`Saved ${saved} of ${pageUis.length} pages to ${themeId}`];
+      const notes = [`Saved ${saved} of ${pageUis.length} pages to ${themeLabel}`];
       if (skipped > 0) notes.push(`${skipped} skipped`);
+      if (pruned.length > 0) {
+        notes.push(`${pruned.length} removed layout${pruned.length === 1 ? "" : "s"} deleted`);
+      }
       setSaveMessage(`${notes.join(" · ")}.`);
       onSaved(allocatedIds[allocatedIds.length - 1] ?? "");
     }
@@ -358,10 +412,13 @@ export function TemplateEnginePanel({
     activeIndex,
     drafts,
     existingIds,
+    onLayoutDeleted,
     onPagesPersisted,
     onSaved,
+    originThemeId,
     pageUis,
     themeId,
+    themeLabel,
   ]);
 
   /** Turns a .pptx into pages on the canvas. Every slide lands as an unsaved
@@ -590,7 +647,7 @@ export function TemplateEnginePanel({
         {canDeleteLayout && (
           <ConfirmDelete
             label="Delete this layout"
-            confirmLabel={`Delete ${draft.id} from ${themeId}`}
+            confirmLabel={`Delete ${draft.id} from ${themeLabel}`}
             onConfirm={async () => {
               const res = await fetch(
                 `/api/template-engine/layouts?themeId=${encodeURIComponent(themeId)}&layoutId=${encodeURIComponent(draft.id)}`,
@@ -701,8 +758,11 @@ export function TemplateEnginePanel({
           disabled={saving || (savesWholeTheme ? pageCount === 0 : !activeUi)}
           title={
             savesWholeTheme
-              ? `Save all ${pageCount} pages on the canvas into ${themeId}, each as its own layout.`
-              : `Save only this page into ${themeId}.`
+              ? `Save all ${pageCount} pages on the canvas into ${themeLabel}, each as its own layout.` +
+                (originThemeId === themeId
+                  ? " Layouts you removed from the canvas are deleted from the theme."
+                  : "")
+              : `Save only this page into ${themeLabel}.`
           }
           className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--accent)] px-3 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
         >
@@ -712,8 +772,8 @@ export function TemplateEnginePanel({
             <Save size={13} />
           )}
           {savesWholeTheme
-            ? `Save all ${pageCount} page${pageCount === 1 ? "" : "s"} to ${themeId}`
-            : `Save this page to ${themeId}`}
+            ? `Save all ${pageCount} page${pageCount === 1 ? "" : "s"} to ${themeLabel}`
+            : `Save this page to ${themeLabel}`}
         </button>
       </div>
     </aside>

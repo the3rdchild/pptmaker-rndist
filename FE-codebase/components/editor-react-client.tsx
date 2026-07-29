@@ -108,6 +108,7 @@ import {
   DeckLayoutPicker,
   mapAIPPTSlideToTemplateUi,
   patchHeroImage,
+  resolveThemeFromPrompt,
   type AIPPTSlide,
 } from "@/components/editor-react/ai-layout-fill";
 import {
@@ -212,6 +213,10 @@ export default function EditorReactClient({
   const [themes, setThemes] = useState<TemplateTheme[]>([]);
   const [templateThemeId, setTemplateThemeId] = useState(
     () => searchParams?.get("theme") ?? DEFAULT_THEME_ID
+  );
+  /** The theme the canvas was hydrated from, or null for a blank canvas. */
+  const [templateOriginThemeId, setTemplateOriginThemeId] = useState<string | null>(
+    null
   );
   const [templateSelection, setTemplateSelection] =
     useState<TemplateSelectionPayload | null>(null);
@@ -366,6 +371,11 @@ export default function EditorReactClient({
       const pages = (requested?.layouts ?? []).map(
         (layout) => structuredClone(layout) as Record<string, unknown>
       );
+      // Remembered separately from the save-target selector, which the author
+      // can point anywhere: only a canvas actually hydrated FROM a theme holds
+      // that theme's full set of layouts, and only then may saving it delete
+      // the ones no longer on the canvas.
+      setTemplateOriginThemeId(requested?.id ?? null);
 
       dispatch(
         setPresentationData({
@@ -767,7 +777,10 @@ export default function EditorReactClient({
     const decoder = new TextDecoder("utf-8");
     let buf = "";
     let count = 0;
-    const layoutPicker = new DeckLayoutPicker(topic);
+    // "…gunakan theme cassual" picks that pack; without a named theme the seed
+    // hash keeps deciding, exactly as before.
+    const askedTheme = await resolveThemeFromPrompt(topic);
+    const layoutPicker = new DeckLayoutPicker(topic, askedTheme);
     const currentToken = token;
 
     // Resolve the chosen pack's font map up front and reset the deck in ONE
@@ -1513,6 +1526,7 @@ export default function EditorReactClient({
                 onThemeDeleted={handleThemeDeleted}
                 onLayoutDeleted={handleLayoutDeleted}
                 onThemeUpdated={handleTemplateSaved}
+                originThemeId={templateOriginThemeId}
               />
             ) : undefined
           }

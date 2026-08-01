@@ -51,3 +51,6 @@ editor-*.png
 
 # session handoff notes (local only, not for the repo)
 HANDOFF.md
+
+# theme sources pulled out of the bucket for bulk editing (theme-sync.mjs)
+.theme-work/

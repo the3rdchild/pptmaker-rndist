@@ -26,6 +26,25 @@ Nothing ships in the repo any more. The six themes that used to
 uploaded by `FE-codebase/scripts/migrate-storage-to-s3.mjs`, which also
 rewrote the pack-absolute asset paths inside the JSON into absolute CDN URLs.
 
+## Editing a theme's JSON now that it is not in the repo
+
+Slot labelling is a bulk text edit — the cassual theme took 178 elements named
+and 108 given a role and fill condition — so it wants an editor across a dozen
+files, not a field at a time through the UI. While the layouts were in the repo
+that was just opening them. Now:
+
+```bash
+node scripts/theme-sync.mjs pull <theme>     # -> FE-codebase/.theme-work/<theme>/
+# edit layouts/*.json and theme.json
+node scripts/theme-sync.mjs push <theme>     # needs `bun dev` running
+```
+
+Pull reads the bucket directly. Push goes through the dev server's
+`/api/template-engine/layouts`, because that endpoint already owns the rule for
+merging layout sources into `template.json` — duplicating that merge in the
+script would be a second copy of it, free to drift. `.theme-work/` is
+gitignored; it is a scratch checkout, not a source of truth.
+
 ## Open decisions — please do not ship as-is
 
 ### 1. Everything is public-read

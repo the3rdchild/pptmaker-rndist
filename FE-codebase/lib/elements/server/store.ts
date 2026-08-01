@@ -1,19 +1,28 @@
 // Server-side store for the custom element library.
 //
-//   public/elements/index.json          the manifest (categories + items)
-//   public/elements/<category>/<file>   the uploaded asset
+//   elements/index.json          the manifest (categories + items)
+//   elements/<category>/<file>   the uploaded asset
 //
-// Assets live in the repo on purpose: they are collected once and reused
-// across every deck and template, so they belong in version control next to
-// the themes rather than in a database or a user upload bucket.
+// Assets live in the storage bucket alongside the themes: they are collected
+// once and reused across every deck and template, so they outlive any single
+// deck, and a deployed instance has no writable repo to put them in.
+//
+// Everything here is public-read for now. The intended split once this leaves
+// RnD is documented in docs/storage-staging-notes.md — template-engine
+// elements stay public, per-user uploads from the editor become private.
 
-import { promises as fs } from "node:fs";
-import path from "node:path";
+import {
+  deleteObjects,
+  publicUrl,
+  putObject,
+  readJson,
+  writeJson,
+} from "@/lib/storage/s3";
 
 export type ElementItem = {
   id: string;
   label: string;
-  /** Public URL path, e.g. /elements/abstract/blob-1.svg */
+  /** Absolute CDN URL, e.g. https://…/elements/abstract/blob-1.svg */
   src: string;
   width: number;
   height: number;
@@ -29,6 +38,11 @@ export type ElementLibrary = { categories: ElementCategory[] };
 
 const ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,60}$/;
 
+/** Key prefix for everything this store owns. */
+const ELEMENTS_PREFIX = "elements";
+
+const MANIFEST_KEY = `${ELEMENTS_PREFIX}/index.json`;
+
 /** Extensions the editor can actually render as an image element. */
 const MIME_EXTENSIONS: Record<string, string> = {
   "image/svg+xml": "svg",
@@ -40,14 +54,6 @@ const MIME_EXTENSIONS: Record<string, string> = {
 
 const MAX_BYTES = 2 * 1024 * 1024;
 
-export function elementsRoot(): string {
-  return path.join(process.cwd(), "public", "elements");
-}
-
-function manifestPath(): string {
-  return path.join(elementsRoot(), "index.json");
-}
-
 export function assertSafeId(value: string, what: string): string {
   if (!ID_PATTERN.test(value)) {
     throw new Error(`Invalid ${what}: ${JSON.stringify(value)}`);
@@ -56,22 +62,13 @@ export function assertSafeId(value: string, what: string): string {
 }
 
 export async function readLibrary(): Promise<ElementLibrary> {
-  try {
-    const parsed = JSON.parse(await fs.readFile(manifestPath(), "utf8"));
-    const categories = Array.isArray(parsed?.categories) ? parsed.categories : [];
-    return { categories };
-  } catch {
-    return { categories: [] };
-  }
+  const parsed = await readJson<{ categories?: unknown }>(MANIFEST_KEY);
+  const categories = Array.isArray(parsed?.categories) ? parsed.categories : [];
+  return { categories: categories as ElementCategory[] };
 }
 
 async function writeLibrary(library: ElementLibrary): Promise<void> {
-  await fs.mkdir(elementsRoot(), { recursive: true });
-  await fs.writeFile(
-    manifestPath(),
-    `${JSON.stringify(library, null, 2)}\n`,
-    "utf8",
-  );
+  await writeJson(MANIFEST_KEY, library);
 }
 
 export type SaveElementInput = {
@@ -84,8 +81,8 @@ export type SaveElementInput = {
 };
 
 /** Decodes a `data:<mime>;base64,<payload>` upload. Rejects anything that is
- *  not an image type the editor can render, so a stray file can't be written
- *  into public/ with an arbitrary extension. */
+ *  not an image type the editor can render, so a stray file can't be stored
+ *  under an arbitrary extension and served back as something else. */
 function decodeDataUrl(dataUrl: string): { bytes: Buffer; extension: string } {
   // [\s\S] rather than the `s` flag — the build targets below ES2018.
   const match = /^data:([^;,]+);base64,([\s\S]+)$/.exec(dataUrl.trim());
@@ -151,13 +148,15 @@ export async function saveElement(
   );
   const filename = `${id}.${extension}`;
 
-  await fs.mkdir(path.join(elementsRoot(), categoryId), { recursive: true });
-  await fs.writeFile(path.join(elementsRoot(), categoryId, filename), bytes);
+  const src = await putObject(
+    `${ELEMENTS_PREFIX}/${categoryId}/${filename}`,
+    bytes,
+  );
 
   const item: ElementItem = {
     id,
     label,
-    src: `/elements/${categoryId}/${filename}`,
+    src,
     width: Math.max(1, Math.round(input.width ?? 200)),
     height: Math.max(1, Math.round(input.height ?? 200)),
   };
@@ -165,6 +164,15 @@ export async function saveElement(
   await writeLibrary(library);
 
   return { category, item };
+}
+
+/** Recovers the object key from a stored item. Items written before the move
+ *  to object storage hold a `/elements/…` path rather than a CDN URL, so both
+ *  shapes have to resolve. */
+function keyOf(item: ElementItem): string | null {
+  const marker = `/${ELEMENTS_PREFIX}/`;
+  const at = item.src.indexOf(marker);
+  return at === -1 ? null : item.src.slice(at + 1);
 }
 
 export async function deleteElement(
@@ -181,19 +189,16 @@ export async function deleteElement(
   const item = category.items.find((entry) => entry.id === itemId);
   if (!item) throw new Error(`Unknown element: ${itemId}`);
 
-  await fs.rm(path.join(process.cwd(), "public", item.src.replace(/^\//, "")), {
-    force: true,
-  });
+  const key = keyOf(item);
+  if (key) await deleteObjects([key]);
+
   category.items = category.items.filter((entry) => entry.id !== itemId);
-  // An emptied category would otherwise linger as a dead filter chip.
+  // An emptied category would otherwise linger as a dead filter chip. There is
+  // no folder to remove alongside it — S3 has no empty directories.
   if (category.items.length === 0) {
     library.categories = library.categories.filter(
       (entry) => entry.id !== categoryId,
     );
-    await fs.rm(path.join(elementsRoot(), categoryId), {
-      recursive: true,
-      force: true,
-    });
   }
 
   await writeLibrary(library);
@@ -212,3 +217,5 @@ export async function renameCategory(
   await writeLibrary(library);
   return library;
 }
+
+export { publicUrl as elementPublicUrl };

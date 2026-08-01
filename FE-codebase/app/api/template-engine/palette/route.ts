@@ -6,8 +6,6 @@
 // how their palette survives rotation before committing it — and so the
 // contrast guarantee is checkable rather than assumed.
 
-import { promises as fs } from "node:fs";
-import path from "node:path";
 import { NextResponse } from "next/server";
 
 import {
@@ -18,7 +16,8 @@ import {
   toPaletteSpec,
   type HarmonyRule,
 } from "@/lib/templates/palette-engine";
-import { templatesRoot } from "@/lib/templates/server/store";
+import { readJson } from "@/lib/storage/s3";
+import { themeKey } from "@/lib/templates/server/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,12 +32,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "theme is required" }, { status: 400 });
   }
 
-  let meta: Record<string, unknown>;
-  try {
-    meta = JSON.parse(
-      await fs.readFile(path.join(templatesRoot(), themeId, "theme.json"), "utf8"),
-    );
-  } catch {
+  const meta = await readJson<Record<string, unknown>>(
+    themeKey(themeId, "theme.json"),
+  );
+  if (!meta) {
     return NextResponse.json({ error: `Unknown theme: ${themeId}` }, { status: 404 });
   }
 

@@ -180,7 +180,7 @@ export default function EditorReactClient({
 }: {
   deckId: string;
   /** Template-engine mode: the "deck" is a theme, its slides are that theme's
-   *  layouts, and edits are saved to public/templates instead of the deck API.
+   *  layouts, and edits are saved to template storage instead of the deck API.
    *  Everything else — canvas, toolbars, undo, insert panel — is the editor
    *  the authors already know, which is the point of running it as a mode
    *  rather than a fork. */
@@ -357,7 +357,7 @@ export default function EditorReactClient({
       if (cancelled) return;
       setThemes(all);
       if (all.length === 0) {
-        setError("No template themes found under public/templates.");
+        setError("No template themes found in storage.");
         setLoading(false);
         return;
       }

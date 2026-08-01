@@ -123,7 +123,7 @@ export function TemplateListPage() {
 
         {themes !== null && themes.length === 0 && (
           <p className="py-16 text-center text-sm text-zinc-500">
-            Belum ada theme di public/templates.
+            Belum ada theme tersimpan.
           </p>
         )}
 

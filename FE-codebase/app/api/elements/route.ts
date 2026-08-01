@@ -1,9 +1,9 @@
 // Custom element library: list, upload, delete.
 //
-// GET is allowed everywhere — a deployed build still has to render whatever
-// was committed. Writes are development-only, like the template routes: they
-// add files to the repo working tree, which is the point (elements are
-// collected once and committed for reuse).
+// GET is allowed everywhere. Writes go through the same guard as the template
+// routes — the library is shared and public-read, so until per-user ownership
+// exists (see docs/storage-staging-notes.md) anyone who can write here can
+// change what every deck sees.
 
 import { NextResponse } from "next/server";
 
@@ -13,18 +13,14 @@ import {
   renameCategory,
   saveElement,
 } from "@/lib/elements/server/store";
+import { proxyAssetUrls } from "@/lib/storage/asset-proxy";
+import { templateWritesBlocked } from "@/lib/templates/server/guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function writesBlocked(): NextResponse | null {
-  if (process.env.NODE_ENV === "production") {
-    return NextResponse.json(
-      { error: "Elements can only be uploaded in development." },
-      { status: 403 },
-    );
-  }
-  return null;
+  return templateWritesBlocked("uploaded");
 }
 
 function fail(error: unknown, status = 400) {
@@ -36,7 +32,10 @@ function fail(error: unknown, status = 400) {
 
 export async function GET() {
   try {
-    return NextResponse.json(await readLibrary());
+    const library = JSON.stringify(await readLibrary());
+    return new NextResponse(proxyAssetUrls(library), {
+      headers: { "Content-Type": "application/json" },
+    });
   } catch (error) {
     return fail(error, 500);
   }

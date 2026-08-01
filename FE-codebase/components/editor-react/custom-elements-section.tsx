@@ -211,8 +211,7 @@ export function CustomElementsSection({
       {categories.length === 0 ? (
         <p className="px-3 pb-2 text-[10px] leading-relaxed text-[var(--text-muted)]">
           Nothing uploaded yet. Name a category, then Upload — SVG or PNG. Files
-          are saved into the repo under public/elements and stay available in
-          every deck.
+          are saved to shared storage and stay available in every deck.
         </p>
       ) : (
         <div className="grid grid-cols-4 gap-2.5 px-2.5 pb-2">

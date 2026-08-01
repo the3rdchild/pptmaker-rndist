@@ -1,5 +1,5 @@
 // Fills AI-generated slide content into one of the existing hand-designed
-// template layouts (public/templates/*/template.json) instead of authoring
+// template layouts (templates/*/template.json in storage) instead of authoring
 // a slide from scratch. Picks a layout matching the slide's role, then
 // walks its component tree filling only non-decorative text placeholders —
 // every other design decision (colors, decorative shapes, positions,
@@ -272,7 +272,7 @@ export class DeckLayoutPicker {
   private contentCursor = 0;
   private seed: string;
   /** Resolved in ensureLoaded() — the theme list is fetched, not compiled in,
-   *  so a theme added to public/templates is picked up without a code change. */
+   *  so a theme added to storage is picked up without a code change. */
   private packName: string | null = null;
   private packFonts: Record<string, string> | null = null;
 

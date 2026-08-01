@@ -2,6 +2,7 @@
 
 import { NextResponse } from "next/server";
 
+import { templateWritesBlocked } from "@/lib/templates/server/guard";
 import {
   createTheme,
   deleteTheme,
@@ -24,12 +25,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  if (process.env.NODE_ENV === "production") {
-    return NextResponse.json(
-      { error: "Themes can only be created in development." },
-      { status: 403 },
-    );
-  }
+  const blocked = templateWritesBlocked("created");
+  if (blocked) return blocked;
 
   let body: { themeId?: unknown; name?: unknown; description?: unknown };
   try {
@@ -64,12 +61,8 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  if (process.env.NODE_ENV === "production") {
-    return NextResponse.json(
-      { error: "Themes can only be edited in development." },
-      { status: 403 },
-    );
-  }
+  const blocked = templateWritesBlocked("edited");
+  if (blocked) return blocked;
 
   let body: { themeId?: unknown; patch?: unknown };
   try {
@@ -101,12 +94,8 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  if (process.env.NODE_ENV === "production") {
-    return NextResponse.json(
-      { error: "Themes can only be deleted in development." },
-      { status: 403 },
-    );
-  }
+  const blocked = templateWritesBlocked("deleted");
+  if (blocked) return blocked;
 
   const themeId = new URL(request.url).searchParams.get("themeId") ?? "";
   if (!themeId) {

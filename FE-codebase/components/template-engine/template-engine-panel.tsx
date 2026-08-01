@@ -739,7 +739,7 @@ export function TemplateEnginePanel({
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={importing}
-            title={`Add every slide of a .pptx as a page. Its images are written into public/templates/${themeId}/static/imported/.`}
+            title={`Add every slide of a .pptx as a page. Its images are uploaded to templates/${themeId}/static/imported/.`}
             className={secondaryButtonClass}
           >
             {importing ? (
@@ -849,7 +849,7 @@ function ConfirmDelete({
   );
 }
 
-/** Theme ids become folder names under public/templates and are validated
+/** Theme ids become key prefixes under templates/ and are validated
  *  server-side against the same shape — mirror it here so a bad name is caught
  *  while typing instead of on submit. */
 function toThemeId(value: string): string {
@@ -860,7 +860,7 @@ function toThemeId(value: string): string {
     .slice(0, 49);
 }
 
-/** Renames the theme's display name — the folder id (public/templates/<id>/)
+/** Renames the theme's display name — the storage id (templates/<id>/)
  *  stays put, since that id is what every layout's stored asset paths and a
  *  saved deck's theme tag are keyed on; changing it would be a much bigger
  *  operation than what "rename" asks for here. */
@@ -1011,7 +1011,7 @@ function NewThemeForm({
           className={inputClass}
         />
       </Field>
-      <Field label="Folder id" hint="public/templates/<id>/ — lowercase, no spaces.">
+      <Field label="Folder id" hint="templates/<id>/ — lowercase, no spaces.">
         <input
           value={effectiveId}
           onChange={(event) => {

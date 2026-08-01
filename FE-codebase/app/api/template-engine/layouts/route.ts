@@ -1,12 +1,11 @@
 // Template engine save endpoint.
 //
-// Writes layout sources into public/templates/<theme>/layouts/ and rebuilds
-// the theme bundle. This edits files inside the repo working tree, so it is
-// refused outside development — a deployed instance has a read-only bundle
-// and templates are authored locally and committed.
+// Writes layout sources to templates/<theme>/layouts/ in object storage and
+// rebuilds the theme bundle.
 
 import { NextResponse } from "next/server";
 
+import { templateWritesBlocked } from "@/lib/templates/server/guard";
 import {
   deleteLayout,
   saveLayout,
@@ -17,22 +16,12 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function devOnlyGuard(): NextResponse | null {
-  if (process.env.NODE_ENV === "production") {
-    return NextResponse.json(
-      { error: "The template engine only writes templates in development." },
-      { status: 403 },
-    );
-  }
-  return null;
-}
-
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
 }
 
 export async function POST(request: Request) {
-  const blocked = devOnlyGuard();
+  const blocked = templateWritesBlocked();
   if (blocked) return blocked;
 
   let body: { themeId?: unknown; layout?: unknown };
@@ -64,7 +53,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const blocked = devOnlyGuard();
+  const blocked = templateWritesBlocked();
   if (blocked) return blocked;
 
   const url = new URL(request.url);

@@ -6,13 +6,12 @@
 // not quietly lose an element, a run of text, or a slot label — and 49 shipped
 // layouts are a far better corpus for proving that than any fixture I'd write.
 
-import { promises as fs } from "node:fs";
-import path from "node:path";
 import { NextResponse } from "next/server";
 
 import { adaptTemplateV2LayoutToSlide } from "@/components/slide-editor/importing/template-v2-import";
 import { exportSlideAsLayout } from "@/components/slide-editor/templates/template-v2-export";
-import { listThemeIds, templatesRoot } from "@/lib/templates/server/store";
+import { readJson } from "@/lib/storage/s3";
+import { listThemeIds, themeKey } from "@/lib/templates/server/store";
 import type { Slide, SlideElement } from "@/components/slide-editor/types";
 
 export const runtime = "nodejs";
@@ -83,13 +82,10 @@ export async function GET() {
   let failed = 0;
 
   for (const themeId of themes) {
-    const bundlePath = path.join(templatesRoot(), themeId, "template.json");
-    let bundle: { layouts?: Record<string, unknown>[] };
-    try {
-      bundle = JSON.parse(await fs.readFile(bundlePath, "utf8"));
-    } catch {
-      continue;
-    }
+    const bundle = await readJson<{ layouts?: Record<string, unknown>[] }>(
+      themeKey(themeId, "template.json"),
+    );
+    if (!bundle) continue;
 
     for (const layout of bundle.layouts ?? []) {
       checked += 1;

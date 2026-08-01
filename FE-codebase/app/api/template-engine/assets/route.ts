@@ -1,34 +1,28 @@
 // Template engine asset endpoint.
 //
-// Stores one image into public/templates/<theme>/static/imported/ and hands
-// back its pack-absolute URL. Used by the .pptx import: a deck's media has to
-// land on disk as files, because the alternative — leaving it inlined as
-// `data:` URLs — bakes megabytes of base64 into the layout JSON that gets
-// committed (see template-v2-export's warning for exactly that case).
-//
-// Like the layout endpoint this writes inside the repo working tree, so it is
-// refused outside development.
+// Stores one image at templates/<theme>/static/imported/ in object storage and
+// hands back its public URL. Used by the .pptx import: a deck's media has to
+// land as separate objects, because the alternative — leaving it inlined as
+// `data:` URLs — bakes megabytes of base64 into the layout JSON (see
+// template-v2-export's warning for exactly that case).
 
 import { NextResponse } from "next/server";
 
+import { templateWritesBlocked } from "@/lib/templates/server/guard";
 import { assetExtensionFor, saveThemeAsset } from "@/lib/templates/server/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** Generous enough for a full-bleed photo, small enough that a malformed
- *  request can't write an arbitrarily large file into the repo. */
+ *  request can't push an arbitrarily large object into the bucket. */
 const MAX_ASSET_BYTES = 16 * 1024 * 1024;
 
 const DATA_URL_PATTERN = /^data:([a-z0-9.+/-]+);base64,([\s\S]*)$/i;
 
 export async function POST(request: Request) {
-  if (process.env.NODE_ENV === "production") {
-    return NextResponse.json(
-      { error: "The template engine only writes templates in development." },
-      { status: 403 },
-    );
-  }
+  const blocked = templateWritesBlocked("uploaded");
+  if (blocked) return blocked;
 
   let body: { themeId?: unknown; data?: unknown };
   try {

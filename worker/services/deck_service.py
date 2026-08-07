@@ -64,9 +64,15 @@ RULES — violations break the deck:
    - "always" — you MUST provide a fill for this slot.
    - any other condition ("optional", "if-quote-available", "if-numeric-data", "if-person-known", "if-date-known", "if-source-known", ...) — provide a fill ONLY when the condition is genuinely met by the topic. NEVER invent quotes, people, dates, statistics, or sources. When the condition isn't met, OMIT the entry entirely.
 5. ITEM COUNTS: for layouts with items {min,max}, fill exactly that many repeated card/bullet slots (the slot names repeat per card — provide one fill per card, e.g. 3 fills named "card_title" for a 3-card layout).
-6. VOICE: write in the requested language. Each slot's role and hint tells you the register (a "label" is 1-3 words, a "cta" is an action, a "stat-value" is a bare figure).
-7. QUOTES: never put a raw double-quote character (") inside your copy — it breaks the JSON. Use “ ” or ' instead.
-8. FORMAT: raw JSONL, one object per line, no markdown fences, no commentary."""
+6. CHARTS: slots with "kind":"chart" are filled with DATA, not prose. Instead of "text", give the fill a "chart" object:
+   {"name":"<slot name>","chart":{"title":"<chart title>","categories":["<label>",...],"series":[{"name":"<series name>","values":[<number>,...]}],"x_axis_title":"...","y_axis_title":"...","source":"..."}}
+   - categories and every series' values array MUST have equal length, and match the slot's stated chart shape (chart.categories / chart.series) when given.
+   - 4-8 categories is the readable range; 1-3 series.
+   - Use REAL figures when the topic supplies them; otherwise plausible, clearly reasonable estimates — never absurd precision (write 42, not 41.8673).
+   - "source" is optional — only when a real source is known.
+7. VOICE: write in the requested language. Each slot's role and hint tells you the register (a "label" is 1-3 words, a "cta" is an action, a "stat-value" is a bare figure).
+8. QUOTES: never put a raw double-quote character (") inside your copy — it breaks the JSON. Use “ ” or ' instead.
+9. FORMAT: raw JSONL, one object per line, no markdown fences, no commentary."""
 
 
 def _compact_manifest(manifest: dict) -> dict:
@@ -90,11 +96,13 @@ def _compact_manifest(manifest: dict) -> dict:
                     k: v
                     for k, v in {
                         "name": s.get("name"),
+                        "kind": s.get("kind"),
                         "role": s.get("role"),
                         "hint": s.get("hint"),
                         "fill_condition": s.get("fill_condition"),
                         "max_words": s.get("max_words"),
                         "max_lines": s.get("max_lines"),
+                        "chart": s.get("chart"),
                     }.items()
                     if v is not None
                 }

@@ -27,6 +27,12 @@ import {
   parseSlotMeta,
   type SlotMeta,
 } from "@/components/slide-editor/templates/slot-meta";
+import {
+  chartDataFromSeriesWithColors,
+  chartSupportsMultipleSeries,
+  DEFAULT_CHART_COLORS,
+} from "@/components/slide-editor/charts/chart-data";
+import type { ChartType } from "@/components/slide-editor/types";
 
 type Rec = Record<string, unknown>;
 
@@ -37,10 +43,23 @@ interface TemplateLayout {
   components: Rec[];
 }
 
-/** One fill entry from the model: which named slot, what text. */
+/** Chart data the model supplies for kind:"chart" slots — categories plus one
+ *  or more series, matching the template's authored chart frame. */
+export interface ChartSpec {
+  title?: string;
+  categories: string[];
+  series: { name: string; values: number[] }[];
+  x_axis_title?: string;
+  y_axis_title?: string;
+  source?: string;
+}
+
+/** One fill entry from the model: which named slot, what content. Text slots
+ *  carry `text`; chart slots carry `chart`. */
 export interface SlotFill {
   name: string;
-  text: string;
+  text?: string;
+  chart?: ChartSpec;
 }
 
 /** The new JSONL contract — one line per slide:
@@ -49,6 +68,48 @@ export interface ManifestSlideLine {
   type: "slide";
   layout_id: string;
   fills: SlotFill[];
+}
+
+/** Model output for a chart slot is untrusted JSON — coerce it hard: ≤8
+ *  categories, ≤4 series, numeric values padded/truncated to the category
+ *  count so the renderer never sees a ragged dataset. */
+function parseChartSpec(raw: unknown): ChartSpec | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const rec = raw as Rec;
+
+  const categories = (Array.isArray(rec.categories) ? rec.categories : [])
+    .map((c) => String(c ?? "").trim())
+    .filter(Boolean)
+    .slice(0, 8);
+  if (categories.length === 0) return null;
+
+  const series: { name: string; values: number[] }[] = [];
+  for (const s of (Array.isArray(rec.series) ? rec.series : []).slice(0, 4)) {
+    if (!s || typeof s !== "object") continue;
+    const sRec = s as Rec;
+    const values = (Array.isArray(sRec.values) ? sRec.values : [])
+      .map((v) => {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : 0;
+      })
+      .slice(0, categories.length);
+    while (values.length < categories.length) values.push(0);
+    series.push({
+      name: typeof sRec.name === "string" && sRec.name.trim() ? sRec.name.trim() : "Series",
+      values,
+    });
+  }
+  if (series.length === 0) return null;
+
+  const opt = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 120) : undefined);
+  return {
+    categories,
+    series,
+    ...(opt(rec.title) ? { title: opt(rec.title) } : {}),
+    ...(opt(rec.x_axis_title) ? { x_axis_title: opt(rec.x_axis_title) } : {}),
+    ...(opt(rec.y_axis_title) ? { y_axis_title: opt(rec.y_axis_title) } : {}),
+    ...(opt(rec.source) ? { source: opt(rec.source) } : {}),
+  };
 }
 
 /** Parses one streamed line into a ManifestSlideLine, or null when the line
@@ -69,9 +130,13 @@ export function parseManifestSlideLine(line: string): ManifestSlideLine | null {
   for (const f of rawFills) {
     if (!f || typeof f !== "object") continue;
     const { name, text } = f as Rec;
-    if (typeof name === "string" && name && typeof text === "string") {
+    if (typeof name !== "string" || !name) continue;
+    if (typeof text === "string") {
       fills.push({ name, text });
+      continue;
     }
+    const chart = parseChartSpec((f as Rec).chart);
+    if (chart) fills.push({ name, chart });
   }
   return { type: "slide", layout_id: rec.layout_id, fills };
 }
@@ -112,6 +177,7 @@ function enforceSlotBudgets(text: string, slot: SlotMeta | null, el: Rec): strin
 interface NamedTextSlot {
   el: Rec;
   name: string;
+  kind: "text" | "chart";
   slot: SlotMeta | null;
   /** Splices this element out of its parent array (children/elements). */
   remove: () => void;
@@ -141,17 +207,23 @@ function visitNamedText(el: Rec, out: NamedTextSlot[]): void {
 
 function collectOne(el: Rec, remove: () => void, out: NamedTextSlot[]): void {
   const type = el.type;
-  if ((type === "text" || type === "text-list") && el.decorative !== true) {
+  if ((type === "text" || type === "text-list" || type === "chart") && el.decorative !== true) {
     const name = typeof el.name === "string" ? el.name.trim() : "";
     if (name) {
-      out.push({ el, name, slot: parseSlotMeta(el.slot), remove });
-      return; // a named text leaf has no fillable descendants
+      out.push({
+        el,
+        name,
+        kind: type === "chart" ? "chart" : "text",
+        slot: parseSlotMeta(el.slot),
+        remove,
+      });
+      return; // a named leaf has no fillable descendants
     }
   }
   visitNamedText(el, out);
 }
 
-/** Every named, non-decorative text element in the layout, in document order. */
+/** Every named, non-decorative text/chart element in the layout, in document order. */
 function collectNamedTextSlots(components: Rec[]): NamedTextSlot[] {
   const out: NamedTextSlot[] = [];
   for (const component of components) {
@@ -165,6 +237,36 @@ function collectNamedTextSlots(components: Rec[]): NamedTextSlot[] {
     }
   }
   return out;
+}
+
+/* ---------------------------- Chart slot writes ---------------------------- */
+
+/** Writes the model's chart data into a chart element, replacing the authored
+ *  sample data. Keeps the template's own colors — only the numbers, labels
+ *  and titles change. The derived single-series `data` is refreshed too, so
+ *  consumers that read `data` instead of categories/series (export, CSV)
+ *  stay in sync. */
+function writeChartData(el: Rec, spec: ChartSpec): void {
+  const multi = chartSupportsMultipleSeries(el.chart_type as ChartType);
+  const series = spec.series.slice(0, multi ? 4 : 1);
+
+  el.categories = spec.categories;
+  el.series = series;
+  if (spec.title) el.title = spec.title;
+  if (spec.x_axis_title) el.x_axis_title = spec.x_axis_title;
+  if (spec.y_axis_title) el.y_axis_title = spec.y_axis_title;
+  if (spec.source) el.source = spec.source;
+
+  const colors =
+    Array.isArray(el.colors) && el.colors.length > 0
+      ? (el.colors as string[])
+      : DEFAULT_CHART_COLORS;
+  el.data = chartDataFromSeriesWithColors(
+    spec.categories,
+    series,
+    colors,
+    series.length <= 1,
+  );
 }
 
 /* --------------------------- Unfilled-slot policy -------------------------- */
@@ -217,10 +319,10 @@ export function fillLayoutWithSlotMap(
   // Group fills by slot name, preserving order — the Nth fill for a name goes
   // to the Nth element carrying that name (layouts repeat names, e.g. two
   // "body_paragraph" elements in one layout).
-  const fillsByName = new Map<string, string[]>();
+  const fillsByName = new Map<string, SlotFill[]>();
   for (const fill of line.fills) {
     const list = fillsByName.get(fill.name) ?? [];
-    list.push(fill.text);
+    list.push(fill);
     fillsByName.set(fill.name, list);
   }
 
@@ -235,7 +337,18 @@ export function fillLayoutWithSlotMap(
       continue;
     }
     const queue = fillsByName.get(named.name);
-    const text = queue?.shift();
+    const fill = queue?.shift();
+
+    // Chart slots take structured data, not prose. An unfilled chart keeps
+    // whatever the template author left (usually an empty frame) unless it's
+    // marked prune — there is no honest "fallback data" to invent here.
+    if (named.kind === "chart") {
+      if (fill?.chart) writeChartData(named.el, fill.chart);
+      else if (named.slot?.prune_if_unfilled) named.remove();
+      continue;
+    }
+
+    const text = fill?.text;
     if (text != null && text.trim()) {
       setText(named.el, enforceSlotBudgets(text, named.slot, named.el));
       continue;

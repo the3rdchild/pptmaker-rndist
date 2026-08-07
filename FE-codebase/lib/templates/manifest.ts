@@ -42,6 +42,9 @@ export type SlotManifestEntry = {
   max_lines?: number;
   max_length?: number;
   min_length?: number;
+  /** Chart slots only: the authored chart's type and sample-data shape, so the
+   *  model sizes its data to the frame. */
+  chart?: { type?: string; categories?: number; series?: number };
   /** Authored typography. The family is fixed by the theme; size and weight
    *  are reported so the model can judge how much text will fit, and may be
    *  adjusted to fit — the family may not. */
@@ -215,6 +218,19 @@ export function buildLayoutManifest(
           ...(bold ? { bold } : {}),
         };
       }
+    }
+
+    // Charts: the model fills these with DATA, not prose — tell it the chart
+    // type and how many categories/series the authored sample holds, so its
+    // data matches the frame (a 4-bar grouped chart wants 4 categories).
+    if (kind === "chart") {
+      const categories = Array.isArray(element.categories) ? element.categories.length : 0;
+      const series = Array.isArray(element.series) ? element.series.length : 0;
+      entry.chart = {
+        ...(readString(element.chart_type) ? { type: readString(element.chart_type) } : {}),
+        ...(categories > 0 ? { categories } : {}),
+        ...(series > 0 ? { series } : {}),
+      };
     }
 
     slots.push(entry);

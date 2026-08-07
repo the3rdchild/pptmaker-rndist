@@ -27,7 +27,8 @@ export type SlotRole =
   | "date"
   | "source"
   | "step-number"
-  | "page-number";
+  | "page-number"
+  | "chart";
 
 export const SLOT_ROLES: { id: SlotRole; label: string; hint: string }[] = [
   { id: "eyebrow", label: "Eyebrow", hint: "Small label above the headline (section, category)" },
@@ -48,6 +49,7 @@ export const SLOT_ROLES: { id: SlotRole; label: string; hint: string }[] = [
   { id: "source", label: "Source", hint: "Citation for a figure or claim" },
   { id: "step-number", label: "Step number", hint: "Ordinal in a process, e.g. 01" },
   { id: "page-number", label: "Page number", hint: "Slide's ordinal in the deck — auto-filled by the generator, never written by the model" },
+  { id: "chart", label: "Chart data", hint: "Chart element — the generator fills categories + series values from the topic" },
 ];
 
 /** When a slot should be filled. Anything other than `always` means the

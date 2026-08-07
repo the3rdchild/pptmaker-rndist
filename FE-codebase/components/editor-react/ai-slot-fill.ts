@@ -199,6 +199,8 @@ function fallbackForAlwaysSlot(
 
 /**
  * Fills `layout` with the model's slot-by-slot copy. Enforcement summary:
+ *  - page-number slots     → stamped with the slide's ordinal (ctx.pageNumber)
+ *                            — the model never sees them, the client owns them.
  *  - fill present          → budgets enforced, text written (font auto-fits).
  *  - missing + always      → role-based fallback from the deck's own material.
  *  - missing + prune flag  → element removed, empty containers pruned after.
@@ -207,7 +209,7 @@ function fallbackForAlwaysSlot(
 export function fillLayoutWithSlotMap(
   layout: TemplateLayout,
   line: ManifestSlideLine,
-  ctx: { topic: string },
+  ctx: { topic: string; pageNumber?: number },
 ): FilledSlide {
   const components = JSON.parse(JSON.stringify(layout.components)) as Rec[];
   const namedSlots = collectNamedTextSlots(components);
@@ -226,6 +228,12 @@ export function fillLayoutWithSlotMap(
     line.fills.find((f) => /title|headline|heading/i.test(f.name))?.text ?? "";
 
   for (const named of namedSlots) {
+    // Page numbers are the client's job — stamped from the slide's position
+    // in the deck, never asked from the model (it can't know the final order).
+    if (named.slot?.role === "page-number") {
+      setText(named.el, ctx.pageNumber != null ? String(ctx.pageNumber) : "");
+      continue;
+    }
     const queue = fillsByName.get(named.name);
     const text = queue?.shift();
     if (text != null && text.trim()) {
@@ -261,7 +269,7 @@ export function fillLayoutWithSlotMap(
 export async function fillManifestSlide(
   layout: TemplateLayout | null,
   line: ManifestSlideLine,
-  ctx: { topic: string },
+  ctx: { topic: string; pageNumber?: number },
 ): Promise<FilledSlide | null> {
   if (!layout) return null;
   const filled = fillLayoutWithSlotMap(layout, line, ctx);

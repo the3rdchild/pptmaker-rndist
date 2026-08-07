@@ -858,7 +858,8 @@ export default function EditorReactClient({
     };
 
     const mapLine = async (
-      line: string
+      line: string,
+      pageNumber: number,
     ): Promise<{
       ui: Record<string, unknown>;
       heroImage: { componentId: string; elementName: string; occurrenceIndex: number } | null;
@@ -871,7 +872,7 @@ export default function EditorReactClient({
         const manifestLine = parseManifestSlideLine(line);
         if (manifestLine) {
           const layout = layoutPicker.getLayoutById(manifestLine.layout_id);
-          const filled = await fillManifestSlide(layout, manifestLine, { topic });
+          const filled = await fillManifestSlide(layout, manifestLine, { topic, pageNumber });
           if (!filled) return null;
           const subject =
             manifestLine.fills.find((f) => /title|headline|heading/i.test(f.name))?.text || topic;
@@ -937,7 +938,7 @@ export default function EditorReactClient({
       if (done) {
         if (buf.trim() && !tryApplyThemeLine(buf.trim())) {
           throwIfErrorLine(buf.trim());
-          const filled = await mapLine(buf.trim());
+          const filled = await mapLine(buf.trim(), count + 1);
           if (filled) {
             const index = count;
             dispatch(addSlide({ ui: filled.ui }));
@@ -954,7 +955,7 @@ export default function EditorReactClient({
         const t = line.trim();
         if (!t || t.startsWith("```") || tryApplyThemeLine(t)) continue;
         throwIfErrorLine(t);
-        const filled = await mapLine(t);
+        const filled = await mapLine(t, count + 1);
         if (filled) {
           const index = count;
           dispatch(addSlide({ ui: filled.ui }));

@@ -183,6 +183,13 @@ export function buildLayoutManifest(
     if (!name) return;
 
     const slot: SlotMeta | null = parseSlotMeta(element.slot);
+
+    // Page numbers are stamped by the client at generation time (the model
+    // can't know the deck's final slide order), so they stay OUT of the
+    // model-facing manifest — showing them only invites the model to write
+    // its own, often wrong, numbers.
+    if (slot?.role === "page-number") return;
+
     const entry: SlotManifestEntry = { name, kind };
     if (slot?.role) entry.role = slot.role;
     if (slot?.hint) entry.hint = slot.hint;

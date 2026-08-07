@@ -540,7 +540,10 @@ async function imageFromBlipFill(
   return {
     type: "image",
     data: dataUrl,
-    fit: "fill",
+    // Default to cover ("Fill" in the toolbar) — imported frames used to get
+    // "fill" ("Stretch"), which distorts any photo whose aspect ratio doesn't
+    // exactly match its frame. Cropping beats warping.
+    fit: "cover",
     size: { width: box.width, height: box.height },
     ...(opacity != null && opacity < 1 ? { opacity } : {}),
   };

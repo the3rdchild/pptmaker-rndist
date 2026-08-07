@@ -8,6 +8,7 @@ import {
   Loader2,
   Plus,
   Save,
+  Sparkles,
   Trash2,
 } from "lucide-react";
 
@@ -33,6 +34,11 @@ import {
   buildElementOutline,
   sameAddress,
 } from "@/components/template-engine/element-outline";
+import {
+  collectLabelTargets,
+  applyAutoLabelResult,
+} from "@/components/template-engine/auto-label-apply";
+import type { AutoLabelResult } from "@/lib/templates/auto-label";
 import {
   TEMPLATE_V2_SELECT_ELEMENT_EVENT,
   type TemplateV2SelectElementDetail,
@@ -102,6 +108,7 @@ export function TemplateEnginePanel({
   onThemeDeleted,
   onLayoutDeleted,
   onThemeUpdated,
+  onApplyPageUi,
   originThemeId,
 }: {
   themes: TemplateTheme[];
@@ -130,6 +137,9 @@ export function TemplateEnginePanel({
   onThemeDeleted: (themeId: string) => void;
   onLayoutDeleted: (layoutId: string) => void;
   onThemeUpdated: () => void;
+  /** Replaces one page's whole ui (auto-label writes element names/slots and
+   *  layout meta in one shot). The parent dispatches updateSlideUi. */
+  onApplyPageUi: (index: number, ui: Rec) => void;
   /** The theme the canvas was hydrated from (`?theme=` on the engine URL), or
    *  null for a blank canvas. Only when this matches the save target do the
    *  pages on the canvas stand for the WHOLE theme — which is what makes it
@@ -147,6 +157,12 @@ export function TemplateEnginePanel({
   const [importNote, setImportNote] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Auto-label (AI fills slot name/role/condition/budgets + layout meta).
+  // done/total drives the progress bar; total is 1 for page/element scope.
+  const [labelProgress, setLabelProgress] = useState<{ done: number; total: number } | null>(null);
+  const [labelError, setLabelError] = useState<string | null>(null);
+  const [labelNote, setLabelNote] = useState<string | null>(null);
 
   // Keyed by slide AND the layout loaded into it: applying an existing template
   // over the current slide has to re-seed the fields from that layout, or the
@@ -420,6 +436,125 @@ export function TemplateEnginePanel({
     themeId,
     themeLabel,
   ]);
+
+  /** Auto-label: asks Kimi to author slot metadata (name/role/fill_condition/
+   *  budgets) plus the layout meta, then writes it back onto the canvas. The
+   *  scope decides the blast radius — theme: every page, page: this page,
+   *  element: only the selected element. Labels land on the canvas as unsaved
+   *  edits; the author still reviews and hits Save. */
+  const handleAutoLabel = useCallback(async () => {
+    setLabelError(null);
+    setLabelNote(null);
+
+    const postLabel = async (payload: Rec): Promise<AutoLabelResult> => {
+      const res = await fetch("/api/template-engine/auto-label", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.error ?? "Auto-label failed");
+      return body as AutoLabelResult;
+    };
+
+    const theme = themes.find((t) => t.id === themeId);
+    const themePayload = {
+      id: themeId,
+      name: theme?.name ?? themeId,
+      description: theme?.description ?? "",
+    };
+
+    // ── Element scope: only the selected element ──
+    if (scope === "element") {
+      if (!selection?.element || !selection.patch || !selection.selection) {
+        setLabelError("Select an element on the canvas first.");
+        return;
+      }
+      const target = collectLabelTargets(activeUi).find((t) =>
+        sameAddress(t.address, selection.selection),
+      );
+      if (!target) {
+        setLabelError("The selected element is not a fillable text slot.");
+        return;
+      }
+      setLabelProgress({ done: 0, total: 1 });
+      try {
+        const result = await postLabel({
+          theme: themePayload,
+          layout: {
+            id: String(activeUi?.id ?? ""),
+            description: String(activeUi?.description ?? ""),
+            meta: isRecord(activeUi?.meta) ? activeUi.meta : null,
+          },
+          elements: [{ ...target.input, i: 0 }],
+        });
+        const labelled = result.elements.find((entry) => entry.i === 0);
+        if (!labelled) throw new Error("The model returned nothing for this element.");
+        selection.patch((current) => {
+          const next = { ...(current as Rec) };
+          if (labelled.name) next.name = labelled.name;
+          if (labelled.slot) next.slot = labelled.slot;
+          return next as RawElement;
+        });
+        setLabelNote(`Labelled ${labelled.name ?? "element"}. Review, then save.`);
+      } catch (error) {
+        setLabelError(error instanceof Error ? error.message : "Auto-label failed");
+      } finally {
+        setLabelProgress(null);
+      }
+      return;
+    }
+
+    // ── Page / theme scope ──
+    const pageIndexes =
+      scope === "theme" ? pageUis.map((_, index) => index) : [activeIndex];
+    if (pageIndexes.length === 0) return;
+
+    setLabelProgress({ done: 0, total: pageIndexes.length });
+    let labelled = 0;
+    try {
+      for (const index of pageIndexes) {
+        const ui = pageUis[index];
+        const targets = ui ? collectLabelTargets(ui) : [];
+        if (!ui || targets.length === 0) {
+          setLabelProgress({ done: ++labelled, total: pageIndexes.length });
+          continue;
+        }
+        const result = await postLabel({
+          theme: themePayload,
+          layout: {
+            id: String(ui.id ?? ""),
+            description: String(ui.description ?? ""),
+            meta: isRecord(ui.meta) ? ui.meta : null,
+          },
+          elements: targets.map((t) => t.input),
+        });
+        const nextUi = applyAutoLabelResult(ui, targets, result);
+        onApplyPageUi(index, nextUi);
+        // Keep the panel's draft map in sync — handleSaveAll reads meta from
+        // drafts first, and a stale draft would overwrite the AI's meta.
+        if (result.layout_meta) {
+          const key = `${index}::${String(nextUi.id ?? "")}`;
+          const meta = result.layout_meta;
+          setDrafts((current) => {
+            const base = current[key] ?? draftFromUi(nextUi, index);
+            return { ...current, [key]: { ...base, meta: { ...base.meta, ...meta } } };
+          });
+        }
+        labelled += 1;
+        setLabelProgress({ done: labelled, total: pageIndexes.length });
+      }
+      setLabelNote(
+        scope === "theme"
+          ? `Labelled ${pageIndexes.length} page${pageIndexes.length === 1 ? "" : "s"}. Review, then save.`
+          : "Labelled this page. Review, then save.",
+      );
+    } catch (error) {
+      setLabelError(error instanceof Error ? error.message : "Auto-label failed");
+    } finally {
+      setLabelProgress(null);
+    }
+  }, [activeIndex, activeUi, onApplyPageUi, pageUis, scope, selection, themeId, themes]);
 
   /** Turns a .pptx into pages on the canvas. Every slide lands as an unsaved
    *  layout so the author can label its slots and save the ones worth keeping —
@@ -750,6 +885,57 @@ export function TemplateEnginePanel({
             <span className="truncate">{importing ? importLabel : "Import .pptx"}</span>
           </button>
         </div>
+        {/* Auto-label fills slot name/role/fill_condition/budgets + layout meta
+            via AI. Blast radius follows the scope tab: theme = every page,
+            page = this page, element = the selected element only. */}
+        <button
+          onClick={handleAutoLabel}
+          disabled={labelProgress !== null || saving || importing}
+          title={
+            scope === "theme"
+              ? "Auto-label slots on every page on the canvas with AI."
+              : scope === "page"
+                ? "Auto-label this page's slots and layout meta with AI."
+                : "Auto-label only the selected element with AI."
+          }
+          className={`${secondaryButtonClass} mb-2 w-full`}
+        >
+          {labelProgress ? (
+            <Loader2 size={13} className="animate-spin" />
+          ) : (
+            <Sparkles size={13} />
+          )}
+          <span className="truncate">
+            {labelProgress
+              ? `Labelling ${labelProgress.done}/${labelProgress.total}…`
+              : scope === "theme"
+                ? "Auto-label all pages (AI)"
+                : scope === "page"
+                  ? "Auto-label this page (AI)"
+                  : "Auto-label selected element (AI)"}
+          </span>
+        </button>
+        {labelProgress && (
+          <div className="mb-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--bg-elevated)]">
+            <div
+              className="h-full rounded-full bg-[var(--accent)] transition-all duration-500"
+              style={{
+                width: `${Math.round((labelProgress.done / Math.max(1, labelProgress.total)) * 100)}%`,
+              }}
+            />
+          </div>
+        )}
+        {labelError && (
+          <p className="mb-2 rounded-md bg-red-500/10 px-2 py-1.5 text-[11px] text-red-300">
+            {labelError}
+          </p>
+        )}
+        {labelNote && !labelError && (
+          <p className="mb-2 flex gap-1.5 rounded-md bg-emerald-500/10 px-2 py-1.5 text-[11px] text-emerald-300">
+            <Check size={12} className="mt-0.5 shrink-0" />
+            <span>{labelNote}</span>
+          </p>
+        )}
         {/* The save follows the scope: on Theme the author is working on the
             whole theme, so it writes every page; on Page and Element they are
             working on one layout, so it writes only that one. */}

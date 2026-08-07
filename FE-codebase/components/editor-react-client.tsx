@@ -1528,6 +1528,7 @@ export default function EditorReactClient({
                 onThemeDeleted={handleThemeDeleted}
                 onLayoutDeleted={handleLayoutDeleted}
                 onThemeUpdated={handleTemplateSaved}
+                onApplyPageUi={(index, ui) => dispatch(updateSlideUi({ index, ui }))}
                 originThemeId={templateOriginThemeId}
               />
             ) : undefined

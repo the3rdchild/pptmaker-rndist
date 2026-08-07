@@ -68,6 +68,18 @@ function boxOf(element: Rec): { x: number; y: number; width: number; height: num
 	};
 }
 
+/** One-line description of a chart element's current data, so the model knows
+ *  what it's labelling without seeing the raw dataset. */
+function chartSummary(element: Rec): string {
+	const type = typeof element.chart_type === "string" ? element.chart_type : "bar";
+	const categories = Array.isArray(element.categories) ? element.categories.length : 0;
+	const series = Array.isArray(element.series) ? element.series.length : 0;
+	const parts = [`${type} chart`];
+	if (categories > 0) parts.push(`${categories} categories`);
+	if (series > 0) parts.push(`${series} series`);
+	return parts.join(", ");
+}
+
 export interface LabelTarget {
 	address: { componentIndex: number; elementPath: number[] };
 	input: AutoLabelElementInput;
@@ -90,15 +102,17 @@ export function collectLabelTargets(ui: Rec | null): LabelTarget[] {
 				const elementPath = [...path, index];
 				const type = typeof element.type === "string" ? element.type : "";
 
-				if ((type === "text" || type === "text-list") && element.decorative !== true) {
+				const isText = type === "text" || type === "text-list";
+				const isChart = type === "chart";
+				if ((isText || isChart) && element.decorative !== true) {
 					targets.push({
 						address: { componentIndex, elementPath },
 						input: {
 							i: targets.length,
 							type,
 							current_name: typeof element.name === "string" ? element.name : null,
-							sample_text: previewText(element),
-							font_size: fontSizeOf(element),
+							sample_text: isChart ? chartSummary(element) : previewText(element),
+							font_size: isChart ? null : fontSizeOf(element),
 							box: boxOf(element),
 							current_slot: parseSlotMeta(element.slot),
 						},

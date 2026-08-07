@@ -71,7 +71,7 @@ export function buildAutoLabelMessages(input: AutoLabelRequest): {
 	role: "system" | "user";
 	content: string;
 }[] {
-	const system = `You are a presentation-template metadata author. A template engine stores hand-designed slide layouts whose TEXT elements need authoring metadata so an AI deck generator can later fill them correctly. You are given one layout's text elements (with their sample text, font size and box) and you invent good metadata for each.
+	const system = `You are a presentation-template metadata author. A template engine stores hand-designed slide layouts whose TEXT and CHART elements need authoring metadata so an AI deck generator can later fill them correctly. You are given one layout's elements (text: with sample text, font size and box; chart: with its type and data shape) and you invent good metadata for each.
 
 For EVERY element in the input, return:
 - name: snake_case slot name describing its PURPOSE (e.g. "deck_title", "card_body", "stat_value"). Elements that repeat the same role in a card grid SHOULD share one name — the generator fills repeated names in order.
@@ -87,6 +87,13 @@ Also return layout_meta for the layout as a whole:
 - topics: 2-6 subjects this layout suits.
 - min_items/max_items/ideal_items: for layouts with repeated cards/bullets — how many the grid holds. Omit for single-message layouts (cover/closing/quote).
 - notes: one or two sentences for the future generator (when to pick this layout, what to watch out for).
+
+CHART ELEMENTS (type "chart"): these are filled with DATA by the generator, not prose. For them:
+- role MUST be "chart".
+- hint: one sentence on what data belongs here (e.g. "Quarterly revenue trend for the topic.").
+- fill_condition: usually "if-numeric-data" — charts must not carry invented figures when the topic has none.
+- prune_if_unfilled: true when an empty chart frame would look broken on the slide.
+- OMIT max_words/max_lines — they don't apply.
 
 ALLOWED SLOT ROLES:
 ${roleDocs()}

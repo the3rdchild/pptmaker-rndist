@@ -87,6 +87,7 @@ import {
   PdfExportCapture,
   type PdfExportSlide,
 } from "@/components/editor-react/PdfExportCapture";
+import { SlideCaptureHost } from "@/components/editor-react/slide-capture";
 import AIAssistantPanel from "@/components/editor-react/ai-assistant-panel";
 import FindReplacePanel from "@/components/editor-react/find-replace-panel";
 import VersionHistoryPanel from "@/components/editor-react/version-history-panel";
@@ -1504,6 +1505,7 @@ export default function EditorReactClient({
         </div>
       </header>
       <PdfExportCapture slides={pdfExportSlides} onCapture={handlePdfCaptured} />
+      <SlideCaptureHost />
       <div className="flex flex-1 overflow-hidden">
         <InsertToolbar
           activeUi={activeUi}

@@ -38,6 +38,7 @@ import {
   collectLabelTargets,
   applyAutoLabelResult,
 } from "@/components/template-engine/auto-label-apply";
+import { captureSlidePng } from "@/components/editor-react/slide-capture";
 import type { AutoLabelResult } from "@/lib/templates/auto-label";
 import {
   TEMPLATE_V2_SELECT_ELEMENT_EVENT,
@@ -487,6 +488,7 @@ export function TemplateEnginePanel({
             meta: isRecord(activeUi?.meta) ? activeUi.meta : null,
           },
           elements: [{ ...target.input, i: 0 }],
+          image: activeUi ? await captureSlidePng(activeUi) : null,
         });
         const labelled = result.elements.find((entry) => entry.i === 0);
         if (!labelled) throw new Error("The model returned nothing for this element.");
@@ -528,6 +530,7 @@ export function TemplateEnginePanel({
             meta: isRecord(ui.meta) ? ui.meta : null,
           },
           elements: targets.map((t) => t.input),
+          image: await captureSlidePng(ui),
         });
         const nextUi = applyAutoLabelResult(ui, targets, result);
         onApplyPageUi(index, nextUi);
@@ -1567,6 +1570,18 @@ function SlotSection({ selection }: { selection: TemplateSelectionPayload | null
                 <NumberInput
                   value={slot.max_lines}
                   onChange={(value) => patchSlot({ max_lines: value })}
+                />
+              </Field>
+              <Field label="Ideal words" hint="Looks best at this length">
+                <NumberInput
+                  value={slot.ideal_words}
+                  onChange={(value) => patchSlot({ ideal_words: value })}
+                />
+              </Field>
+              <Field label="Ideal lines">
+                <NumberInput
+                  value={slot.ideal_lines}
+                  onChange={(value) => patchSlot({ ideal_lines: value })}
                 />
               </Field>
               <Field label="Max chars">

@@ -96,6 +96,11 @@ export type SlotMeta = {
    *  which is why they sit alongside Template V2's existing max_length. */
   max_words?: number | null;
   max_lines?: number | null;
+  /** The length that looks BEST in the box — a body box authored for a long
+   *  paragraph reads broken when it's filled with three words. The generator
+   *  should aim near the ideal and never just "stay under the max". */
+  ideal_words?: number | null;
+  ideal_lines?: number | null;
 };
 
 /** What a whole layout is for. The generator picks a theme first, then picks
@@ -188,6 +193,10 @@ export function parseSlotMeta(raw: unknown): SlotMeta | null {
   if (maxWords != null) meta.max_words = maxWords;
   const maxLines = readPositiveInt(raw.max_lines);
   if (maxLines != null) meta.max_lines = maxLines;
+  const idealWords = readPositiveInt(raw.ideal_words);
+  if (idealWords != null) meta.ideal_words = idealWords;
+  const idealLines = readPositiveInt(raw.ideal_lines);
+  if (idealLines != null) meta.ideal_lines = idealLines;
 
   return Object.keys(meta).length > 0 ? meta : null;
 }

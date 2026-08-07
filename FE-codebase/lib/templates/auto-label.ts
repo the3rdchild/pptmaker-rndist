@@ -27,12 +27,18 @@ export interface AutoLabelElementInput {
 	font_size: number | null;
 	box: { x: number; y: number; width: number; height: number } | null;
 	current_slot: SlotMeta | null;
+	/** Client-measured with the real line-layout engine — the model should
+	 *  trust these over its own pixel estimate. */
+	measured_max_words?: number | null;
+	measured_max_lines?: number | null;
 }
 
 export interface AutoLabelRequest {
 	theme: { id: string; name: string; description: string };
 	layout: { id: string; description: string; meta: LayoutMeta | null };
 	elements: AutoLabelElementInput[];
+	/** Rendered PNG of the page (data URL) — the model's visual ground truth. */
+	image?: string | null;
 }
 
 export interface AutoLabelElementResult {
@@ -69,9 +75,11 @@ function slideRoleDocs(): string {
 
 export function buildAutoLabelMessages(input: AutoLabelRequest): {
 	role: "system" | "user";
-	content: string;
+	content: unknown;
 }[] {
-	const system = `You are a presentation-template metadata author. A template engine stores hand-designed slide layouts whose TEXT and CHART elements need authoring metadata so an AI deck generator can later fill them correctly. You are given one layout's elements (text: with sample text, font size and box; chart: with its type and data shape) and you invent good metadata for each.
+	const system = `You are a presentation-template metadata author. A template engine stores hand-designed slide layouts whose TEXT and CHART elements need authoring metadata so an AI deck generator can later fill them correctly. You are given one layout's elements (text: with sample text, font size, box, and CLIENT-MEASURED budgets; chart: with its type and data shape) and you invent good metadata for each.
+
+You also receive a RENDERED IMAGE of the layout. Treat it as the primary truth for visual hierarchy: which element is the headline, which blocks are repeated cards, which text sits on colored chips or over photos (those must stay short), and whether two boxes overlap.
 
 For EVERY element in the input, return:
 - name: snake_case slot name describing its PURPOSE (e.g. "deck_title", "card_body", "stat_value"). Elements that repeat the same role in a card grid SHOULD share one name — the generator fills repeated names in order.
@@ -79,8 +87,8 @@ For EVERY element in the input, return:
 - hint: one short sentence telling the future generator what belongs here (English, imperative).
 - fill_condition: exactly one of the allowed conditions below. Use "always" ONLY for content any deck can supply (headlines, body, bullets). Use the if-* conditions for facts that may not exist (quotes, people, dates, sources, numbers) — the generator MUST NOT invent those.
 - prune_if_unfilled: true when leaving this element visible-but-unfilled would look broken (conditional chrome like "Presented by", dates, citations). For "always" slots, omit it.
-- max_words: hard word budget inferred from the box size and font size (a 107px headline fits ~3 words; a small caption box fits ~5; a body box fits ~30-60). Be strict — overflow is the #1 visual bug.
-- max_lines: how many wrapped lines the box height allows at that font size (box height / (font_size * ~1.3), rounded down, min 1).
+- max_words / max_lines: start from the element's measured_max_words / measured_max_lines (computed with the real font metrics — trust them). You may TIGHTEN them when the image shows the text must stay shorter (small chip, overlay on photo, overlapping box), but NEVER exceed the measured values.
+- ideal_words / ideal_lines: the length that looks BEST in this box, judged from the image and the sample text. A body box authored for a paragraph must get a paragraph-sized ideal; a badge gets 1-2 words. Never above the max.
 
 Also return layout_meta for the layout as a whole:
 - slide_role: one of the allowed slide roles below.
@@ -105,10 +113,10 @@ ALLOWED SLIDE ROLES:
 ${slideRoleDocs()}
 
 OUTPUT: raw JSON ONLY (no markdown fences, no commentary), exactly this shape:
-{"layout_meta":{"slide_role":"...","topics":["..."],"min_items":2,"max_items":4,"ideal_items":3,"notes":"..."},"elements":[{"i":0,"name":"...","role":"...","hint":"...","fill_condition":"...","prune_if_unfilled":true,"max_words":5,"max_lines":1}]}
+{"layout_meta":{"slide_role":"...","topics":["..."],"min_items":2,"max_items":4,"ideal_items":3,"notes":"..."},"elements":[{"i":0,"name":"...","role":"...","hint":"...","fill_condition":"...","prune_if_unfilled":true,"max_words":5,"max_lines":1,"ideal_words":3,"ideal_lines":1}]}
 Every input element MUST appear exactly once in "elements", keyed by its "i".`;
 
-	const user = JSON.stringify(
+	const payload = JSON.stringify(
 		{
 			theme: input.theme,
 			layout: input.layout,
@@ -120,15 +128,26 @@ Every input element MUST appear exactly once in "elements", keyed by its "i".`;
 				font_size: el.font_size,
 				box: el.box,
 				current_slot: el.current_slot,
+				measured_max_words: el.measured_max_words ?? null,
+				measured_max_lines: el.measured_max_lines ?? null,
 			})),
 		},
 		null,
 		0,
 	);
 
+	// With a page image, the user message becomes a multimodal content array —
+	// the model reads the layout visually instead of inferring from boxes alone.
+	const userContent: unknown = input.image
+		? [
+				{ type: "image_url", image_url: { url: input.image } },
+				{ type: "text", text: payload },
+			]
+		: payload;
+
 	return [
 		{ role: "system", content: system },
-		{ role: "user", content: user },
+		{ role: "user", content: userContent },
 	];
 }
 
@@ -202,6 +221,15 @@ export function sanitizeAutoLabelResult(raw: Rec): AutoLabelResult {
 		if (Number.isFinite(maxWords) && maxWords > 0) slot.max_words = Math.min(Math.round(maxWords), 500);
 		const maxLines = Number(rec.max_lines);
 		if (Number.isFinite(maxLines) && maxLines > 0) slot.max_lines = Math.min(Math.round(maxLines), 50);
+		const idealWords = Number(rec.ideal_words);
+		if (Number.isFinite(idealWords) && idealWords > 0) {
+			// An ideal above the max is a contradiction — clamp it under.
+			slot.ideal_words = Math.min(Math.round(idealWords), slot.max_words ?? 500);
+		}
+		const idealLines = Number(rec.ideal_lines);
+		if (Number.isFinite(idealLines) && idealLines > 0) {
+			slot.ideal_lines = Math.min(Math.round(idealLines), slot.max_lines ?? 50);
+		}
 
 		out.push({
 			i,

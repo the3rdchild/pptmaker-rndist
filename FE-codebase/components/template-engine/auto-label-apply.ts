@@ -11,6 +11,12 @@ import type {
 	AutoLabelResult,
 } from "@/lib/templates/auto-label";
 import { parseSlotMeta, type SlotMeta } from "@/components/slide-editor/templates/slot-meta";
+import {
+	rawFont,
+	layoutRenderTextRuns,
+	lineRenderHeight,
+	type RenderTextRun,
+} from "@/components/slide-editor/text/template-v2-text";
 
 type Rec = Record<string, unknown>;
 
@@ -80,6 +86,42 @@ function chartSummary(element: Rec): string {
 	return parts.join(", ");
 }
 
+/** MEASURED text budgets — wraps a probe string through the same line-layout
+ *  the renderer uses and finds the largest word count that still fits the
+ *  element's box at its authored font size. Deterministic, unlike asking the
+ *  model to eyeball pixels. Returns nulls when the box/font is unknown or the
+ *  measure stack isn't available (non-browser). */
+function measureTextBudgets(element: Rec): { max_words: number | null; max_lines: number | null } {
+	const empty = { max_words: null, max_lines: null };
+	try {
+		const size = isRecord(element.size) ? element.size : null;
+		const width = Number(size?.width);
+		const height = Number(size?.height);
+		if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return empty;
+		const font = rawFont(element as never);
+		if (!font || !Number.isFinite(font.size) || font.size <= 0) return empty;
+
+		// "ipsum" ≈ an average-length word — probing with real wrapping beats
+		// any chars-per-line heuristic because fonts and tracking differ.
+		let fitWords = 0;
+		let fitLines = 0;
+		for (let n = 4; n <= 400; n += 4) {
+			const runs: RenderTextRun[] = [{ text: Array(n).fill("ipsum").join(" "), font }];
+			const lines = layoutRenderTextRuns(runs, width, undefined);
+			const total = lines.reduce((sum, line) => sum + lineRenderHeight(line, font.lineHeight), 0);
+			if (total <= height) {
+				fitWords = n;
+				fitLines = lines.length;
+			} else {
+				break;
+			}
+		}
+		return { max_words: fitWords || null, max_lines: fitLines || null };
+	} catch {
+		return empty;
+	}
+}
+
 export interface LabelTarget {
 	address: { componentIndex: number; elementPath: number[] };
 	input: AutoLabelElementInput;
@@ -105,6 +147,7 @@ export function collectLabelTargets(ui: Rec | null): LabelTarget[] {
 				const isText = type === "text" || type === "text-list";
 				const isChart = type === "chart";
 				if ((isText || isChart) && element.decorative !== true) {
+					const measured = isText ? measureTextBudgets(element) : null;
 					targets.push({
 						address: { componentIndex, elementPath },
 						input: {
@@ -115,6 +158,8 @@ export function collectLabelTargets(ui: Rec | null): LabelTarget[] {
 							font_size: isChart ? null : fontSizeOf(element),
 							box: boxOf(element),
 							current_slot: parseSlotMeta(element.slot),
+							measured_max_words: measured?.max_words ?? null,
+							measured_max_lines: measured?.max_lines ?? null,
 						},
 					});
 				}

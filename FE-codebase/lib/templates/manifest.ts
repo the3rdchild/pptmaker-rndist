@@ -40,6 +40,8 @@ export type SlotManifestEntry = {
   prune_if_unfilled?: boolean;
   max_words?: number;
   max_lines?: number;
+  ideal_words?: number;
+  ideal_lines?: number;
   max_length?: number;
   min_length?: number;
   /** Chart slots only: the authored chart's type and sample-data shape, so the
@@ -200,6 +202,8 @@ export function buildLayoutManifest(
     if (slot?.prune_if_unfilled) entry.prune_if_unfilled = true;
     if (slot?.max_words != null) entry.max_words = slot.max_words;
     if (slot?.max_lines != null) entry.max_lines = slot.max_lines;
+    if (slot?.ideal_words != null) entry.ideal_words = slot.ideal_words;
+    if (slot?.ideal_lines != null) entry.ideal_lines = slot.ideal_lines;
 
     const maxLength = readNumber(element.max_length);
     if (maxLength != null) entry.max_length = maxLength;

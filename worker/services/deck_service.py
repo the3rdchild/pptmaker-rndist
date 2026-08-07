@@ -59,7 +59,7 @@ Output: JSONL — exactly ONE slide per line, in deck order:
 RULES — violations break the deck:
 1. STRUCTURE: first slide uses a "cover" layout; then an "agenda" layout if one exists; a "section" layout before each chapter; 3-8 "content" (or comparison/timeline/process/team/gallery) slides; last slide uses a "closing" layout. Never reuse the same layout id for two slides in a row.
 2. SLOTS: fill ONLY slots that exist in the chosen layout, addressed by their EXACT name. If a name appears multiple times in that layout, provide one fill per occurrence, in order.
-3. BUDGETS: max_words is a HARD ceiling per slot — count your words and never exceed it. Shorter is almost always better. Headlines are typically 2-6 words; a body slot's budget is stated in the manifest.
+3. BUDGETS: max_words is a HARD ceiling per slot — count your words and never exceed it. But don't just stay under the max: when a slot states ideal_words, AIM for it. A body box authored for a long paragraph looks broken when it gets three words; a headline box looks broken when it gets twenty. Land within a few words of the ideal whenever the material allows.
 4. FILL CONDITIONS:
    - "always" — you MUST provide a fill for this slot.
    - any other condition ("optional", "if-quote-available", "if-numeric-data", "if-person-known", "if-date-known", "if-source-known", ...) — provide a fill ONLY when the condition is genuinely met by the topic. NEVER invent quotes, people, dates, statistics, or sources. When the condition isn't met, OMIT the entry entirely.
@@ -102,6 +102,8 @@ def _compact_manifest(manifest: dict) -> dict:
                         "fill_condition": s.get("fill_condition"),
                         "max_words": s.get("max_words"),
                         "max_lines": s.get("max_lines"),
+                        "ideal_words": s.get("ideal_words"),
+                        "ideal_lines": s.get("ideal_lines"),
                         "chart": s.get("chart"),
                     }.items()
                     if v is not None

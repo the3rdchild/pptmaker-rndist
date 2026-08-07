@@ -41,8 +41,9 @@ def process(ctx: dict):
     slide_count = int(params.get("slideCount") or params.get("slide_count") or 0)
     language = params.get("language", "Bahasa Indonesia")
     stream_mode = params.get("stream_mode")
+    provider = params.get("model") or params.get("llm_provider")
 
-    logger.info("[outline_service] prompt=%r lang=%s stream=%s", prompt[:80], language, stream_mode)
+    logger.info("[outline_service] prompt=%r lang=%s stream=%s provider=%r", prompt[:80], language, stream_mode, provider)
 
     user_msg = f"Topic: {prompt}\nLanguage: {language}\n"
     if slide_count:
@@ -57,14 +58,14 @@ def process(ctx: dict):
     if stream_mode == "raw":
         # Stream markdown as raw text chunks (consumed by /tools/aippt_outline)
         full_text = ""
-        for chunk in llm_client.chat_stream(messages, temperature=0.7):
+        for chunk in llm_client.chat_stream(messages, provider=provider, temperature=0.7):
             full_text += chunk
             publish(ctx["job_id"], {"type": "chunk", "text": chunk})
 
         publish(ctx["job_id"], {"type": "done"})
         logger.info("[outline_service] raw stream done | job_id=%s len=%d", ctx["job_id"], len(full_text))
     else:
-        text = llm_client.chat(messages, temperature=0.7)
+        text = llm_client.chat(messages, provider=provider, temperature=0.7)
         outline = {"title": text.split("\n")[0].replace("#", "").strip() or prompt[:60], "markdown": text}
         save_result(ctx["request_id"], ctx["job_id"], "outline", outline)
         publish(ctx["job_id"], {"type": "done", "result": outline, "resultType": "outline"})

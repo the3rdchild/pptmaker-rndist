@@ -1,26 +1,32 @@
-"""Deck generation service — emits AIPPTSlide JSONL stream.
+"""Deck generation service — emits a JSONL slide stream.
 
-FE-codebase/components/editor-react/map-slide.ts reads the stream line-by-line
-and maps each AIPPTSlide to a pre-baked Template V2 layout.
+Two contracts, chosen by whether the request carries a theme `manifest`:
 
-AIPPTSlide contract (matching FE-codebase/components/editor-react/map-slide.ts):
-  {"type":"cover","data":{"title":"...","text":"..."}}
-  {"type":"contents","data":{"items":["...","..."]}}
-  {"type":"transition","data":{"title":"...","text":"..."}}
-  {"type":"content","data":{"title":"...","items":[{"title":"...","text":"..."}]}}
-  {"type":"end"}
+1. MANIFEST-DRIVEN (current). Params include `manifest`: {theme, layouts[]}
+   where each layout has id/slide_role/description/items/notes and `slots`
+   (name, role, hint, fill_condition, max_words, max_lines). The model picks
+   layout ids and writes copy per NAMED slot:
+
+     {"type":"slide","layout_id":"...","fills":[{"name":"...","text":"..."}]}
+
+   FE-codebase/components/editor-react/ai-slot-fill.ts applies the fills by
+   slot name and enforces the authored budgets/fill conditions client-side.
+
+2. LEGACY (fallback, no manifest). The old fixed 5-type AIPPTSlide union,
+   mapped mechanically by editor-react/ai-layout-fill.ts.
 """
+import json
 import logging
+import re
 
 from services import llm_client
 from services.pubsub import publish
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are a presentation slide generator. Given a markdown outline, produce slides as JSONL (one JSON object per line).
+LEGACY_SYSTEM_PROMPT = """You are a presentation slide generator. Given a markdown outline, produce slides as JSONL (one JSON object per line).
 
 Each line must be one of these types:
-- Theme color: {"type":"theme","color":"#RRGGBB"}
 - Cover slide: {"type":"cover","data":{"title":"<title>","text":"<subtitle>"}}
 - Table of contents: {"type":"contents","data":{"items":["<section1>","<section2>",...]}}
 - Section transition: {"type":"transition","data":{"title":"<section>","text":"<brief intro>"}}
@@ -28,41 +34,173 @@ Each line must be one of these types:
 - End slide: {"type":"end"}
 
 Rules:
-- ALWAYS emit exactly ONE theme line FIRST, before anything else. Pick a hex color that fits
-  the outline's subject/mood even if the user never mentioned a color — e.g. a forest/nature
-  topic gets a green, an ocean topic gets a blue, a finance/corporate topic gets a navy or gold,
-  a fire/energy topic gets a red or orange, a kids/education topic gets something bright and
-  playful. Only fall back to a neutral gray/blue if the topic is genuinely color-neutral.
-- Then a cover slide, then a contents slide listing all sections.
+- NEVER emit any theme/color line — slide colors come from the template the
+  slide is mapped into, not from you. Your output is TEXT CONTENT ONLY.
+- Start with a cover slide, then a contents slide listing all sections.
 - Before each section's content slides, emit a transition slide.
 - Content slides should have 2-4 items each.
 - End with {"type":"end"}.
-- Write in the specified language (the theme color line has no language, just a hex code).
+- Write in the specified language.
 - Each JSON object must be on its OWN LINE (JSONL format).
 - Do NOT wrap in markdown code fences. Output raw JSONL."""
+
+MANIFEST_SYSTEM_PROMPT = """You are the copywriter for a hand-designed presentation template. You do NOT design slides — the template already did. You choose which authored layouts to use and write ONLY the text that goes into their named slots.
+
+You are given a THEME MANIFEST: a list of layouts. Each layout has:
+- id, slide_role (cover/agenda/section/content/closing/...), description
+- optional items {min,max,ideal} — how many repeatable cards/bullets it holds
+- optional notes from the template author
+- slots: named text fields. Each has role, optional hint, fill_condition, and
+  hard budgets max_words / max_lines.
+
+Output: JSONL — exactly ONE slide per line, in deck order:
+{"type":"slide","layout_id":"<layout id from the manifest>","fills":[{"name":"<slot name>","text":"<your copy>"}, ...]}
+
+RULES — violations break the deck:
+1. STRUCTURE: first slide uses a "cover" layout; then an "agenda" layout if one exists; a "section" layout before each chapter; 3-8 "content" (or comparison/timeline/process/team/gallery) slides; last slide uses a "closing" layout. Never reuse the same layout id for two slides in a row.
+2. SLOTS: fill ONLY slots that exist in the chosen layout, addressed by their EXACT name. If a name appears multiple times in that layout, provide one fill per occurrence, in order.
+3. BUDGETS: max_words is a HARD ceiling per slot — count your words and never exceed it. Shorter is almost always better. Headlines are typically 2-6 words; a body slot's budget is stated in the manifest.
+4. FILL CONDITIONS:
+   - "always" — you MUST provide a fill for this slot.
+   - any other condition ("optional", "if-quote-available", "if-numeric-data", "if-person-known", "if-date-known", "if-source-known", ...) — provide a fill ONLY when the condition is genuinely met by the topic. NEVER invent quotes, people, dates, statistics, or sources. When the condition isn't met, OMIT the entry entirely.
+5. ITEM COUNTS: for layouts with items {min,max}, fill exactly that many repeated card/bullet slots (the slot names repeat per card — provide one fill per card, e.g. 3 fills named "card_title" for a 3-card layout).
+6. VOICE: write in the requested language. Each slot's role and hint tells you the register (a "label" is 1-3 words, a "cta" is an action, a "stat-value" is a bare figure).
+7. QUOTES: never put a raw double-quote character (") inside your copy — it breaks the JSON. Use “ ” or ' instead.
+8. FORMAT: raw JSONL, one object per line, no markdown fences, no commentary."""
+
+
+def _compact_manifest(manifest: dict) -> dict:
+    """Strip the manifest down to what the model needs — layouts with slot
+    budgets. Palette/fonts/constraints are design data, not copywriting input."""
+    layouts = manifest.get("layouts") if isinstance(manifest, dict) else None
+    if not isinstance(layouts, list):
+        return {}
+    compact = []
+    for layout in layouts:
+        if not isinstance(layout, dict):
+            continue
+        entry = {
+            "id": layout.get("id"),
+            "slide_role": layout.get("slide_role"),
+            "description": layout.get("description"),
+            "items": layout.get("items"),
+            "notes": layout.get("notes"),
+            "slots": [
+                {
+                    k: v
+                    for k, v in {
+                        "name": s.get("name"),
+                        "role": s.get("role"),
+                        "hint": s.get("hint"),
+                        "fill_condition": s.get("fill_condition"),
+                        "max_words": s.get("max_words"),
+                        "max_lines": s.get("max_lines"),
+                    }.items()
+                    if v is not None
+                }
+                for s in (layout.get("slots") or [])
+                if isinstance(s, dict) and s.get("name")
+            ],
+        }
+        compact.append({k: v for k, v in entry.items() if v not in (None, [], "")})
+    return {"theme": manifest.get("id") or manifest.get("theme"), "layouts": compact}
+
+
+def _escape_inner_quotes(s: str) -> str:
+    """LLM slip umum: tanda kutip mentah di dalam nilai string
+    ("text":"Dia berkata "halo" lalu"). Scan state-machine: sebuah `"` dianggap
+    penutup struktural hanya kalau karakter signifikan berikutnya adalah
+    : , } atau ] — selain itu dia kutipan dalam-teks dan di-escape."""
+    out: list[str] = []
+    in_str = False
+    i, n = 0, len(s)
+    while i < n:
+        ch = s[i]
+        if in_str and ch == "\\":
+            out.append(s[i:i + 2])
+            i += 2
+            continue
+        if ch == '"':
+            if not in_str:
+                in_str = True
+                out.append(ch)
+            else:
+                j = i + 1
+                while j < n and s[j] in " \t":
+                    j += 1
+                nxt = s[j] if j < n else ""
+                if nxt in ":,}]":
+                    in_str = False
+                    out.append(ch)
+                else:
+                    out.append('\\"')
+            i += 1
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _sanitize_line(clean: str, job_id: str) -> str | None:
+    """Only well-formed JSONL reaches the client — one model slip must not
+    silently kill the whole slide client-side. Repairs, in order:
+    1. doubled quotes around a quoted phrase ("text":""Air ..."") → typographic
+    2. raw inner quotes inside string values → escaped
+    Unrepairable lines are skipped and logged (full text, for diagnosis)."""
+    try:
+        json.loads(clean)
+        return clean
+    except json.JSONDecodeError:
+        pass
+    fixed = re.sub(r'":""', '": "“', clean)
+    fixed = re.sub(r'""([}\],])', r'”"\1', fixed)
+    try:
+        json.loads(fixed)
+        logger.info("[deck_service] baris JSON direpair (doubled quotes) | job_id=%s", job_id)
+        return fixed
+    except json.JSONDecodeError:
+        pass
+    try:
+        json.loads(_escape_inner_quotes(clean))
+        logger.info("[deck_service] baris JSON direpair (inner quotes) | job_id=%s", job_id)
+        return _escape_inner_quotes(clean)
+    except json.JSONDecodeError:
+        logger.warning("[deck_service] skip baris JSON invalid: %s | job_id=%s", clean, job_id)
+        return None
 
 
 def process(ctx: dict):
     params = ctx["params"]
     outline = params.get("outline") or params.get("content") or ""
     language = params.get("language", "English")
-    color_preference = params.get("colorPreference")
+    provider = params.get("model") or params.get("llm_provider")
+    manifest = params.get("manifest")
+    compact = _compact_manifest(manifest) if isinstance(manifest, dict) else {}
 
-    logger.info("[deck_service] job_id=%s lang=%s color_pref=%r", ctx["job_id"], language, color_preference)
+    use_manifest = bool(compact.get("layouts"))
+    logger.info(
+        "[deck_service] job_id=%s lang=%s provider=%r mode=%s layouts=%d",
+        ctx["job_id"], language, provider,
+        "manifest" if use_manifest else "legacy", len(compact.get("layouts", [])),
+    )
 
-    color_instruction = (
-        f"\n\nThe user explicitly asked for a '{color_preference}' color theme — the theme "
-        f"line's color MUST be a hex shade that reads as '{color_preference}', overriding "
-        f"whatever you'd have picked from the topic's mood alone."
-        if color_preference
-        else ""
-    )
-    user_msg = (
-        f"Language: {language}\n\nOutline:\n{outline}{color_instruction}\n\n"
-        "Generate the JSONL slides now."
-    )
+    if use_manifest:
+        system_prompt = MANIFEST_SYSTEM_PROMPT
+        user_msg = (
+            f"Language: {language}\n\n"
+            f"Topic: {outline}\n\n"
+            f"THEME MANIFEST:\n{json.dumps(compact, ensure_ascii=False)}\n\n"
+            "Choose the layouts and write the slot copy now."
+        )
+    else:
+        system_prompt = LEGACY_SYSTEM_PROMPT
+        user_msg = (
+            f"Language: {language}\n\nOutline:\n{outline}\n\n"
+            "Generate the JSONL slides now."
+        )
+
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_msg},
     ]
 
@@ -77,7 +215,7 @@ def process(ctx: dict):
         first_line_logged = True
         logger.info("[deck_service] first_line=%r | job_id=%s", clean, ctx["job_id"])
 
-    for chunk in llm_client.chat_stream(messages, temperature=0.5):
+    for chunk in llm_client.chat_stream(messages, provider=provider, temperature=0.5):
         line_buffer += chunk
 
         while "\n" in line_buffer:
@@ -88,14 +226,18 @@ def process(ctx: dict):
             clean = line.replace("```jsonl", "").replace("```json", "").replace("```", "").strip()
             if clean.startswith("{"):
                 log_first_line(clean)
-                publish(ctx["job_id"], {"type": "chunk", "text": clean})
+                sanitized = _sanitize_line(clean, ctx["job_id"])
+                if sanitized:
+                    publish(ctx["job_id"], {"type": "chunk", "text": sanitized})
 
     # Flush remaining buffer
     if line_buffer.strip():
         clean = line_buffer.strip().replace("```jsonl", "").replace("```json", "").replace("```", "").strip()
         if clean.startswith("{"):
             log_first_line(clean)
-            publish(ctx["job_id"], {"type": "chunk", "text": clean})
+            sanitized = _sanitize_line(clean, ctx["job_id"])
+            if sanitized:
+                publish(ctx["job_id"], {"type": "chunk", "text": sanitized})
 
     publish(ctx["job_id"], {"type": "done"})
     logger.info("[deck_service] done | job_id=%s", ctx["job_id"])

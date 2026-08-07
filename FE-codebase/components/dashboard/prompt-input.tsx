@@ -11,6 +11,14 @@ import { notify } from '@/components/ui/sonner'
 
 const LANGUAGES = ['Bahasa Indonesia', 'English', 'Español', '中文', '日本語']
 
+// Text-LLM provider choices for generation — value travels as `model` through
+// the job params; the worker maps it to a provider in PROVIDER_CONFIGS.
+const MODELS = [
+	{ id: 'openai', label: 'GPT-5.4' },
+	{ id: 'deepinfra', label: 'DeepSeek V3.1' },
+	{ id: 'zhipu', label: 'GLM-4.5 Flash' },
+]
+
 export function PromptInput() {
 	const router = useRouter()
 	const token = useSessionStore((s) => s.token)
@@ -18,6 +26,7 @@ export function PromptInput() {
 	const sessionError = useSessionStore((s) => s.error)
 	const [prompt, setPrompt] = useState('')
 	const [language, setLanguage] = useState('Bahasa Indonesia')
+	const [model, setModel] = useState(MODELS[0].id)
 	const [submitting, setSubmitting] = useState(false)
 	const [importing, setImporting] = useState(false)
 	const [localError, setLocalError] = useState<string | null>(null)
@@ -41,6 +50,7 @@ export function PromptInput() {
 			const qs = new URLSearchParams({
 				prompt,
 				lang: language,
+				model,
 			})
 			router.push(`/editor-react/${deck.id}?${qs.toString()}`)
 		} catch (e) {
@@ -127,6 +137,12 @@ export function PromptInput() {
 				</Button>
 
 				<Dropdown label={language} options={LANGUAGES} onSelect={(v) => setLanguage(v)} />
+
+				<Dropdown
+					label={MODELS.find((m) => m.id === model)?.label ?? model}
+					options={MODELS.map((m) => m.label)}
+					onSelect={(label) => setModel(MODELS.find((m) => m.label === label)?.id ?? model)}
+				/>
 
 				<div className="ml-auto flex items-center gap-2">
 					{/* Session status indicator */}

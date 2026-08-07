@@ -19,6 +19,9 @@ const aipptSchema = z.object({
 	style: z.string().optional(),
 	model: z.string().optional(),
 	colorPreference: z.string().optional(),
+	// Theme layout manifest (slots + budgets) — presence switches the worker
+	// to the manifest-driven contract. Passed through untouched.
+	manifest: z.any().optional(),
 })
 const writingSchema = z.object({
 	content: z.string(),
@@ -78,6 +81,7 @@ async function subscribeToJob(jobId: string): Promise<Redis> {
 async function readJobStream(
 	subscriber: Redis,
 	onChunk: (text: string) => void,
+	onError?: (message: string) => void,
 	idleMs = 60000,
 	absoluteMs = 600000,
 ): Promise<void> {
@@ -98,7 +102,14 @@ async function readJobStream(
 				const data = JSON.parse(message)
 				if (data.type === 'chunk' && typeof data.text === 'string') {
 					onChunk(data.text)
-				} else if (data.type === 'done' || data.type === 'error') {
+				} else if (data.type === 'error') {
+					// Forward the worker's failure reason so the client can show it
+					// instead of silently ending with an empty stream.
+					onError?.(typeof data.message === 'string' ? data.message : 'Generation failed')
+					clearTimeout(idle)
+					clearTimeout(absolute)
+					cleanup()
+				} else if (data.type === 'done') {
 					clearTimeout(idle)
 					clearTimeout(absolute)
 					cleanup()
@@ -144,7 +155,7 @@ tools.post('/aippt_outline', async (c) => {
 			job_id: jobId,
 			session_id: sessionId,
 			status: 'pending',
-			params: { type: 'outline', prompt: parsed.data.content, language: parsed.data.language, stream_mode: 'raw' },
+			params: { type: 'outline', prompt: parsed.data.content, language: parsed.data.language, model: parsed.data.model, stream_mode: 'raw' },
 		})
 		await QueueClient.enqueueJob(jobId, {
 			request_id: request.id,
@@ -152,13 +163,15 @@ tools.post('/aippt_outline', async (c) => {
 			type: 'outline',
 			prompt: parsed.data.content,
 			language: parsed.data.language,
+			model: parsed.data.model,
 			stream_mode: 'raw',
 		})
 
-		// 3. Read loop (disconnects in finally)
+		// 3. Read loop (disconnects in finally). Reasoning models (GLM) can go
+		// quiet for >60s before their first chunk — idle window is generous.
 		await readJobStream(subscriber, (text) => {
 			s.write(text).catch(() => {})
-		})
+		}, undefined, 180000)
 	})
 })
 
@@ -189,7 +202,8 @@ tools.post('/aippt', async (c) => {
 				type: 'deck',
 				outline: parsed.data.content,
 				language: parsed.data.language,
-				colorPreference: parsed.data.colorPreference,
+				model: parsed.data.model,
+				manifest: parsed.data.manifest,
 				stream_mode: 'raw',
 			},
 		})
@@ -199,14 +213,18 @@ tools.post('/aippt', async (c) => {
 			type: 'deck',
 			outline: parsed.data.content,
 			language: parsed.data.language,
-			colorPreference: parsed.data.colorPreference,
+			model: parsed.data.model,
+			manifest: parsed.data.manifest,
 			stream_mode: 'raw',
 		})
 
 		await readJobStream(subscriber, (text) => {
 			// JSONL: write each slide object on its own line
 			s.write(text + '\n').catch(() => {})
-		})
+		}, (message) => {
+			// Worker failure — tell the client WHY (e.g. provider quota habis)
+			s.write(JSON.stringify({ type: 'error', message }) + '\n').catch(() => {})
+		}, 180000)
 	})
 })
 

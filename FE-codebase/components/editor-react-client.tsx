@@ -49,22 +49,11 @@ import {
   setSlideLocked,
   setSlideHidden,
   setSlideNotes,
-  applyAccentBackground,
 } from "@/store/presentationGeneration";
 import type { SlideData } from "@/store/presentationGeneration";
-import {
-  extractDominantColors,
-  pickVividColor,
-} from "@/components/slide-editor/utils/extract-image-colors";
-import { buildPaletteFromSeed, type GeneratedPalette } from "@/components/slide-editor/utils/color-theory";
-import {
-  applyPaletteToUi,
-  type IconCounter,
-  type ShapeCounter,
-} from "@/components/slide-editor/utils/ai-palette";
 import { adaptDeckToPresentation } from "@/components/editor-react/deck-adapt";
 import { useSessionStore } from "@/store/session.store";
-import { getDeck, saveDeck, streamAipptDeck, generateImage, type AgentAction } from "@/lib/api";
+import { getDeck, saveDeck, streamAipptDeck, fetchThemeManifest, generateImage, type AgentAction } from "@/lib/api";
 import {
   DEFAULT_THEME_ID,
   invalidateThemeCache,
@@ -111,6 +100,10 @@ import {
   resolveThemeFromPrompt,
   type AIPPTSlide,
 } from "@/components/editor-react/ai-layout-fill";
+import {
+  fillManifestSlide,
+  parseManifestSlideLine,
+} from "@/components/editor-react/ai-slot-fill";
 import {
   applyFontToAllSlides,
   applyThemeToAllSlides,
@@ -762,9 +755,19 @@ export default function EditorReactClient({
   // auto-generate-on-open flow (?prompt= from the homepage). Throws on real
   // failure (bad response, dead stream) so callers can show a graceful
   // error + retry (PRD #19) instead of silently ending up with 0 slides.
-  const generateDeckFromTopic = async (topic: string, language?: string, colorPreference?: string): Promise<number> => {
+  const generateDeckFromTopic = async (topic: string, language?: string, model?: string): Promise<number> => {
     if (!token) return 0;
-    const res = await streamAipptDeck(token, { content: topic, language, colorPreference });
+    // Resolve the theme FIRST and fetch its layout manifest — with the
+    // manifest in the request body the worker switches to the slot-by-slot
+    // contract (model fills NAMED slots under their authored budgets) instead
+    // of the legacy 5-type guess-where-text-goes contract.
+    const askedTheme = await resolveThemeFromPrompt(topic);
+    const layoutPicker = new DeckLayoutPicker(topic, askedTheme);
+    await layoutPicker.ensureLoaded();
+    const themeId = layoutPicker.getThemeId();
+    const manifest = themeId ? await fetchThemeManifest(themeId) : null;
+
+    const res = await streamAipptDeck(token, { content: topic, language, model, manifest: manifest ?? undefined });
     if (!(res instanceof Response) || !res.body) {
       const message =
         res && typeof res === "object" && "message" in res
@@ -777,10 +780,6 @@ export default function EditorReactClient({
     const decoder = new TextDecoder("utf-8");
     let buf = "";
     let count = 0;
-    // "…gunakan theme cassual" picks that pack; without a named theme the seed
-    // hash keeps deciding, exactly as before.
-    const askedTheme = await resolveThemeFromPrompt(topic);
-    const layoutPicker = new DeckLayoutPicker(topic, askedTheme);
     const currentToken = token;
 
     // Resolve the chosen pack's font map up front and reset the deck in ONE
@@ -788,7 +787,6 @@ export default function EditorReactClient({
     // dispatch spread the PRE-generation `presentationData` (still holding the
     // old slides) back over the just-cleared `slides: []`, so a regenerate on
     // an already-populated deck appended new slides on top of the old ones.
-    await layoutPicker.ensureLoaded();
     const deckFonts = layoutPicker.getFonts();
     dispatch(setPresentationData({
       ...(presentationData ?? { id: deckId, title: topic, slides: [] }),
@@ -808,23 +806,11 @@ export default function EditorReactClient({
       "editorial photograph, cinematic natural lighting, cohesive color grading, " +
       "no text, no watermark, no logo";
 
-    // The deck-generation LLM's own topic-color pick (the JSONL stream's very
-    // first line) arrives BEFORE any slide exists — dispatching a "recolor
-    // every slide in state" action at that point is a no-op (the slides array
-    // is still empty; setPresentationData({slides: []}) ran just above).
-    // So instead of dispatching immediately, remember the resolved PALETTE
-    // here and apply it to each slide's `ui` at the moment it's created
-    // below, regardless of whether the theme line or a slide arrives first.
-    // The icon counter is shared/mutated across the WHOLE deck (not reset
-    // per slide) so icon accents rotate through the palette's tetradic hues
-    // instead of every icon in the deck landing on the same one.
-    let pendingPalette: GeneratedPalette | null = null;
-    const iconCounter: IconCounter = { current: 0 };
-    const shapeCounter: ShapeCounter = { current: 0 };
-    const tintIfThemed = (ui: Record<string, unknown>): Record<string, unknown> =>
-      pendingPalette
-        ? (applyPaletteToUi(ui, pendingPalette, iconCounter, shapeCounter) as Record<string, unknown>)
-        : ui;
+    // Template colors are kept VERBATIM — the generator only swaps text (and
+    // photos) inside the hand-designed layout. The old flow asked the LLM for
+    // a theme color and repainted every slide with a derived palette here;
+    // that whole path is gone, so a generated deck looks exactly like the
+    // theme the user picked.
 
     // Generates a photo for ONE slot on an already-added slide and patches it
     // in once ready. `currentUi` accumulates across every slot on this same
@@ -839,7 +825,6 @@ export default function EditorReactClient({
       setUi: (ui: Record<string, unknown>) => void,
       marker: { componentId: string; elementName: string; occurrenceIndex: number },
       subject: string,
-      isHero: boolean,
     ) => {
       const prompt = `${subject} — related to ${topic}. ${heroStyle}`;
       void generateImage(currentToken, prompt).then((dataUrl) => {
@@ -847,22 +832,6 @@ export default function EditorReactClient({
         const patched = patchHeroImage(getUi(), marker, dataUrl) as Record<string, unknown>;
         setUi(patched);
         dispatch(updateSlideUi({ index, ui: patched }));
-
-        // Fallback only: if the theme line never arrived/validated, fall back
-        // to the cover photo's own dominant color instead of staying plain
-        // white. Skipped once a palette is already set — the topic/
-        // color-preference-aware theme line is more informed than whatever a
-        // random generated photo happens to contain (e.g. a portrait's skin
-        // tones), so it should never be overridden by this fallback.
-        if (isHero && index === 0 && !pendingPalette) {
-          void extractDominantColors(dataUrl, 5).then((colors) => {
-            if (pendingPalette) return;
-            const accent = pickVividColor(colors);
-            if (!accent) return;
-            pendingPalette = buildPaletteFromSeed(accent);
-            dispatch(applyAccentBackground(pendingPalette));
-          });
-        }
       });
     };
 
@@ -882,9 +851,9 @@ export default function EditorReactClient({
       const setUi = (next: Record<string, unknown>) => {
         currentUi = next;
       };
-      if (heroImage) requestPhotoForSlot(index, getUi, setUi, heroImage, subject, true);
+      if (heroImage) requestPhotoForSlot(index, getUi, setUi, heroImage, subject);
       for (const marker of secondaryImages) {
-        requestPhotoForSlot(index, getUi, setUi, marker, subject, false);
+        requestPhotoForSlot(index, getUi, setUi, marker, subject);
       }
     };
 
@@ -897,11 +866,27 @@ export default function EditorReactClient({
       subject: string;
     } | null> => {
       try {
+        // Manifest-driven contract first: the model picked the layout id and
+        // wrote copy per named slot — the client only applies + enforces.
+        const manifestLine = parseManifestSlideLine(line);
+        if (manifestLine) {
+          const layout = layoutPicker.getLayoutById(manifestLine.layout_id);
+          const filled = await fillManifestSlide(layout, manifestLine, { topic });
+          if (!filled) return null;
+          const subject =
+            manifestLine.fills.find((f) => /title|headline|heading/i.test(f.name))?.text || topic;
+          return {
+            ui: filled.ui,
+            heroImage: filled.heroImage,
+            secondaryImages: filled.secondaryImages,
+            subject,
+          };
+        }
         const slide = JSON.parse(line) as AIPPTSlide;
         const filled = await mapAIPPTSlideToTemplateUi(slide, layoutPicker);
         if (!filled) return null;
         return {
-          ui: tintIfThemed(filled.ui),
+          ui: filled.ui,
           heroImage: filled.heroImage,
           secondaryImages: filled.secondaryImages,
           subject: slideSubject(slide),
@@ -911,16 +896,30 @@ export default function EditorReactClient({
       }
     };
 
+    // Legacy `{"type":"theme","color":...}` lines (from a worker build that
+    // still emits them) are swallowed and IGNORED — template colors win,
+    // always. Kept as a filter so a stray theme line is never misparsed as
+    // a slide.
     const tryApplyThemeLine = (line: string): boolean => {
-      if (pendingPalette) return false;
       try {
-        const parsed = JSON.parse(line) as { type?: string; color?: string };
-        if (parsed.type !== "theme" || typeof parsed.color !== "string") return false;
-        if (!/^#[0-9a-fA-F]{6}$/.test(parsed.color)) return false;
-        pendingPalette = buildPaletteFromSeed(parsed.color);
-        return true;
+        const parsed = JSON.parse(line) as { type?: string };
+        return parsed.type === "theme";
       } catch {
         return false;
+      }
+    };
+
+    // Worker failures arrive as {"type":"error","message":...} — surface the
+    // real reason (provider quota, LLM outage, ...) instead of "0 slides".
+    const throwIfErrorLine = (line: string): void => {
+      try {
+        const parsed = JSON.parse(line) as { type?: string; message?: string };
+        if (parsed.type === "error") {
+          throw new Error(parsed.message || "Generation failed on the server.");
+        }
+      } catch (e) {
+        if (e instanceof SyntaxError) return;
+        throw e;
       }
     };
 
@@ -937,6 +936,7 @@ export default function EditorReactClient({
       const { done, value } = await readWithTimeout();
       if (done) {
         if (buf.trim() && !tryApplyThemeLine(buf.trim())) {
+          throwIfErrorLine(buf.trim());
           const filled = await mapLine(buf.trim());
           if (filled) {
             const index = count;
@@ -953,6 +953,7 @@ export default function EditorReactClient({
       for (const line of lines) {
         const t = line.trim();
         if (!t || t.startsWith("```") || tryApplyThemeLine(t)) continue;
+        throwIfErrorLine(t);
         const filled = await mapLine(t);
         if (filled) {
           const index = count;
@@ -975,17 +976,18 @@ export default function EditorReactClient({
     if (!prompt) return;
     autoGenerateRan.current = true;
     const language = searchParams.get("lang") ?? undefined;
-    runGeneration(prompt, language);
+    const model = searchParams.get("model") ?? undefined;
+    runGeneration(prompt, language, model);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, token, searchParams]);
 
   // Shared by the auto-generate effect and the "Try Again" button — keeps
   // the original prompt text around on failure so retrying doesn't require
   // retyping it (PRD #19).
-  const runGeneration = (topic: string, language?: string) => {
+  const runGeneration = (topic: string, language?: string, model?: string) => {
     setGenerationError(null);
     setIsGenerating(true);
-    generateDeckFromTopic(topic, language)
+    generateDeckFromTopic(topic, language, model)
       .catch((e) => {
         setGenerationError({
           message: e instanceof Error ? e.message : "Something went wrong while generating your deck.",
@@ -1065,12 +1067,11 @@ export default function EditorReactClient({
       case "create_deck": {
         const topic = String(action.args.topic || action.args.content || "");
         const language = action.args.language ? String(action.args.language) : undefined;
-        const colorPreference = action.args.color_preference ? String(action.args.color_preference) : undefined;
         if (!topic) return "Please specify a topic to generate a deck about.";
         if (!token) return "Session not ready — try again in a moment.";
 
         try {
-          const count = await generateDeckFromTopic(topic, language, colorPreference);
+          const count = await generateDeckFromTopic(topic, language);
           return count > 0
             ? `Generated ${count} slides about "${topic}".`
             : `No slides generated for "${topic}". Try a different prompt.`;

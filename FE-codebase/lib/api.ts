@@ -167,7 +167,7 @@ export async function streamAgent(
 
 export async function streamAipptDeck(
 	token: string,
-	body: { content: string; language?: string; style?: string; colorPreference?: string },
+	body: { content: string; language?: string; style?: string; model?: string; manifest?: unknown },
 ): Promise<{ state: -1; message: string } | Response> {
 	const res = await fetch(`${API_BASE}/api/v1/tools/aippt`, {
 		method: 'POST',
@@ -179,6 +179,25 @@ export async function streamAipptDeck(
 		return res.json().catch(() => ({ state: -1, message: 'Request failed' }))
 	}
 	return res
+}
+
+// ── Theme manifest (slot-by-slot generation contract) ─────────────────────
+
+/** Fetches one theme's layout manifest from the same-origin Next API — the
+ *  payload the deck generator shows the model (slots + budgets per layout).
+ *  Returns null on any failure so generation can fall back to the legacy
+ *  contract instead of dying. */
+export async function fetchThemeManifest(themeId: string): Promise<unknown | null> {
+	try {
+		const res = await fetch(`/api/template-engine/manifest?theme=${encodeURIComponent(themeId)}`)
+		if (!res.ok) return null
+		const json = await res.json()
+		// The endpoint returns {themes:[...]} for the choice manifest — the deck
+		// generator needs the full single-theme layout manifest instead.
+		return json && Array.isArray(json.layouts) ? json : null
+	} catch {
+		return null
+	}
 }
 
 // ── Image generation (poll-based — see /tools/image + /status/:jobId) ──

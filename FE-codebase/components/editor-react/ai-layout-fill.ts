@@ -269,6 +269,7 @@ function bucketLayouts(layouts: TemplateLayout[]): Buckets {
  * through its content layouts so consecutive content slides don't repeat. */
 export class DeckLayoutPicker {
   private buckets: Buckets | null = null;
+  private layouts: TemplateLayout[] = [];
   private contentCursor = 0;
   private seed: string;
   /** Resolved in ensureLoaded() — the theme list is fetched, not compiled in,
@@ -294,6 +295,7 @@ export class DeckLayoutPicker {
       this.packName ?? asked ?? names[hashSeed(this.seed) % Math.max(1, names.length)];
     const packs = await loadAllPacks();
     const pack = packs[this.packName] ?? packs[DEFAULT_THEME_ID];
+    this.layouts = pack.layouts;
     this.buckets = bucketLayouts(pack.layouts);
     this.packFonts = (pack.fonts ?? null) as Record<string, string> | null;
   }
@@ -301,6 +303,17 @@ export class DeckLayoutPicker {
   /** The theme this deck was assigned. Available after ensureLoaded(). */
   getThemeId(): string | null {
     return this.packName;
+  }
+
+  /** Every layout in the chosen pack, in authored order — used by the
+   *  manifest-driven fill path where the MODEL picks the layout id. */
+  getLayouts(): TemplateLayout[] {
+    return this.layouts;
+  }
+
+  /** Looks up one layout in the chosen pack by its authored id. */
+  getLayoutById(id: string): TemplateLayout | null {
+    return this.layouts.find((l) => l.id === id) ?? null;
   }
 
   /** The chosen pack's font map ({ family: cssUrl }). Available after
@@ -538,7 +551,7 @@ function fittedFontSize(text: string, el: Rec): number | null {
   return fittedSize < baseFont.size - 0.5 ? fittedSize : null;
 }
 
-function setText(el: Rec, text: string): void {
+export function setText(el: Rec, text: string): void {
   if (el.type === "text-list") {
     const items = (el.items as unknown[][]) ?? [];
     const firstRun = items[0]?.[0] as Rec | undefined;
@@ -833,7 +846,7 @@ function cryptoRandomSuffix(): string {
  *  the singular `.child` (a container holding a single child via `child:`
  *  instead of `children:[]` also goes empty if that child is pruned). A
  *  non-empty holder (even one with only a background rectangle) is left. */
-function pruneEmptyContainers(node: Rec): void {
+export function pruneEmptyContainers(node: Rec): void {
   const elements = (node.elements as Rec[] | undefined) ?? [];
   if (Array.isArray(node.elements)) {
     for (const el of elements) pruneEmptyContainers(el);
@@ -902,7 +915,7 @@ function roundPhotoCorners(el: Rec, w: number, h: number): void {
 
 /** Finds every non-icon, non-decorative image element in the layout still
  * pointing at a real (fillable) photo slot. */
-function findAllPhotoSlots(components: Rec[]): PhotoCandidate[] {
+export function findAllPhotoSlots(components: Rec[]): PhotoCandidate[] {
   const candidates: PhotoCandidate[] = [];
   const occurrenceCounters = new Map<string, number>();
 
@@ -942,7 +955,7 @@ function findAllPhotoSlots(components: Rec[]): PhotoCandidate[] {
  * (main_photo, header_photo, background_photo, ...). Used to drop an
  * AI-generated image in without flattening the slide — the image stays its
  * own editable element. */
-function findHeroImage(candidates: PhotoCandidate[]): HeroImageMarker | null {
+export function findHeroImage(candidates: PhotoCandidate[]): HeroImageMarker | null {
   const sorted = [...candidates].sort((a, b) => b.area - a.area);
   const best = sorted[0];
   if (!best) return null;
@@ -955,7 +968,7 @@ function findHeroImage(candidates: PhotoCandidate[]): HeroImageMarker | null {
  * in a 3-card row. Each one gets its own AI-generated image too instead of
  * being left on the generic placeholder file (which used to blend into a
  * flat white background but now stands out against a colored theme). */
-function findSecondaryImages(candidates: PhotoCandidate[], hero: HeroImageMarker | null): HeroImageMarker[] {
+export function findSecondaryImages(candidates: PhotoCandidate[], hero: HeroImageMarker | null): HeroImageMarker[] {
   return candidates
     .filter(
       (c) =>
@@ -1256,7 +1269,7 @@ function collectIconScopes(el: Rec, scopes: IconScope[]): void {
  * Also SYNTHESIZES a new icon element for cards that never had one (whole
  * packs like `standard` ship with ~0 icon slots, so without this their decks
  * render with no icons at all). */
-async function fillPlaceholderIcons(ui: Rec, fallbackQuery: string): Promise<Rec> {
+export async function fillPlaceholderIcons(ui: Rec, fallbackQuery: string): Promise<Rec> {
   const components = (ui.components as Rec[]) ?? [];
   const scopes: IconScope[] = [];
   for (const component of components) {

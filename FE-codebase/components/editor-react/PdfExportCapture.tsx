@@ -88,11 +88,16 @@ export function PdfExportCapture({
       await nextFrame();
       if (cancelled) return;
 
-      const dataUrls = stageRefs.current.map((stage) =>
-        stage
-          ? stage.toDataURL({ pixelRatio: CAPTURE_PIXEL_RATIO, mimeType: "image/png" })
-          : null,
-      );
+      const dataUrls = stageRefs.current.map((stage) => {
+        if (!stage) return null;
+        // A tainted stage (cross-origin image without CORS) throws — keep the
+        // whole export alive and report it as a failed capture instead.
+        try {
+          return stage.toDataURL({ pixelRatio: CAPTURE_PIXEL_RATIO, mimeType: "image/png" });
+        } catch {
+          return null;
+        }
+      });
       onCaptureRef.current(
         dataUrls.every((url): url is string => Boolean(url)) ? dataUrls : null,
       );

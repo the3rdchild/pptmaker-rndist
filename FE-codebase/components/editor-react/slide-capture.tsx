@@ -78,8 +78,16 @@ export function SlideCaptureHost() {
       await new Promise<void>((r) => requestAnimationFrame(() => r()));
       if (cancelled) return;
 
-      const dataUrl =
-        stageRef.current?.toDataURL({ pixelRatio: 2, mimeType: "image/png" }) ?? null;
+      // A tainted stage (a cross-origin image that refused both the proxy
+      // and the anonymous load) throws here — fail this ONE capture soft
+      // instead of killing the queue.
+      let dataUrl: string | null = null;
+      try {
+        dataUrl =
+          stageRef.current?.toDataURL({ pixelRatio: 2, mimeType: "image/png" }) ?? null;
+      } catch (error) {
+        console.warn("[slide-capture] stage not exportable (tainted)", error);
+      }
       job.resolve(dataUrl);
       stageRef.current = null;
       setQueue((current) => current.slice(1));

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
-import { useDispatch, useSelector } from "react-redux";
+import { useDispatch, useSelector, useStore } from "react-redux";
 import {
   Check,
   ChevronDown,
@@ -104,7 +104,11 @@ import {
 import {
   fillManifestSlide,
   parseManifestSlideLine,
+  applyFillsToUi,
+  describeLayoutSlots,
+  type ManifestSlideLine,
 } from "@/components/editor-react/ai-slot-fill";
+import { captureSlidePng } from "@/components/editor-react/slide-capture";
 import {
   applyFontToAllSlides,
   applyThemeToAllSlides,
@@ -181,6 +185,7 @@ export default function EditorReactClient({
   templateMode?: boolean;
 }) {
   const dispatch = useDispatch<AppDispatch>();
+  const reduxStore = useStore<RootState>();
   const presentationData = useSelector(
     (s: RootState) => s.presentationGeneration.presentationData
   );
@@ -203,6 +208,9 @@ export default function EditorReactClient({
   const [showSlideSorter, setShowSlideSorter] = useState(false);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  /** Sub-status during generation ("Reviewing slide 2 of 9…") shown under
+   *  the spinner. */
+  const [generationStatus, setGenerationStatus] = useState<string | null>(null);
   // Template mode only.
   const [themes, setThemes] = useState<TemplateTheme[]>([]);
   const [templateThemeId, setTemplateThemeId] = useState(
@@ -782,6 +790,8 @@ export default function EditorReactClient({
     let buf = "";
     let count = 0;
     const currentToken = token;
+    /** Fills per generated slide (manifest mode), for the visual review pass. */
+    const slideManifestLines = new Map<number, ManifestSlideLine>();
 
     // Resolve the chosen pack's font map up front and reset the deck in ONE
     // dispatch. Splitting these used to be a stale-closure bug: the second
@@ -866,6 +876,9 @@ export default function EditorReactClient({
       heroImage: { componentId: string; elementName: string; occurrenceIndex: number } | null;
       secondaryImages: { componentId: string; elementName: string; occurrenceIndex: number }[];
       subject: string;
+      /** Present when the line came from the manifest contract — kept per
+       *  slide so the post-generation visual review can reference the fills. */
+      manifestLine?: ManifestSlideLine;
     } | null> => {
       try {
         // Manifest-driven contract first: the model picked the layout id and
@@ -882,6 +895,7 @@ export default function EditorReactClient({
             heroImage: filled.heroImage,
             secondaryImages: filled.secondaryImages,
             subject,
+            manifestLine,
           };
         }
         const slide = JSON.parse(line) as AIPPTSlide;
@@ -943,6 +957,7 @@ export default function EditorReactClient({
           if (filled) {
             const index = count;
             dispatch(addSlide({ ui: filled.ui }));
+            if (filled.manifestLine) slideManifestLines.set(index, filled.manifestLine);
             count++;
             requestSlidePhotos(index, filled.ui, filled.heroImage, filled.secondaryImages, filled.subject);
           }
@@ -960,11 +975,72 @@ export default function EditorReactClient({
         if (filled) {
           const index = count;
           dispatch(addSlide({ ui: filled.ui }));
+          if (filled.manifestLine) slideManifestLines.set(index, filled.manifestLine);
           count++;
           setActiveIndex(0);
           requestSlidePhotos(index, filled.ui, filled.heroImage, filled.secondaryImages, filled.subject);
         }
       }
+    }
+
+    // Post-generation visual review: each slide is rendered and shown to Kimi
+    // vision; fixable issues (overflow, placeholder leftovers, wrong length
+    // for the box, ...) go back for one targeted repair pass. Only the
+    // manifest contract carries per-slot fills, so legacy-mode decks skip
+    // this. Failures are silent — a reviewed deck is a bonus, never a blocker.
+    if (slideManifestLines.size > 0) {
+      let reviewed = 0;
+      for (const [slideIndex, manifestLine] of slideManifestLines) {
+        reviewed += 1;
+        setGenerationStatus(`Reviewing slide ${reviewed} of ${slideManifestLines.size}…`);
+        try {
+          const freshUi = reduxStore.getState().presentationGeneration.presentationData
+            ?.slides[slideIndex]?.ui;
+          if (!freshUi) continue;
+          const layout = layoutPicker.getLayoutById(manifestLine.layout_id);
+          const image = await captureSlidePng(freshUi);
+          if (!image) continue;
+          const textFills = manifestLine.fills
+            .filter((f) => f.text)
+            .map((f) => ({ name: f.name, text: f.text }));
+
+          const verifyRes = await fetch("/api/ai/visual-review", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              mode: "verify",
+              image,
+              topic,
+              language: language ?? "Bahasa Indonesia",
+              slots: layout ? describeLayoutSlots(layout) : [],
+              fills: textFills,
+            }),
+          });
+          const verifyBody = await verifyRes.json().catch(() => null);
+          const issues = Array.isArray(verifyBody?.issues) ? verifyBody.issues : [];
+          if (issues.length === 0) continue;
+
+          setGenerationStatus(`Fixing slide ${reviewed} of ${slideManifestLines.size}…`);
+          const repairRes = await fetch("/api/ai/visual-review", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              mode: "repair",
+              language: language ?? "Bahasa Indonesia",
+              slots: layout ? describeLayoutSlots(layout) : [],
+              fills: textFills,
+              issues,
+            }),
+          });
+          const repairBody = await repairRes.json().catch(() => null);
+          const repaired = Array.isArray(repairBody?.fills) ? repairBody.fills : [];
+          if (repaired.length === 0) continue;
+          dispatch(updateSlideUi({ index: slideIndex, ui: applyFillsToUi(freshUi, repaired) }));
+        } catch {
+          // one slide's review failing must never abort the rest
+        }
+      }
+      setGenerationStatus(null);
     }
     return count;
   };
@@ -988,6 +1064,7 @@ export default function EditorReactClient({
   // retyping it (PRD #19).
   const runGeneration = (topic: string, language?: string, model?: string) => {
     setGenerationError(null);
+    setGenerationStatus(null);
     setIsGenerating(true);
     generateDeckFromTopic(topic, language, model)
       .catch((e) => {
@@ -997,7 +1074,10 @@ export default function EditorReactClient({
           language,
         });
       })
-      .finally(() => setIsGenerating(false));
+      .finally(() => {
+        setIsGenerating(false);
+        setGenerationStatus(null);
+      });
   };
 
   const retryGeneration = () => {
@@ -1594,6 +1674,9 @@ export default function EditorReactClient({
               <p className="text-sm text-[var(--text-secondary)]">
                 Generating your presentation…
               </p>
+              {generationStatus && (
+                <p className="text-xs text-[var(--text-muted)]">{generationStatus}</p>
+              )}
             </div>
           ) : (
             <div className="flex flex-col items-center gap-2 text-center">

@@ -376,6 +376,52 @@ export function fillLayoutWithSlotMap(
   return { ui: { id: layout.id, components }, heroImage, secondaryImages };
 }
 
+/** Compact per-slot descriptors (name/role/budgets) of a layout — the payload
+ *  the visual reviewer checks a rendered slide against. */
+export function describeLayoutSlots(
+  layout: TemplateLayout,
+): { name: string; role?: string; max_words?: number; ideal_words?: number }[] {
+  const clone = JSON.parse(JSON.stringify(layout.components)) as Rec[];
+  return collectNamedTextSlots(clone).map((named) => ({
+    name: named.name,
+    ...(named.slot?.role ? { role: named.slot.role } : {}),
+    ...(named.slot?.max_words != null ? { max_words: named.slot.max_words } : {}),
+    ...(named.slot?.ideal_words != null ? { ideal_words: named.slot.ideal_words } : {}),
+  }));
+}
+
+/** Targeted repair pass on an EXISTING slide ui (used by the post-generation
+ *  visual review): writes corrected fills into the named slots in place.
+ *  Unlike fillLayoutWithSlotMap nothing is pruned, fall-backed or re-laid
+ *  out — photos and icons already patched into the slide survive. Returns a
+ *  new ui (input is not mutated). */
+export function applyFillsToUi(ui: Rec, fills: SlotFill[]): Rec {
+  const next = JSON.parse(JSON.stringify(ui)) as Rec;
+  const components = (next.components as Rec[]) ?? [];
+  const namedSlots = collectNamedTextSlots(components);
+
+  const fillsByName = new Map<string, SlotFill[]>();
+  for (const fill of fills) {
+    const list = fillsByName.get(fill.name) ?? [];
+    list.push(fill);
+    fillsByName.set(fill.name, list);
+  }
+
+  for (const named of namedSlots) {
+    const fill = fillsByName.get(named.name)?.shift();
+    if (!fill) continue;
+    if (named.kind === "chart") {
+      if (fill.chart) writeChartData(named.el, fill.chart);
+      continue;
+    }
+    if (fill.text != null && fill.text.trim()) {
+      setText(named.el, enforceSlotBudgets(fill.text, named.slot, named.el));
+    }
+  }
+
+  return next;
+}
+
 /** High-level entry: fill + swap placeholder icons, mirroring
  *  mapAIPPTSlideToTemplateUi's role in the legacy path. Returns null when the
  *  layout id isn't in the pack (model hallucinated an id). */

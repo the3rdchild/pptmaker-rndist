@@ -166,6 +166,13 @@ export function TemplateEnginePanel({
   const [labelError, setLabelError] = useState<string | null>(null);
   const [labelNote, setLabelNote] = useState<string | null>(null);
   const [themeLabelBusy, setThemeLabelBusy] = useState(false);
+  /** Pages the theme-scope auto-label should touch. null = every page (the
+   *  default); an explicit list means "only these". Reset whenever the page
+   *  set changes so a stale index never labels the wrong page. */
+  const [labelPages, setLabelPages] = useState<number[] | null>(null);
+  useEffect(() => {
+    setLabelPages(null);
+  }, [pageUis.length]);
 
   // Keyed by slide AND the layout loaded into it: applying an existing template
   // over the current slide has to re-seed the fields from that layout, or the
@@ -511,8 +518,13 @@ export function TemplateEnginePanel({
 
     // ── Page / theme scope ──
     const pageIndexes =
-      scope === "theme" ? pageUis.map((_, index) => index) : [activeIndex];
-    if (pageIndexes.length === 0) return;
+      scope === "theme"
+        ? (labelPages ?? pageUis.map((_, index) => index))
+        : [activeIndex];
+    if (pageIndexes.length === 0) {
+      if (scope === "theme") setLabelError("Select at least one page to label.");
+      return;
+    }
 
     setLabelProgress({ done: 0, total: pageIndexes.length });
     let labelled = 0;
@@ -571,7 +583,7 @@ export function TemplateEnginePanel({
     } finally {
       setLabelProgress(null);
     }
-  }, [activeIndex, activeUi, onApplyPageUi, pageUis, scope, selection, themeId, themes]);
+  }, [activeIndex, activeUi, labelPages, onApplyPageUi, pageUis, scope, selection, themeId, themes]);
 
   /** Theme-level auto-label: authors the theme's description + AI guidance
    *  (when_to_use / avoid_when / tone / keywords) from the whole layout family
@@ -656,6 +668,21 @@ export function TemplateEnginePanel({
       setThemeLabelBusy(false);
     }
   }, [onThemeUpdated, originThemeId, pageUis, themeId, themes]);
+
+  /** Flips one page in the theme-scope label selection. Selecting every page
+   *  collapses back to null (= "all") so the button keeps reading as before. */
+  const toggleLabelPage = useCallback(
+    (index: number) => {
+      setLabelPages((current) => {
+        const base = current ?? pageUis.map((_, i) => i);
+        const next = base.includes(index)
+          ? base.filter((i) => i !== index)
+          : [...base, index].sort((a, b) => a - b);
+        return next.length === pageUis.length ? null : next;
+      });
+    },
+    [pageUis],
+  );
 
   /** Turns a .pptx into pages on the canvas. Every slide lands as an unsaved
    *  layout so the author can label its slots and save the ones worth keeping —
@@ -1006,15 +1033,70 @@ export function TemplateEnginePanel({
             <span className="truncate">{importing ? importLabel : "Import .pptx"}</span>
           </button>
         </div>
+        {/* Page picker for the theme scope — label a subset (e.g. 1, 3, 4)
+            instead of always the whole canvas. null selection = all pages. */}
+        {scope === "theme" && pageUis.length > 1 && (
+          <div className="mb-2 rounded-md border border-[var(--border)] px-2 py-1.5">
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-[10px] font-medium text-[var(--text-secondary)]">
+                Pages to label
+                {labelPages
+                  ? ` (${labelPages.length}/${pageUis.length})`
+                  : ` (all ${pageUis.length})`}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setLabelPages(null)}
+                  className="text-[10px] text-[var(--accent)] hover:underline"
+                >
+                  All
+                </button>
+                <button
+                  onClick={() => setLabelPages([])}
+                  className="text-[10px] text-[var(--text-muted)] hover:underline"
+                >
+                  None
+                </button>
+              </div>
+            </div>
+            <div className="max-h-36 space-y-0.5 overflow-y-auto">
+              {pageUis.map((ui, index) => {
+                const key = `${index}::${String(ui?.id ?? "")}`;
+                const name = (drafts[key] ?? draftFromUi(ui, index)).name;
+                return (
+                  <label
+                    key={key}
+                    className="flex cursor-pointer items-center gap-1.5 rounded px-1 py-0.5 text-[11px] text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!labelPages || labelPages.includes(index)}
+                      onChange={() => toggleLabelPage(index)}
+                      className="accent-[var(--accent)]"
+                    />
+                    <span className="shrink-0 text-[var(--text-muted)]">{index + 1}.</span>
+                    <span className="truncate">{name}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {/* Auto-label fills slot name/role/fill_condition/budgets + layout meta
-            via AI. Blast radius follows the scope tab: theme = every page,
-            page = this page, element = the selected element only. */}
+            via AI. Blast radius follows the scope tab: theme = the pages
+            selected above, page = this page, element = the selected element
+            only. */}
         <button
           onClick={handleAutoLabel}
-          disabled={labelProgress !== null || saving || importing}
+          disabled={
+            labelProgress !== null ||
+            saving ||
+            importing ||
+            (scope === "theme" && labelPages !== null && labelPages.length === 0)
+          }
           title={
             scope === "theme"
-              ? "Auto-label slots on every page on the canvas with AI."
+              ? "Auto-label slots on the selected pages with AI."
               : scope === "page"
                 ? "Auto-label this page's slots and layout meta with AI."
                 : "Auto-label only the selected element with AI."
@@ -1030,7 +1112,9 @@ export function TemplateEnginePanel({
             {labelProgress
               ? `Labelling ${labelProgress.done}/${labelProgress.total}…`
               : scope === "theme"
-                ? "Auto-label all pages (AI)"
+                ? labelPages
+                  ? `Auto-label ${labelPages.length} selected page${labelPages.length === 1 ? "" : "s"} (AI)`
+                  : "Auto-label all pages (AI)"
                 : scope === "page"
                   ? "Auto-label this page (AI)"
                   : "Auto-label selected element (AI)"}

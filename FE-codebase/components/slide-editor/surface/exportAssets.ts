@@ -16,9 +16,12 @@ function toSameOriginAssetUrl(src: string): string {
   try {
     const url = new URL(src);
     if (url.origin === window.location.origin) return src;
-    if (/^\/(templates|elements)\//.test(url.pathname)) {
-      return `${ASSET_PROXY_PREFIX}${url.pathname}`;
-    }
+    // The bucket serves two URL shapes: virtual-host style starts with the
+    // owned prefix (/templates/…), path style carries the bucket name first
+    // (…/<bucket>/templates/… — forced on dotted bucket names). Take the path
+    // from the first owned segment either way.
+    const match = url.pathname.match(/\/(templates|elements)\/(.+)$/);
+    if (match) return `${ASSET_PROXY_PREFIX}/${match[1]}/${match[2]}`;
     return src;
   } catch {
     return src;
@@ -38,26 +41,34 @@ export function loadKonvaImage(src: string): Promise<HTMLImageElement | null> {
       resolve(image);
     };
 
-    const url = toSameOriginAssetUrl(src);
-    const crossOrigin =
-      /^https?:\/\//i.test(url) && !url.startsWith(window.location.origin);
+    // Load attempts, best to worst:
+    //   1. same-origin proxy (bucket URLs only) — exportable, no CORS needed
+    //   2. direct with crossOrigin="anonymous" — exportable when the remote
+    //      allows CORS
+    //   3. direct plain load — renders but taints (the pre-fix behavior),
+    //      kept as the last step so an image never disappears from a slide
+    const proxied = toSameOriginAssetUrl(src);
+    const steps: { url: string; anonymous: boolean }[] = [];
+    if (proxied !== src) steps.push({ url: proxied, anonymous: false });
+    const isCrossOrigin =
+      /^https?:\/\//i.test(src) && !src.startsWith(window.location.origin);
+    if (isCrossOrigin) steps.push({ url: src, anonymous: true });
+    steps.push({ url: src, anonymous: false });
 
-    // Cross-origin images get an anonymous attempt first — when the remote
-    // allows CORS the canvas stays exportable; on refusal we fall back to a
-    // plain load (renders but taints — the pre-existing behavior) rather
-    // than dropping the image from the slide entirely.
-    const attempt = (anonymous: boolean) => {
+    const attempt = (index: number) => {
+      const step = steps[index];
+      if (!step) {
+        done(null);
+        return;
+      }
       const image = new window.Image();
-      if (anonymous) image.crossOrigin = "anonymous";
+      if (step.anonymous) image.crossOrigin = "anonymous";
       image.onload = () => done(image);
-      image.onerror = () => {
-        if (anonymous) attempt(false);
-        else done(null);
-      };
-      image.src = url;
+      image.onerror = () => attempt(index + 1);
+      image.src = step.url;
       if (image.complete) done(image);
     };
-    attempt(crossOrigin);
+    attempt(0);
   });
   imageCache.set(src, promise);
   return promise;

@@ -31,6 +31,7 @@ const DECIMALS = 2;
 
 export type ExportedLayout = Rec & {
   id: string;
+  name?: string;
   description: string;
   meta?: LayoutMeta;
   components: Rec[];
@@ -266,6 +267,9 @@ export function exportSlideAsLayout(
 
   const layout: ExportedLayout = {
     id: options.id ?? makeLayoutId(options.name, options.existingIds ?? []),
+    // The display name is persisted too — auto-label authors it and the
+    // manifest surfaces it to the generator next to the id.
+    ...(options.name.trim() ? { name: options.name.trim() } : {}),
     description: options.description.trim(),
     ...(meta ? { meta } : {}),
     components,

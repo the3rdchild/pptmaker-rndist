@@ -55,6 +55,8 @@ export type ThemePalette = {
 
 export type TemplateLayout = Record<string, unknown> & {
   id?: string;
+  /** Human-readable page name (auto-label authors it; the id stays the slug). */
+  name?: string;
   description?: string;
 };
 

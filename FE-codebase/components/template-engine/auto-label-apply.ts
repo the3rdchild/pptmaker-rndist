@@ -193,8 +193,9 @@ function resolveAddress(ui: Rec, address: { componentIndex: number; elementPath:
 }
 
 /** Deep-clones the page ui and writes every returned label into its addressed
- *  element: the slot name onto `name`, the metadata onto `slot`. The layout
- *  meta is merged into ui.meta so draftFromUi picks it up on re-seed. */
+ *  element: the slot name onto `name`, the metadata onto `slot`. Page-level
+ *  results land on the ui root — name/description as-is, layout meta merged
+ *  into ui.meta so draftFromUi picks it up on re-seed. */
 export function applyAutoLabelResult(ui: Rec, targets: LabelTarget[], result: AutoLabelResult): Rec {
 	const next = JSON.parse(JSON.stringify(ui)) as Rec;
 
@@ -209,6 +210,9 @@ export function applyAutoLabelResult(ui: Rec, targets: LabelTarget[], result: Au
 			element.slot = merged;
 		}
 	}
+
+	if (result.layout_name) next.name = result.layout_name;
+	if (result.layout_description) next.description = result.layout_description;
 
 	if (result.layout_meta) {
 		next.meta = { ...(isRecord(next.meta) ? next.meta : {}), ...result.layout_meta };

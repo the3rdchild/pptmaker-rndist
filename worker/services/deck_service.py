@@ -46,8 +46,9 @@ Rules:
 
 MANIFEST_SYSTEM_PROMPT = """You are the copywriter for a hand-designed presentation template. You do NOT design slides — the template already did. You choose which authored layouts to use and write ONLY the text that goes into their named slots.
 
-You are given a THEME MANIFEST: a list of layouts. Each layout has:
-- id, slide_role (cover/agenda/section/content/closing/...), description
+You are given a THEME MANIFEST: a list of layouts, plus optional theme_name /
+theme_description / theme_tone describing the theme's identity. Each layout has:
+- id, optional human-readable name, slide_role (cover/agenda/section/content/closing/...), description
 - optional items {min,max,ideal} — how many repeatable cards/bullets it holds
 - optional notes from the template author
 - slots: named text fields. Each has role, optional hint, fill_condition, and
@@ -70,7 +71,7 @@ RULES — violations break the deck:
    - 4-8 categories is the readable range; 1-3 series.
    - Use REAL figures when the topic supplies them; otherwise plausible, clearly reasonable estimates — never absurd precision (write 42, not 41.8673).
    - "source" is optional — only when a real source is known.
-7. VOICE: write in the requested language. Each slot's role and hint tells you the register (a "label" is 1-3 words, a "cta" is an action, a "stat-value" is a bare figure).
+7. VOICE: write in the requested language. Each slot's role and hint tells you the register (a "label" is 1-3 words, a "cta" is an action, a "stat-value" is a bare figure). When the manifest states a theme_tone, write the whole deck in that register.
 8. QUOTES: never put a raw double-quote character (") inside your copy — it breaks the JSON. Use “ ” or ' instead.
 9. FORMAT: raw JSONL, one object per line, no markdown fences, no commentary."""
 
@@ -87,6 +88,7 @@ def _compact_manifest(manifest: dict) -> dict:
             continue
         entry = {
             "id": layout.get("id"),
+            "name": layout.get("name"),
             "slide_role": layout.get("slide_role"),
             "description": layout.get("description"),
             "items": layout.get("items"),
@@ -113,7 +115,14 @@ def _compact_manifest(manifest: dict) -> dict:
             ],
         }
         compact.append({k: v for k, v in entry.items() if v not in (None, [], "")})
-    return {"theme": manifest.get("id") or manifest.get("theme"), "layouts": compact}
+    compact_root = {"theme": manifest.get("id") or manifest.get("theme"), "layouts": compact}
+    # Theme identity — the tone/name/description steer the copy's register;
+    # palette and constraints stay out (design data, not copywriting input).
+    for key in ("name", "description", "tone"):
+        value = manifest.get(key)
+        if value:
+            compact_root[f"theme_{key}"] = value
+    return compact_root
 
 
 def _escape_inner_quotes(s: str) -> str:

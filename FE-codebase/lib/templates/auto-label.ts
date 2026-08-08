@@ -48,6 +48,12 @@ export interface AutoLabelElementResult {
 }
 
 export interface AutoLabelResult {
+	/** Human-readable page name ("Split Cover", "Three Stat Cards") — persisted
+	 *  onto the layout so the manifest and the author UI can show it. */
+	layout_name: string | null;
+	/** One-sentence composition summary — the deck generator reads this when it
+	 *  picks a layout, alongside the slot list. */
+	layout_description: string | null;
 	layout_meta: LayoutMeta | null;
 	elements: AutoLabelElementResult[];
 }
@@ -90,11 +96,14 @@ For EVERY element in the input, return:
 - max_words / max_lines: start from the element's measured_max_words / measured_max_lines (computed with the real font metrics — trust them). You may TIGHTEN them when the image shows the text must stay shorter (small chip, overlay on photo, overlapping box), but NEVER exceed the measured values.
 - ideal_words / ideal_lines: the length that looks BEST in this box, judged from the image and the sample text. A body box authored for a paragraph must get a paragraph-sized ideal; a badge gets 1-2 words. Never above the max.
 
-Also return layout_meta for the layout as a whole:
-- slide_role: one of the allowed slide roles below.
-- topics: 2-6 subjects this layout suits.
-- min_items/max_items/ideal_items: for layouts with repeated cards/bullets — how many the grid holds. Omit for single-message layouts (cover/closing/quote).
-- notes: one or two sentences for the future generator (when to pick this layout, what to watch out for).
+Also return the page-level identity and layout_meta for the layout as a whole:
+- layout_name: short human-readable Title Case name for this page (e.g. "Split Cover", "Three Stat Cards"). Describe the COMPOSITION, not the sample text. 2-5 words.
+- layout_description: one sentence describing the composition and when to pick it — the deck generator reads this when choosing a layout. Describe structure ("Full-bleed photo on the left, title stack on the right"), never the sample content.
+- layout_meta:
+  - slide_role: one of the allowed slide roles below.
+  - topics: 2-6 subjects this layout suits.
+  - min_items/max_items/ideal_items: for layouts with repeated cards/bullets — how many the grid holds. Omit for single-message layouts (cover/closing/quote).
+  - notes: one or two sentences for the future generator (when to pick this layout, what to watch out for).
 
 CHART ELEMENTS (type "chart"): these are filled with DATA by the generator, not prose. For them:
 - role MUST be "chart".
@@ -113,7 +122,7 @@ ALLOWED SLIDE ROLES:
 ${slideRoleDocs()}
 
 OUTPUT: raw JSON ONLY (no markdown fences, no commentary), exactly this shape:
-{"layout_meta":{"slide_role":"...","topics":["..."],"min_items":2,"max_items":4,"ideal_items":3,"notes":"..."},"elements":[{"i":0,"name":"...","role":"...","hint":"...","fill_condition":"...","prune_if_unfilled":true,"max_words":5,"max_lines":1,"ideal_words":3,"ideal_lines":1}]}
+{"layout_name":"...","layout_description":"...","layout_meta":{"slide_role":"...","topics":["..."],"min_items":2,"max_items":4,"ideal_items":3,"notes":"..."},"elements":[{"i":0,"name":"...","role":"...","hint":"...","fill_condition":"...","prune_if_unfilled":true,"max_words":5,"max_lines":1,"ideal_words":3,"ideal_lines":1}]}
 Every input element MUST appear exactly once in "elements", keyed by its "i".`;
 
 	const payload = JSON.stringify(
@@ -195,6 +204,15 @@ const VALID_CONDITIONS = new Set(SLOT_FILL_CONDITIONS.map((c) => c.id));
 export function sanitizeAutoLabelResult(raw: Rec): AutoLabelResult {
 	const layoutMeta = parseLayoutMeta(raw.layout_meta ?? null);
 
+	const layoutName =
+		typeof raw.layout_name === "string" && raw.layout_name.trim()
+			? raw.layout_name.trim().slice(0, 80)
+			: null;
+	const layoutDescription =
+		typeof raw.layout_description === "string" && raw.layout_description.trim()
+			? raw.layout_description.trim().slice(0, 300)
+			: null;
+
 	const out: AutoLabelElementResult[] = [];
 	const rawElements = Array.isArray(raw.elements) ? raw.elements : [];
 	for (const entry of rawElements) {
@@ -238,7 +256,7 @@ export function sanitizeAutoLabelResult(raw: Rec): AutoLabelResult {
 		});
 	}
 
-	return { layout_meta: layoutMeta, elements: out };
+	return { layout_name: layoutName, layout_description: layoutDescription, layout_meta: layoutMeta, elements: out };
 }
 
 /** One round-trip to Kimi. Throws on HTTP/parse failure — the route maps that

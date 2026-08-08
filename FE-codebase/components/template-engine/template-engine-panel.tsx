@@ -40,6 +40,7 @@ import {
 } from "@/components/template-engine/auto-label-apply";
 import { captureSlidePng } from "@/components/editor-react/slide-capture";
 import type { AutoLabelResult } from "@/lib/templates/auto-label";
+import type { AutoLabelThemeResult } from "@/lib/templates/auto-label-theme";
 import {
   TEMPLATE_V2_SELECT_ELEMENT_EVENT,
   type TemplateV2SelectElementDetail,
@@ -164,6 +165,7 @@ export function TemplateEnginePanel({
   const [labelProgress, setLabelProgress] = useState<{ done: number; total: number } | null>(null);
   const [labelError, setLabelError] = useState<string | null>(null);
   const [labelNote, setLabelNote] = useState<string | null>(null);
+  const [themeLabelBusy, setThemeLabelBusy] = useState(false);
 
   // Keyed by slide AND the layout loaded into it: applying an existing template
   // over the current slide has to re-seed the fields from that layout, or the
@@ -534,14 +536,26 @@ export function TemplateEnginePanel({
         });
         const nextUi = applyAutoLabelResult(ui, targets, result);
         onApplyPageUi(index, nextUi);
-        // Keep the panel's draft map in sync — handleSaveAll reads meta from
-        // drafts first, and a stale draft would overwrite the AI's meta.
-        if (result.layout_meta) {
+        // Keep the panel's draft map in sync — handleSaveAll reads name,
+        // description and meta from drafts first, and a stale draft would
+        // overwrite the AI's labels.
+        if (result.layout_meta || result.layout_name || result.layout_description) {
           const key = `${index}::${String(nextUi.id ?? "")}`;
-          const meta = result.layout_meta;
           setDrafts((current) => {
             const base = current[key] ?? draftFromUi(nextUi, index);
-            return { ...current, [key]: { ...base, meta: { ...base.meta, ...meta } } };
+            return {
+              ...current,
+              [key]: {
+                ...base,
+                ...(result.layout_name ? { name: result.layout_name } : {}),
+                ...(result.layout_description
+                  ? { description: result.layout_description }
+                  : {}),
+                ...(result.layout_meta
+                  ? { meta: { ...base.meta, ...result.layout_meta } }
+                  : {}),
+              },
+            };
           });
         }
         labelled += 1;
@@ -558,6 +572,90 @@ export function TemplateEnginePanel({
       setLabelProgress(null);
     }
   }, [activeIndex, activeUi, onApplyPageUi, pageUis, scope, selection, themeId, themes]);
+
+  /** Theme-level auto-label: authors the theme's description + AI guidance
+   *  (when_to_use / avoid_when / tone / keywords) from the whole layout family
+   *  at once, then PATCHes theme.json straight away — theme metadata has no
+   *  canvas draft to stage in, unlike page labels. The result is what the
+   *  theme-choice step reads when it picks a theme for a deck topic. */
+  const handleAutoLabelTheme = useCallback(async () => {
+    setLabelError(null);
+    setLabelNote(null);
+    const theme = themes.find((t) => t.id === themeId);
+    if (!theme) return;
+    setThemeLabelBusy(true);
+    try {
+      const layouts = theme.layouts.map((layout) => {
+        const meta = isRecord(layout.meta) ? layout.meta : null;
+        return {
+          id: String(layout.id ?? ""),
+          name: typeof layout.name === "string" ? layout.name : null,
+          description:
+            typeof layout.description === "string" ? layout.description : null,
+          slide_role: typeof meta?.slide_role === "string" ? meta.slide_role : null,
+          topics: Array.isArray(meta?.topics)
+            ? meta.topics.filter((t): t is string => typeof t === "string")
+            : [],
+        };
+      });
+      // A few rendered pages as visual ground truth — the theme's character is
+      // what the guidance should describe, and metadata alone can't show it.
+      // Only when the canvas actually shows THIS theme; pages from another
+      // theme would teach the model the wrong identity.
+      const images: string[] = [];
+      if (originThemeId === themeId) {
+        for (const ui of pageUis.slice(0, 3)) {
+          if (!ui) continue;
+          const png = await captureSlidePng(ui);
+          if (png) images.push(png);
+        }
+      }
+      const res = await fetch("/api/template-engine/auto-label-theme", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          theme: {
+            id: theme.id,
+            name: theme.name,
+            description: theme.description,
+            ai: theme.ai ?? null,
+          },
+          layouts,
+          images,
+        }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.error ?? "Auto-label failed");
+      const result = body as AutoLabelThemeResult;
+
+      const patch: Rec = {
+        ai: {
+          ...(theme.ai ?? {}),
+          ...(result.when_to_use ? { when_to_use: result.when_to_use } : {}),
+          ...(result.avoid_when ? { avoid_when: result.avoid_when } : {}),
+          ...(result.tone.length > 0 ? { tone: result.tone } : {}),
+          ...(result.keywords.length > 0 ? { keywords: result.keywords } : {}),
+        },
+      };
+      if (result.description) patch.description = result.description;
+
+      const saveRes = await fetch("/api/template-engine/themes", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ themeId: theme.id, patch }),
+      });
+      const saveBody = await saveRes.json().catch(() => null);
+      if (!saveRes.ok) {
+        throw new Error(saveBody?.error ?? "Could not save the theme metadata");
+      }
+      onThemeUpdated();
+      setLabelNote(`Theme guidance labelled and saved to ${theme.name}.`);
+    } catch (error) {
+      setLabelError(error instanceof Error ? error.message : "Auto-label failed");
+    } finally {
+      setThemeLabelBusy(false);
+    }
+  }, [onThemeUpdated, originThemeId, pageUis, themeId, themes]);
 
   /** Turns a .pptx into pages on the canvas. Every slide lands as an unsaved
    *  layout so the author can label its slots and save the ones worth keeping —
@@ -684,6 +782,26 @@ export function TemplateEnginePanel({
       </Section>
 
       <Section title="Palette & guidance">
+        {/* Theme-level counterpart of the per-page auto-label: authors the
+            description + AI guidance the theme-choice step matches topics
+            against. Saves straight to theme.json. */}
+        <button
+          onClick={handleAutoLabelTheme}
+          disabled={themeLabelBusy || labelProgress !== null || saving || importing}
+          title="Author this theme's description and AI guidance (when to use, when to avoid, tone, keywords) with AI, from the whole layout family."
+          className={`${secondaryButtonClass} mb-2 w-full`}
+        >
+          {themeLabelBusy ? (
+            <Loader2 size={13} className="animate-spin" />
+          ) : (
+            <Sparkles size={13} />
+          )}
+          <span className="truncate">
+            {themeLabelBusy
+              ? "Labelling theme guidance…"
+              : "Auto-label theme guidance (AI)"}
+          </span>
+        </button>
         <ThemePaletteEditor
           theme={themes.find((t) => t.id === themeId) ?? null}
           onSaved={onThemeUpdated}

@@ -56,6 +56,8 @@ export type SlotManifestEntry = {
 export type LayoutManifest = {
   theme: string;
   id: string;
+  /** Human-readable page name, when authored (auto-label writes it). */
+  name?: string;
   description: string;
   slide_role?: SlideRole;
   topics?: string[];
@@ -250,6 +252,9 @@ export function buildLayoutManifest(
     capabilities: [...capabilities].sort(),
     slots,
   };
+
+  const layoutName = readString(layout.name);
+  if (layoutName) manifest.name = layoutName;
 
   if (meta?.slide_role) manifest.slide_role = meta.slide_role;
   if (meta?.topics?.length) manifest.topics = meta.topics;

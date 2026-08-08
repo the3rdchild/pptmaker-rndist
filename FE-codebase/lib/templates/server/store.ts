@@ -25,6 +25,7 @@ import {
   readJson,
   writeJson,
 } from "@/lib/storage/s3";
+import type { TemplateTheme } from "@/lib/templates/themes";
 
 export type StoredLayout = Record<string, unknown> & { id: string };
 
@@ -57,6 +58,33 @@ export function assertSafeLayoutId(layoutId: string): string {
 export async function listThemeIds(): Promise<string[]> {
   const folders = await listFolders(TEMPLATES_PREFIX);
   return folders.filter((name) => THEME_ID_PATTERN.test(name)).sort();
+}
+
+/** Reads one theme's merged bundle + hand-authored metadata into the
+ *  TemplateTheme shape the manifest builders consume. Shared by the manifest
+ *  route and the theme-choice step so both describe themes identically. */
+export async function readTheme(themeId: string): Promise<TemplateTheme | null> {
+  const bundle = await readJson<Record<string, unknown>>(
+    themeKey(themeId, "template.json"),
+  );
+  if (!bundle) return null;
+
+  const meta =
+    (await readJson<Record<string, unknown>>(themeKey(themeId, "theme.json"))) ??
+    {};
+
+  return {
+    id: themeId,
+    name: (meta.name as string) ?? (bundle.name as string) ?? themeId,
+    description:
+      (meta.description as string) ?? (bundle.description as string) ?? "",
+    thumbnail: (bundle.thumbnail as string | null) ?? null,
+    fonts: (bundle.fonts as TemplateTheme["fonts"]) ?? null,
+    ai: (meta.ai as TemplateTheme["ai"]) ?? null,
+    palette: (meta.palette as TemplateTheme["palette"]) ?? null,
+    layouts: Array.isArray(bundle.layouts) ? bundle.layouts : [],
+    mergedComponents: [],
+  };
 }
 
 /** Rewrites templates/index.json from what is actually in the bucket.

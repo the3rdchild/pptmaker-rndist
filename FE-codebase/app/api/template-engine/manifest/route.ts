@@ -13,37 +13,11 @@ import {
   buildThemeChoiceManifest,
   buildThemeManifest,
 } from "@/lib/templates/manifest";
-import { readJson } from "@/lib/storage/s3";
-import { listThemeIds, themeKey } from "@/lib/templates/server/store";
+import { listThemeIds, readTheme } from "@/lib/templates/server/store";
 import type { TemplateTheme } from "@/lib/templates/themes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-async function readTheme(themeId: string): Promise<TemplateTheme | null> {
-  const bundle = await readJson<Record<string, unknown>>(
-    themeKey(themeId, "template.json"),
-  );
-  if (!bundle) return null;
-
-  const meta =
-    (await readJson<Record<string, unknown>>(
-      themeKey(themeId, "theme.json"),
-    )) ?? {};
-
-  return {
-    id: themeId,
-    name: (meta.name as string) ?? (bundle.name as string) ?? themeId,
-    description:
-      (meta.description as string) ?? (bundle.description as string) ?? "",
-    thumbnail: (bundle.thumbnail as string | null) ?? null,
-    fonts: (bundle.fonts as TemplateTheme["fonts"]) ?? null,
-    ai: (meta.ai as TemplateTheme["ai"]) ?? null,
-    palette: (meta.palette as TemplateTheme["palette"]) ?? null,
-    layouts: Array.isArray(bundle.layouts) ? bundle.layouts : [],
-    mergedComponents: [],
-  };
-}
 
 export async function GET(request: Request) {
   const themeId = new URL(request.url).searchParams.get("theme");

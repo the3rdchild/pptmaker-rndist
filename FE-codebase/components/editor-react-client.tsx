@@ -53,7 +53,7 @@ import {
 import type { SlideData } from "@/store/presentationGeneration";
 import { adaptDeckToPresentation } from "@/components/editor-react/deck-adapt";
 import { useSessionStore } from "@/store/session.store";
-import { getDeck, saveDeck, streamAipptDeck, fetchThemeManifest, generateImage, type AgentAction } from "@/lib/api";
+import { getDeck, saveDeck, streamAipptDeck, fetchThemeManifest, chooseThemeForTopic, generateImage, type AgentAction } from "@/lib/api";
 import {
   DEFAULT_THEME_ID,
   invalidateThemeCache,
@@ -770,11 +770,37 @@ export default function EditorReactClient({
     // manifest in the request body the worker switches to the slot-by-slot
     // contract (model fills NAMED slots under their authored budgets) instead
     // of the legacy 5-type guess-where-text-goes contract.
+    //
+    // Priority: a theme named explicitly in the prompt wins; otherwise the
+    // theme-choice step (Kimi + the themes' authored when_to_use/avoid_when)
+    // picks one; the DeckLayoutPicker seed hash is only the last-resort
+    // fallback when the choice call fails or declines.
     const askedTheme = await resolveThemeFromPrompt(topic);
-    const layoutPicker = new DeckLayoutPicker(topic, askedTheme);
+    let preferredTheme = askedTheme;
+    let themeChoiceReason: string | null = null;
+    if (!preferredTheme) {
+      setGenerationStatus("Choosing a theme…");
+      const choice = await chooseThemeForTopic(topic, language);
+      if (choice) {
+        preferredTheme = choice.themeId;
+        themeChoiceReason = choice.reason;
+      }
+    }
+    const layoutPicker = new DeckLayoutPicker(topic, preferredTheme);
     await layoutPicker.ensureLoaded();
     const themeId = layoutPicker.getThemeId();
     const manifest = themeId ? await fetchThemeManifest(themeId) : null;
+    const chosenThemeName =
+      manifest && typeof (manifest as { name?: unknown }).name === "string"
+        ? String((manifest as { name?: unknown }).name)
+        : null;
+    if (chosenThemeName) {
+      setGenerationStatus(
+        themeChoiceReason
+          ? `${chosenThemeName} — ${themeChoiceReason}`
+          : `Using the “${chosenThemeName}” theme…`,
+      );
+    }
 
     const res = await streamAipptDeck(token, { content: topic, language, model, manifest: manifest ?? undefined });
     if (!(res instanceof Response) || !res.body) {

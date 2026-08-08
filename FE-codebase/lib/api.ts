@@ -183,6 +183,32 @@ export async function streamAipptDeck(
 
 // ── Theme manifest (slot-by-slot generation contract) ─────────────────────
 
+/** Asks the server (Kimi) which theme best fits a deck topic, matched against
+ * each theme's authored when_to_use / avoid_when / keywords. Returns null on
+ * any failure or "no defensible fit" — the caller falls back to the
+ * deterministic DeckLayoutPicker seed instead of dying. */
+export async function chooseThemeForTopic(
+	topic: string,
+	language?: string,
+): Promise<{ themeId: string; reason: string | null } | null> {
+	try {
+		const res = await fetch(`/api/ai/choose-theme`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ topic, language }),
+		})
+		if (!res.ok) return null
+		const json = await res.json()
+		if (typeof json?.theme_id !== 'string' || !json.theme_id) return null
+		return {
+			themeId: json.theme_id,
+			reason: typeof json.reason === 'string' ? json.reason : null,
+		}
+	} catch {
+		return null
+	}
+}
+
 /** Fetches one theme's layout manifest from the same-origin Next API — the
  *  payload the deck generator shows the model (slots + budgets per layout).
  *  Returns null on any failure so generation can fall back to the legacy

@@ -23,16 +23,19 @@ import { useId } from "react";
 import type { SlideElement } from "@/components/slide-editor/types";
 
 /** An image element clipped into a shape — a photo container, not a plain
- *  media image. Detected by the clip, not the name, so renamed frames and
- *  pptx-imported crop-to-shape images both count. Frames are always filled
- *  with a generated photo at deck-generation time and are labelled "frame" in
- *  the template engine. */
+ *  media image. Detected either by an explicit `is_frame: true` marker (set by
+ *  buildFrameElement on every inserted frame, including the Square frame whose
+ *  clippath is null) OR by a non-empty clippath/clipPath/clip_path (so renamed
+ *  frames and pptx-imported crop-to-shape images still count without the
+ *  marker). Frames are always filled with a generated photo at deck-generation
+ *  time and are labelled "frame" in the template engine. */
 export function isImageFrameElement(element: unknown): boolean {
   if (!element || typeof element !== "object" || Array.isArray(element)) {
     return false;
   }
   const el = element as Record<string, unknown>;
   if (el.type !== "image") return false;
+  if (el.is_frame === true) return true;
   const raw = el.clippath ?? el.clipPath ?? el.clip_path;
   if (typeof raw !== "string") return false;
   const trimmed = raw.trim();
@@ -160,10 +163,14 @@ export function framePlaceholderDataUri(): string {
 }
 
 /** The inserted element: a cover-fit image named like a slot, so a frame used
- *  in a template becomes a proper photo slot for the generator. */
+ *  in a template becomes a proper photo slot for the generator. `is_frame` is
+ *  always set — without it the Square frame (whose clippath is null) wouldn't
+ *  be recognized as an image container by isImageFrameElement, and the
+ *  auto-label + generation slot detectors would skip it. */
 export function buildFrameElement(frame: ImageFrameDef): SlideElement {
   return {
     type: "image",
+    is_frame: true,
     position: { x: 168, y: 176 },
     size: frame.size ? { ...frame.size } : { width: 240, height: 240 },
     data: framePlaceholderDataUri(),

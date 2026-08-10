@@ -12,6 +12,7 @@
 // exercised directly with bun, without a running Next server.
 
 import { callKimiChat, extractJson, type KimiMessage } from "@/lib/templates/kimi";
+import { DEFAULT_VISION_PROVIDER } from "@/lib/ai-providers";
 
 type Rec = Record<string, unknown>;
 
@@ -40,6 +41,9 @@ export interface AutoLabelThemeRequest {
 	 *  the theme's visual character. Keep it to a handful; they dominate the
 	 *  token cost. */
 	images?: string[];
+	/** Provider id override (resolved in ai-providers.ts). Absent = vision
+	 *  default. Lets the author rate different models on theme guidance. */
+	provider?: string | null;
 }
 
 export interface AutoLabelThemeResult {
@@ -135,8 +139,12 @@ export function sanitizeAutoLabelThemeResult(raw: Rec): AutoLabelThemeResult {
 export async function callKimiAutoLabelTheme(
 	input: AutoLabelThemeRequest,
 ): Promise<AutoLabelThemeResult> {
-	const content = await callKimiChat(buildAutoLabelThemeMessages(input), 8000);
+	const content = await callKimiChat(
+		buildAutoLabelThemeMessages(input),
+		8000,
+		input.provider ?? DEFAULT_VISION_PROVIDER,
+	);
 	const parsed = extractJson(content);
-	if (!parsed) throw new Error("Kimi response was not valid JSON");
+	if (!parsed) throw new Error("AI response was not valid JSON");
 	return sanitizeAutoLabelThemeResult(parsed);
 }

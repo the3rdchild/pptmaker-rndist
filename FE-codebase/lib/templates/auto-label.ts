@@ -14,6 +14,11 @@ import {
 	type LayoutMeta,
 	type SlotMeta,
 } from "@/components/slide-editor/templates/slot-meta";
+import {
+	callProvider,
+	extractJson,
+	DEFAULT_VISION_PROVIDER,
+} from "@/lib/ai-providers";
 
 type Rec = Record<string, unknown>;
 
@@ -22,6 +27,12 @@ export interface AutoLabelElementInput {
 	 *  results to elements without trusting invented addresses. */
 	i: number;
 	type: string;
+	/** True for image CONTAINERS (frames — photos clipped into a shape), false
+	 *  for plain image elements. The distinction matters: frames are ALWAYS
+	 *  filled with a generated photo, plain images may be decorative backgrounds
+	 *  the generator leaves alone. Without this flag the model sees only
+	 *  type:"image" and tends to ignore frames or treat them as decoration. */
+	is_frame?: boolean;
 	current_name: string | null;
 	sample_text: string | null;
 	font_size: number | null;
@@ -39,6 +50,11 @@ export interface AutoLabelRequest {
 	elements: AutoLabelElementInput[];
 	/** Rendered PNG of the page (data URL) — the model's visual ground truth. */
 	image?: string | null;
+	/** Provider id override (resolved in ai-providers.ts). Absent = the vision
+	 *  default (qwen-vl). Lets the author pick a different model per run —
+	 *  e.g. a text-only model when no screenshot is supplied, or a stronger
+	 *  vision model for tricky layouts. */
+	provider?: string | null;
 }
 
 export interface AutoLabelElementResult {
@@ -57,15 +73,6 @@ export interface AutoLabelResult {
 	layout_meta: LayoutMeta | null;
 	elements: AutoLabelElementResult[];
 }
-
-const KIMI_BASE_URL = () =>
-	process.env.KIMI_BASE_URL ?? "https://api.kimi.com/coding/v1";
-const KIMI_MODEL = () => process.env.KIMI_MODEL ?? "kimi-k2.6";
-
-/** sk-kimi-* keys are Kimi Code subscription keys: they are only accepted on
- *  api.kimi.com/coding, and that endpoint only authorizes requests carrying a
- *  recognized coding-agent User-Agent. */
-const KIMI_USER_AGENT = "claude-code/0.1.0";
 
 function roleDocs(): string {
 	return SLOT_ROLES.map((r) => `- ${r.id}: ${r.hint}`).join("\n");
@@ -112,11 +119,13 @@ CHART ELEMENTS (type "chart"): these are filled with DATA by the generator, not 
 - prune_if_unfilled: true when an empty chart frame would look broken on the slide.
 - OMIT max_words/max_lines — they don't apply.
 
-IMAGE CONTAINERS (type "image"): photos clipped into a shape — the generator fills them with a GENERATED PHOTO, never text. For them:
+IMAGE CONTAINERS (is_frame: true): photos clipped into a shape — the generator fills them with a GENERATED PHOTO, never text. For them:
 - name: snake_case name describing the photo's PURPOSE (e.g. "hero_photo", "team_portrait", "card_photo"). Repeated cards SHOULD share one name.
 - hint: one sentence describing the photo that belongs here (subject, orientation, mood — e.g. "Wide landscape shot of misty mountains at sunrise."). This text doubles as the photo-generation prompt, so make it visual.
 - fill_condition: "always" — a frame left on its placeholder looks broken. Use "if-image-available" only for shots that are genuinely optional.
 - OMIT role, max_words/max_lines and prune_if_unfilled — they don't apply.
+
+IMPORTANT: An element with is_frame: true is ALWAYS an image container that needs labelling, regardless of any decorative flag. Do NOT skip it. Elements with type "image" but is_frame: false are plain images (often background decoration) — skip those unless they carry a clear name and role.
 
 ALLOWED SLOT ROLES:
 ${roleDocs()}
@@ -138,6 +147,7 @@ Every input element MUST appear exactly once in "elements", keyed by its "i".`;
 			elements: input.elements.map((el) => ({
 				i: el.i,
 				type: el.type,
+				is_frame: el.is_frame ?? false,
 				current_name: el.current_name,
 				sample_text: el.sample_text,
 				font_size: el.font_size,
@@ -164,41 +174,6 @@ Every input element MUST appear exactly once in "elements", keyed by its "i".`;
 		{ role: "system", content: system },
 		{ role: "user", content: userContent },
 	];
-}
-
-/** Extracts the first balanced {...} JSON object from model output that may
- *  carry reasoning prose or code fences around it. */
-function extractJson(text: string): Rec | null {
-	const start = text.indexOf("{");
-	if (start < 0) return null;
-	let depth = 0;
-	let inString = false;
-	let escaped = false;
-	for (let i = start; i < text.length; i++) {
-		const ch = text[i];
-		if (escaped) {
-			escaped = false;
-			continue;
-		}
-		if (ch === "\\" && inString) {
-			escaped = true;
-			continue;
-		}
-		if (ch === '"') inString = !inString;
-		if (inString) continue;
-		if (ch === "{") depth++;
-		if (ch === "}") {
-			depth--;
-			if (depth === 0) {
-				try {
-					return JSON.parse(text.slice(start, i + 1)) as Rec;
-				} catch {
-					return null;
-				}
-			}
-		}
-	}
-	return null;
 }
 
 const VALID_ROLES = new Set(SLOT_ROLES.map((r) => r.id));
@@ -265,42 +240,25 @@ export function sanitizeAutoLabelResult(raw: Rec): AutoLabelResult {
 	return { layout_name: layoutName, layout_description: layoutDescription, layout_meta: layoutMeta, elements: out };
 }
 
-/** One round-trip to Kimi. Throws on HTTP/parse failure — the route maps that
- *  to a 502 the panel can show. */
-export async function callKimiAutoLabel(input: AutoLabelRequest): Promise<AutoLabelResult> {
-	const apiKey = process.env.KIMI_API_KEY;
-	if (!apiKey) throw new Error("KIMI_API_KEY is not configured");
+/** One round-trip to the resolved provider (Kimi by default for historical
+ *  behavior; pass providerId to switch). Throws on HTTP/parse failure — the
+ *  route maps that to a 502 the panel can show. */
+export async function callKimiAutoLabel(
+	input: AutoLabelRequest,
+	providerId?: string | null,
+): Promise<AutoLabelResult> {
+	const resolved = providerId ?? input.provider ?? DEFAULT_VISION_PROVIDER;
+	const content = await callProvider(
+		resolved,
+		buildAutoLabelMessages(input),
+		// Reasoning models burn most of the budget thinking; labeling needs
+		// enough headroom for the JSON itself. vision flag matches whether a
+		// screenshot was supplied — a text-only model labelling from boxes
+		// alone is a legitimate "blind" mode.
+		{ maxTokens: 16000, vision: Boolean(input.image) },
+	);
 
-	const res = await fetch(`${KIMI_BASE_URL()}/chat/completions`, {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			Authorization: `Bearer ${apiKey}`,
-			"User-Agent": KIMI_USER_AGENT,
-		},
-		body: JSON.stringify({
-			model: KIMI_MODEL(),
-			messages: buildAutoLabelMessages(input),
-			// Reasoning models burn most of the budget thinking; labeling needs
-			// enough headroom for the JSON itself. kimi-k2.6 rejects any
-			// temperature other than 1, so it is simply not sent.
-			max_tokens: 16000,
-		}),
-	});
-
-	if (!res.ok) {
-		const text = await res.text().catch(() => "");
-		throw new Error(`Kimi API ${res.status}: ${text.slice(0, 200)}`);
-	}
-
-	const data = (await res.json()) as Rec;
-	const choices = data.choices as Rec[] | undefined;
-	const content = choices?.[0] && (choices[0].message as Rec | undefined)?.content;
-	if (typeof content !== "string" || !content.trim()) {
-		throw new Error("Kimi returned an empty response");
-	}
-
-	const parsed = extractJson(content);
-	if (!parsed) throw new Error("Kimi response was not valid JSON");
+	const parsed = extractJson<Rec>(content);
+	if (!parsed) throw new Error("AI response was not valid JSON");
 	return sanitizeAutoLabelResult(parsed);
 }

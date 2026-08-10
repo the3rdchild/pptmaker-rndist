@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { Wand2, Plus, ChevronDown, Loader2, ScanEye } from 'lucide-react'
+import { Wand2, Plus, ChevronDown, Loader2, ScanEye, Check } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useSessionStore } from '@/store/session.store'
 import { createDeck, saveDeck } from '@/lib/api'
@@ -11,13 +11,32 @@ import { notify } from '@/components/ui/sonner'
 
 const LANGUAGES = ['Bahasa Indonesia', 'English', 'Español', '中文', '日本語']
 
-// Text-LLM provider choices for generation — value travels as `model` through
-// the job params; the worker maps it to a provider in PROVIDER_CONFIGS.
-const MODELS = [
-	{ id: 'openai', label: 'GPT-5.4' },
-	{ id: 'deepinfra', label: 'DeepSeek V3.1' },
-	{ id: 'zhipu', label: 'GLM-4.5 Flash' },
-]
+interface ProviderOption {
+	id: string
+	label: string
+	vision: boolean
+}
+
+// Fetch the server's available AI providers once on mount — the list is
+// env-aware (only providers whose API key is configured appear), so the
+// homepage selector never offers a provider the server can't call. Falls back
+// to an empty list on failure; the editor then applies its own defaults.
+function useAvailableProviders() {
+	const [providers, setProviders] = useState<{ text: ProviderOption[]; vision: ProviderOption[] }>({ text: [], vision: [] })
+	useEffect(() => {
+		let cancelled = false
+		fetch('/api/ai/providers')
+			.then((r) => (r.ok ? r.json() : null))
+			.then((data) => {
+				if (!cancelled && data && Array.isArray(data.text) && Array.isArray(data.vision)) {
+					setProviders({ text: data.text, vision: data.vision })
+				}
+			})
+			.catch(() => {})
+		return () => { cancelled = true }
+	}, [])
+	return providers
+}
 
 export function PromptInput() {
 	const router = useRouter()
@@ -26,7 +45,19 @@ export function PromptInput() {
 	const sessionError = useSessionStore((s) => s.error)
 	const [prompt, setPrompt] = useState('')
 	const [language, setLanguage] = useState('Bahasa Indonesia')
-	const [model, setModel] = useState(MODELS[0].id)
+	const providers = useAvailableProviders()
+	// Per-section AI provider choices (generate text, verify vision, repair
+	// text). Persisted in localStorage so the choice survives between visits.
+	// null = "use the server default" (resolved in ai-providers.ts); resolved
+	// here only when the user explicitly picks from the dropdown.
+	const [genProvider, setGenProvider] = useState<string | null>(null)
+	const [verifyProvider, setVerifyProvider] = useState<string | null>(null)
+	const [repairProvider, setRepairProvider] = useState<string | null>(null)
+	useEffect(() => {
+		setGenProvider(localStorage.getItem('ppt_provider_gen'))
+		setVerifyProvider(localStorage.getItem('ppt_provider_verify'))
+		setRepairProvider(localStorage.getItem('ppt_provider_repair'))
+	}, [])
 	// Post-generation Kimi visual review (verify + repair per slide). Default
 	// on; persisted so the choice survives between visits. Travels to the
 	// editor as ?review=off when disabled.
@@ -57,8 +88,13 @@ export function PromptInput() {
 			const qs = new URLSearchParams({
 				prompt,
 				lang: language,
-				model,
 			})
+			// Provider choices travel to the editor as separate params so each
+			// section (generate/verify/repair) can be overridden independently.
+			// Absent param = the editor applies the server default.
+			if (genProvider) qs.set('gen', genProvider)
+			if (verifyProvider) qs.set('verify', verifyProvider)
+			if (repairProvider) qs.set('repair', repairProvider)
 			if (!review) qs.set('review', 'off')
 			router.push(`/editor-react/${deck.id}?${qs.toString()}`)
 		} catch (e) {
@@ -146,10 +182,35 @@ export function PromptInput() {
 
 				<Dropdown label={language} options={LANGUAGES} onSelect={(v) => setLanguage(v)} />
 
-				<Dropdown
-					label={MODELS.find((m) => m.id === model)?.label ?? model}
-					options={MODELS.map((m) => m.label)}
-					onSelect={(label) => setModel(MODELS.find((m) => m.label === label)?.id ?? model)}
+				<ProviderDropdown
+					label="Generate"
+					options={providers.text}
+					selected={genProvider}
+					onSelect={(id) => {
+						setGenProvider(id)
+						if (id) localStorage.setItem('ppt_provider_gen', id)
+						else localStorage.removeItem('ppt_provider_gen')
+					}}
+				/>
+				<ProviderDropdown
+					label="Verify"
+					options={providers.vision}
+					selected={verifyProvider}
+					onSelect={(id) => {
+						setVerifyProvider(id)
+						if (id) localStorage.setItem('ppt_provider_verify', id)
+						else localStorage.removeItem('ppt_provider_verify')
+					}}
+				/>
+				<ProviderDropdown
+					label="Repair"
+					options={providers.text}
+					selected={repairProvider}
+					onSelect={(id) => {
+						setRepairProvider(id)
+						if (id) localStorage.setItem('ppt_provider_repair', id)
+						else localStorage.removeItem('ppt_provider_repair')
+					}}
 				/>
 
 				<button
@@ -159,11 +220,11 @@ export function PromptInput() {
 						setReview(next)
 						localStorage.setItem('ppt_visual_review', next ? 'on' : 'off')
 					}}
-					title="Setelah generate, setiap slide dirender lalu dicek ulang oleh Kimi vision dan diperbaiki bila ada teks meluber / placeholder tersisa. Hasil lebih rapi, tapi generate jadi lebih lama."
+					title="Setelah generate, setiap slide dirender lalu dicek ulang oleh AI vision dan diperbaiki bila ada teks meluber / placeholder tersisa. Hasil lebih rapi, tapi generate jadi lebih lama."
 					className="flex items-center gap-1.5 rounded-lg border border-[#2d2e42] bg-[#1a1b2e] px-2.5 py-1.5 text-xs text-zinc-300 transition-colors hover:border-[#6c5ce7]"
 				>
 					<ScanEye className={`h-3.5 w-3.5 ${review ? 'text-[#a29bfe]' : 'text-zinc-600'}`} />
-					<span>Verifikasi Kimi</span>
+					<span>Verifikasi AI</span>
 					<span
 						className={`relative h-4 w-7 rounded-full transition-colors ${review ? 'bg-[#6c5ce7]' : 'bg-[#2d2e42]'}`}
 					>
@@ -216,6 +277,59 @@ function Dropdown({ label, options, onSelect }: { label: string; options: string
 								className="block w-full px-3 py-1.5 text-left text-sm text-zinc-300 hover:bg-[#2d2e42] hover:text-white"
 							>
 								{opt}
+							</button>
+						))}
+					</div>
+				</>
+			)}
+		</div>
+	)
+}
+
+/** Provider selector — shows the section name + current provider label, and a
+ *  checkmark on the active item. When no providers are listed yet (the env
+ *  fetch hasn't resolved) the button still renders so layout doesn't jump; the
+ *  menu is just empty until the list arrives. A "Default" entry lets the user
+ *  clear an explicit choice and fall back to the server default. */
+function ProviderDropdown({
+	label,
+	options,
+	selected,
+	onSelect,
+}: {
+	label: string
+	options: ProviderOption[]
+	selected: string | null
+	onSelect: (id: string | null) => void
+}) {
+	const [open, setOpen] = useState(false)
+	const current = options.find((o) => o.id === selected)
+	return (
+		<div className="relative">
+			<Button variant="subtle" size="sm" onClick={() => setOpen((o) => !o)}>
+				<span className="text-zinc-500">{label}:</span>{' '}
+				<span className="text-zinc-200">{current?.label ?? 'Default'}</span>{' '}
+				<ChevronDown className="h-3 w-3" />
+			</Button>
+			{open && (
+				<>
+					<div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+					<div className="absolute left-0 top-full z-20 mt-1 w-44 rounded-lg border border-[#2d2e42] bg-[#1a1b2e] py-1 shadow-xl">
+						<button
+							onClick={() => { onSelect(null); setOpen(false) }}
+							className="flex w-full items-center justify-between px-3 py-1.5 text-left text-sm text-zinc-300 hover:bg-[#2d2e42] hover:text-white"
+						>
+							<span>Default</span>
+							{selected === null && <Check className="h-3.5 w-3.5 text-[#a29bfe]" />}
+						</button>
+						{options.map((opt) => (
+							<button
+								key={opt.id}
+								onClick={() => { onSelect(opt.id); setOpen(false) }}
+								className="flex w-full items-center justify-between px-3 py-1.5 text-left text-sm text-zinc-300 hover:bg-[#2d2e42] hover:text-white"
+							>
+								<span>{opt.label}</span>
+								{selected === opt.id && <Check className="h-3.5 w-3.5 text-[#a29bfe]" />}
 							</button>
 						))}
 					</div>

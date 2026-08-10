@@ -215,6 +215,11 @@ export type ImageElement = ElementBase & {
   color?: string | null;
   prompt?: string | null;
   is_icon?: boolean | null;
+  /** True for image CONTAINERS (frames — photos clipped into a shape, or the
+   *  clip-less Square frame) inserted via the Elements tab. Distinguishes a
+   *  fillable photo slot from a plain/decorative image so the auto-label and
+   *  generation slot detectors pick it up even when clippath is null. */
+  is_frame?: boolean | null;
 };
 
 export type TextListElement = ElementBase & {

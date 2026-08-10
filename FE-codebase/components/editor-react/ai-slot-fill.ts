@@ -22,7 +22,12 @@ import {
   pruneEmptyContainers,
   setText,
   type FilledSlide,
+  type SetTextOptions,
 } from "@/components/editor-react/ai-layout-fill";
+import {
+  EDITOR_STAGE_HEIGHT,
+  EDITOR_STAGE_WIDTH,
+} from "@/components/slide-editor/types";
 import {
   parseSlotMeta,
   type SlotMeta,
@@ -315,6 +320,14 @@ export function fillLayoutWithSlotMap(
 ): FilledSlide {
   const components = JSON.parse(JSON.stringify(layout.components)) as Rec[];
   const namedSlots = collectNamedTextSlots(components);
+  // Every element on the slide is a potential grow-obstacle for box-resize.
+  // Page-number/chart slots below call setText without opts (their text is
+  // short/structured, never overflows) — only real copy fills carry the slide
+  // context so the box can grow into empty space before shrinking the font.
+  const textOpts: SetTextOptions = {
+    siblings: components,
+    stage: { w: EDITOR_STAGE_WIDTH, h: EDITOR_STAGE_HEIGHT },
+  };
 
   // Group fills by slot name, preserving order — the Nth fill for a name goes
   // to the Nth element carrying that name (layouts repeat names, e.g. two
@@ -350,14 +363,14 @@ export function fillLayoutWithSlotMap(
 
     const text = fill?.text;
     if (text != null && text.trim()) {
-      setText(named.el, enforceSlotBudgets(text, named.slot, named.el));
+      setText(named.el, enforceSlotBudgets(text, named.slot, named.el), textOpts);
       continue;
     }
     // Unfilled:
     const condition = named.slot?.fill_condition ?? "always";
     if (condition === "always") {
       const fallback = fallbackForAlwaysSlot(named.slot, headline, ctx.topic);
-      setText(named.el, enforceSlotBudgets(fallback, named.slot, named.el));
+      setText(named.el, enforceSlotBudgets(fallback, named.slot, named.el), textOpts);
     } else if (named.slot?.prune_if_unfilled) {
       named.remove();
     } else {
@@ -399,6 +412,12 @@ export function applyFillsToUi(ui: Rec, fills: SlotFill[]): Rec {
   const next = JSON.parse(JSON.stringify(ui)) as Rec;
   const components = (next.components as Rec[]) ?? [];
   const namedSlots = collectNamedTextSlots(components);
+  // Same box-resize context as the initial fill — a repaired fill can still be
+  // longer than the box, and growing the box beats shrinking the font again.
+  const textOpts: SetTextOptions = {
+    siblings: components,
+    stage: { w: EDITOR_STAGE_WIDTH, h: EDITOR_STAGE_HEIGHT },
+  };
 
   const fillsByName = new Map<string, SlotFill[]>();
   for (const fill of fills) {
@@ -415,7 +434,7 @@ export function applyFillsToUi(ui: Rec, fills: SlotFill[]): Rec {
       continue;
     }
     if (fill.text != null && fill.text.trim()) {
-      setText(named.el, enforceSlotBudgets(fill.text, named.slot, named.el));
+      setText(named.el, enforceSlotBudgets(fill.text, named.slot, named.el), textOpts);
     }
   }
 

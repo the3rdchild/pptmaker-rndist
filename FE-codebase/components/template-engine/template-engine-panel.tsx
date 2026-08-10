@@ -175,6 +175,37 @@ export function TemplateEnginePanel({
     setLabelPages(null);
   }, [pageUis.length]);
 
+  /** Auto-label AI model. Fetched from /api/ai/providers (env-aware: only
+   *  providers whose key is configured appear). null = server default
+   *  (qwen-vl vision). Persisted in localStorage so a chosen model survives
+   *  across sessions. Both text-only (blind, labels from boxes alone) and
+   *  vision models are offered so the author can rate them. */
+  const [labelProviders, setLabelProviders] = useState<{ id: string; label: string }[]>([]);
+  const [labelProvider, setLabelProvider] = useState<string | null>(null);
+  useEffect(() => {
+    setLabelProvider(localStorage.getItem("te_auto_label_provider"));
+    let cancelled = false;
+    fetch("/api/ai/providers")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        // Auto-label works with or without a screenshot, so offer BOTH text
+        // and vision providers — a text-only run is "blind" (boxes only).
+        // Vision providers also appear in the text list (vision models handle
+        // text fine), so dedupe by id to avoid duplicate <option> keys.
+        const all = [...(data.text ?? []), ...(data.vision ?? [])];
+        if (Array.isArray(all)) {
+          const seen = new Set<string>();
+          const merged = all
+            .filter(({ id }: { id: string }) => (seen.has(id) ? false : (seen.add(id), true)))
+            .map(({ id, label }: { id: string; label: string }) => ({ id, label }));
+          setLabelProviders(merged);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true };
+  }, []);
+
   // Keyed by slide AND the layout loaded into it: applying an existing template
   // over the current slide has to re-seed the fields from that layout, or the
   // author would be editing one template's metadata while looking at another.
@@ -461,7 +492,7 @@ export function TemplateEnginePanel({
       const res = await fetch("/api/template-engine/auto-label", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, provider: labelProvider }),
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.error ?? "Auto-label failed");
@@ -584,7 +615,7 @@ export function TemplateEnginePanel({
     } finally {
       setLabelProgress(null);
     }
-  }, [activeIndex, activeUi, labelPages, onApplyPageUi, pageUis, scope, selection, themeId, themes]);
+  }, [activeIndex, activeUi, labelPages, labelProvider, onApplyPageUi, pageUis, scope, selection, themeId, themes]);
 
   /** Theme-level auto-label: authors the theme's description + AI guidance
    *  (when_to_use / avoid_when / tone / keywords) from the whole layout family
@@ -635,6 +666,7 @@ export function TemplateEnginePanel({
           },
           layouts,
           images,
+          provider: labelProvider,
         }),
       });
       const body = await res.json().catch(() => null);
@@ -668,7 +700,7 @@ export function TemplateEnginePanel({
     } finally {
       setThemeLabelBusy(false);
     }
-  }, [onThemeUpdated, originThemeId, pageUis, themeId, themes]);
+  }, [labelProvider, onThemeUpdated, originThemeId, pageUis, themeId, themes]);
 
   /** Flips one page in the theme-scope label selection. Selecting every page
    *  collapses back to null (= "all") so the button keeps reading as before. */
@@ -1083,6 +1115,30 @@ export function TemplateEnginePanel({
             </div>
           </div>
         )}
+        {/* AI model for auto-label. Sourced from /api/ai/providers (env-aware).
+            null = server default (qwen-vl vision). Text-only models run "blind"
+            (boxes/sample text only, no screenshot) — useful for comparison. */}
+        <div className="mb-2 flex items-center gap-1.5">
+          <span className="shrink-0 text-[11px] text-[var(--text-muted)]">Model:</span>
+          <select
+            value={labelProvider ?? ""}
+            onChange={(e) => {
+              const next = e.target.value || null;
+              setLabelProvider(next);
+              if (next) localStorage.setItem("te_auto_label_provider", next);
+              else localStorage.removeItem("te_auto_label_provider");
+            }}
+            disabled={labelProgress !== null || themeLabelBusy}
+            className="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--bg-elevated)] px-1.5 py-1 text-[11px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)] disabled:opacity-50"
+          >
+            <option value="">Default (auto)</option>
+            {labelProviders.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </div>
         {/* Auto-label fills slot name/role/fill_condition/budgets + layout meta
             via AI. Blast radius follows the scope tab: theme = the pages
             selected above, page = this page, element = the selected element

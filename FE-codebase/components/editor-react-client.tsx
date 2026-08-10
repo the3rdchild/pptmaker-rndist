@@ -149,6 +149,12 @@ const ZOOM_MIN = 0.2;
 const ZOOM_MAX = 3;
 const ZOOM_STEP = 0.2;
 
+// Per-slide verify→repair rounds in the post-generation Kimi review. Pass 1
+// fixes the initial fill's issues; pass 2 re-verifies the repaired slide and
+// fixes again if the repair itself introduced a new issue. A clean verify
+// short-circuits early, so clean slides still cost only one Kimi call.
+const MAX_REVIEW_PASSES = 2;
+
 function clampZoom(value: number): number {
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, value));
 }
@@ -231,6 +237,8 @@ export default function EditorReactClient({
     language?: string;
     /** Carried into "Try Again" so a retry honours the homepage toggle. */
     withReview?: boolean;
+    /** Per-section provider choices from the homepage, carried into retry. */
+    providers?: { verify?: string | null; repair?: string | null };
   } | null>(null);
   const [presenting, setPresenting] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -767,7 +775,13 @@ export default function EditorReactClient({
   // auto-generate-on-open flow (?prompt= from the homepage). Throws on real
   // failure (bad response, dead stream) so callers can show a graceful
   // error + retry (PRD #19) instead of silently ending up with 0 slides.
-  const generateDeckFromTopic = async (topic: string, language?: string, model?: string, withReview = true): Promise<number> => {
+  const generateDeckFromTopic = async (
+    topic: string,
+    language?: string,
+    model?: string,
+    withReview = true,
+    providers?: { verify?: string | null; repair?: string | null },
+  ): Promise<number> => {
     if (!token) return 0;
     // Resolve the theme FIRST and fetch its layout manifest — with the
     // manifest in the request body the worker switches to the slot-by-slot
@@ -1020,59 +1034,73 @@ export default function EditorReactClient({
 
     // Post-generation visual review: each slide is rendered and shown to Kimi
     // vision; fixable issues (overflow, placeholder leftovers, wrong length
-    // for the box, ...) go back for one targeted repair pass. Only the
-    // manifest contract carries per-slot fills, so legacy-mode decks skip
-    // this — and the homepage toggle (?review=off) skips it entirely for a
-    // faster, cheaper run. Failures are silent — a reviewed deck is a bonus,
-    // never a blocker.
+    // for the box, ...) go back for up to MAX_REVIEW_PASSES targeted
+    // verify→repair rounds. Only the manifest contract carries per-slot fills,
+    // so legacy-mode decks skip this — and the homepage toggle (?review=off)
+    // skips it entirely for a faster, cheaper run. Failures are silent — a
+    // reviewed deck is a bonus, never a blocker.
     if (withReview && slideManifestLines.size > 0) {
       let reviewed = 0;
       for (const [slideIndex, manifestLine] of slideManifestLines) {
         reviewed += 1;
         setGenerationStatus(`Reviewing slide ${reviewed} of ${slideManifestLines.size}…`);
         try {
-          const freshUi = reduxStore.getState().presentationGeneration.presentationData
-            ?.slides[slideIndex]?.ui;
-          if (!freshUi) continue;
           const layout = layoutPicker.getLayoutById(manifestLine.layout_id);
-          const image = await captureSlidePng(freshUi);
-          if (!image) continue;
           const textFills = manifestLine.fills
             .filter((f) => f.text)
             .map((f) => ({ name: f.name, text: f.text }));
 
-          const verifyRes = await fetch("/api/ai/visual-review", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              mode: "verify",
-              image,
-              topic,
-              language: language ?? "Bahasa Indonesia",
-              slots: layout ? describeLayoutSlots(layout) : [],
-              fills: textFills,
-            }),
-          });
-          const verifyBody = await verifyRes.json().catch(() => null);
-          const issues = Array.isArray(verifyBody?.issues) ? verifyBody.issues : [];
-          if (issues.length === 0) continue;
+          // Each slide gets up to MAX_REVIEW_PASSES verify→repair rounds. Pass
+          // 1 catches the issues the initial fill left; pass 2 re-verifies the
+          // repaired slide and repairs again if the fix introduced a new issue
+          // (e.g. a shortened string that now wraps differently). A clean
+          // verify short-circuits the loop early.
+          for (let pass = 1; pass <= MAX_REVIEW_PASSES; pass++) {
+            if (pass > 1) {
+              setGenerationStatus(`Re-verifying slide ${reviewed} of ${slideManifestLines.size}…`);
+            }
+            const freshUi = reduxStore.getState().presentationGeneration.presentationData
+              ?.slides[slideIndex]?.ui;
+            if (!freshUi) break;
+            const image = await captureSlidePng(freshUi);
+            if (!image) break;
 
-          setGenerationStatus(`Fixing slide ${reviewed} of ${slideManifestLines.size}…`);
-          const repairRes = await fetch("/api/ai/visual-review", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              mode: "repair",
-              language: language ?? "Bahasa Indonesia",
-              slots: layout ? describeLayoutSlots(layout) : [],
-              fills: textFills,
-              issues,
-            }),
-          });
-          const repairBody = await repairRes.json().catch(() => null);
-          const repaired = Array.isArray(repairBody?.fills) ? repairBody.fills : [];
-          if (repaired.length === 0) continue;
-          dispatch(updateSlideUi({ index: slideIndex, ui: applyFillsToUi(freshUi, repaired) }));
+            const verifyRes = await fetch("/api/ai/visual-review", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                mode: "verify",
+                image,
+                topic,
+                language: language ?? "Bahasa Indonesia",
+                slots: layout ? describeLayoutSlots(layout) : [],
+                fills: textFills,
+                provider: providers?.verify ?? null,
+              }),
+            });
+            const verifyBody = await verifyRes.json().catch(() => null);
+            const issues = Array.isArray(verifyBody?.issues) ? verifyBody.issues : [];
+            if (issues.length === 0) break; // slide passed, no more passes needed
+
+            setGenerationStatus(`Fixing slide ${reviewed} of ${slideManifestLines.size}…`);
+            const repairRes = await fetch("/api/ai/visual-review", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                mode: "repair",
+                language: language ?? "Bahasa Indonesia",
+                slots: layout ? describeLayoutSlots(layout) : [],
+                fills: textFills,
+                issues,
+                provider: providers?.repair ?? null,
+              }),
+            });
+            const repairBody = await repairRes.json().catch(() => null);
+            const repaired = Array.isArray(repairBody?.fills) ? repairBody.fills : [];
+            if (repaired.length === 0) break; // nothing to apply, stop
+            dispatch(updateSlideUi({ index: slideIndex, ui: applyFillsToUi(freshUi, repaired) }));
+            // loop continues to re-verify (unless this was the last pass)
+          }
         } catch {
           // one slide's review failing must never abort the rest
         }
@@ -1086,32 +1114,43 @@ export default function EditorReactClient({
   // creates an empty deck, then routes here with the prompt in the query
   // string — cross-origin-safe, survives a reload). ?review=off comes from
   // the homepage toggle and skips the post-generation Kimi visual review.
+  // ?gen= / ?verify= / ?repair= carry the per-section provider choices from
+  // the homepage dropdowns; absent = the server applies its default.
   useEffect(() => {
     if (autoGenerateRan.current || loading || !token) return;
     const prompt = searchParams.get("prompt");
     if (!prompt) return;
     autoGenerateRan.current = true;
     const language = searchParams.get("lang") ?? undefined;
-    const model = searchParams.get("model") ?? undefined;
+    const genProvider = searchParams.get("gen") ?? undefined;
+    const verifyProvider = searchParams.get("verify") ?? null;
+    const repairProvider = searchParams.get("repair") ?? null;
     const withReview = searchParams.get("review") !== "off";
-    runGeneration(prompt, language, model, withReview);
+    runGeneration(prompt, language, genProvider, withReview, { verify: verifyProvider, repair: repairProvider });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, token, searchParams]);
 
   // Shared by the auto-generate effect and the "Try Again" button — keeps
   // the original prompt text around on failure so retrying doesn't require
   // retyping it (PRD #19).
-  const runGeneration = (topic: string, language?: string, model?: string, withReview = true) => {
+  const runGeneration = (
+    topic: string,
+    language?: string,
+    model?: string,
+    withReview = true,
+    providers?: { verify?: string | null; repair?: string | null },
+  ) => {
     setGenerationError(null);
     setGenerationStatus(null);
     setIsGenerating(true);
-    generateDeckFromTopic(topic, language, model, withReview)
+    generateDeckFromTopic(topic, language, model, withReview, providers)
       .catch((e) => {
         setGenerationError({
           message: e instanceof Error ? e.message : "Something went wrong while generating your deck.",
           topic,
           language,
           withReview,
+          providers,
         });
       })
       .finally(() => {
@@ -1122,7 +1161,13 @@ export default function EditorReactClient({
 
   const retryGeneration = () => {
     if (!generationError) return;
-    runGeneration(generationError.topic, generationError.language, undefined, generationError.withReview);
+    runGeneration(
+      generationError.topic,
+      generationError.language,
+      undefined,
+      generationError.withReview,
+      generationError.providers,
+    );
   };
 
   // Every branch calls an EXISTING function (Redux action or an

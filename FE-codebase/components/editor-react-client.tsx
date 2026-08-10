@@ -228,6 +228,8 @@ export default function EditorReactClient({
     message: string;
     topic: string;
     language?: string;
+    /** Carried into "Try Again" so a retry honours the homepage toggle. */
+    withReview?: boolean;
   } | null>(null);
   const [presenting, setPresenting] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -764,7 +766,7 @@ export default function EditorReactClient({
   // auto-generate-on-open flow (?prompt= from the homepage). Throws on real
   // failure (bad response, dead stream) so callers can show a graceful
   // error + retry (PRD #19) instead of silently ending up with 0 slides.
-  const generateDeckFromTopic = async (topic: string, language?: string, model?: string): Promise<number> => {
+  const generateDeckFromTopic = async (topic: string, language?: string, model?: string, withReview = true): Promise<number> => {
     if (!token) return 0;
     // Resolve the theme FIRST and fetch its layout manifest — with the
     // manifest in the request body the worker switches to the slot-by-slot
@@ -1013,8 +1015,10 @@ export default function EditorReactClient({
     // vision; fixable issues (overflow, placeholder leftovers, wrong length
     // for the box, ...) go back for one targeted repair pass. Only the
     // manifest contract carries per-slot fills, so legacy-mode decks skip
-    // this. Failures are silent — a reviewed deck is a bonus, never a blocker.
-    if (slideManifestLines.size > 0) {
+    // this — and the homepage toggle (?review=off) skips it entirely for a
+    // faster, cheaper run. Failures are silent — a reviewed deck is a bonus,
+    // never a blocker.
+    if (withReview && slideManifestLines.size > 0) {
       let reviewed = 0;
       for (const [slideIndex, manifestLine] of slideManifestLines) {
         reviewed += 1;
@@ -1073,7 +1077,8 @@ export default function EditorReactClient({
 
   // Auto-generate once when opened with ?prompt= (homepage "Generate" flow
   // creates an empty deck, then routes here with the prompt in the query
-  // string — cross-origin-safe, survives a reload).
+  // string — cross-origin-safe, survives a reload). ?review=off comes from
+  // the homepage toggle and skips the post-generation Kimi visual review.
   useEffect(() => {
     if (autoGenerateRan.current || loading || !token) return;
     const prompt = searchParams.get("prompt");
@@ -1081,23 +1086,25 @@ export default function EditorReactClient({
     autoGenerateRan.current = true;
     const language = searchParams.get("lang") ?? undefined;
     const model = searchParams.get("model") ?? undefined;
-    runGeneration(prompt, language, model);
+    const withReview = searchParams.get("review") !== "off";
+    runGeneration(prompt, language, model, withReview);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, token, searchParams]);
 
   // Shared by the auto-generate effect and the "Try Again" button — keeps
   // the original prompt text around on failure so retrying doesn't require
   // retyping it (PRD #19).
-  const runGeneration = (topic: string, language?: string, model?: string) => {
+  const runGeneration = (topic: string, language?: string, model?: string, withReview = true) => {
     setGenerationError(null);
     setGenerationStatus(null);
     setIsGenerating(true);
-    generateDeckFromTopic(topic, language, model)
+    generateDeckFromTopic(topic, language, model, withReview)
       .catch((e) => {
         setGenerationError({
           message: e instanceof Error ? e.message : "Something went wrong while generating your deck.",
           topic,
           language,
+          withReview,
         });
       })
       .finally(() => {
@@ -1108,7 +1115,7 @@ export default function EditorReactClient({
 
   const retryGeneration = () => {
     if (!generationError) return;
-    runGeneration(generationError.topic, generationError.language);
+    runGeneration(generationError.topic, generationError.language, undefined, generationError.withReview);
   };
 
   // Every branch calls an EXISTING function (Redux action or an

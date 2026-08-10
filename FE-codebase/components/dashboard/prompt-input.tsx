@@ -1,8 +1,8 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { Wand2, Plus, ChevronDown, Loader2 } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { Wand2, Plus, ChevronDown, Loader2, ScanEye } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { useSessionStore } from '@/store/session.store'
 import { createDeck, saveDeck } from '@/lib/api'
 import { Button } from '@/components/shared/button'
@@ -27,6 +27,13 @@ export function PromptInput() {
 	const [prompt, setPrompt] = useState('')
 	const [language, setLanguage] = useState('Bahasa Indonesia')
 	const [model, setModel] = useState(MODELS[0].id)
+	// Post-generation Kimi visual review (verify + repair per slide). Default
+	// on; persisted so the choice survives between visits. Travels to the
+	// editor as ?review=off when disabled.
+	const [review, setReview] = useState(true)
+	useEffect(() => {
+		setReview(localStorage.getItem('ppt_visual_review') !== 'off')
+	}, [])
 	const [submitting, setSubmitting] = useState(false)
 	const [importing, setImporting] = useState(false)
 	const [localError, setLocalError] = useState<string | null>(null)
@@ -52,6 +59,7 @@ export function PromptInput() {
 				lang: language,
 				model,
 			})
+			if (!review) qs.set('review', 'off')
 			router.push(`/editor-react/${deck.id}?${qs.toString()}`)
 		} catch (e) {
 			setLocalError(e instanceof Error ? e.message : 'Failed to start')
@@ -143,6 +151,27 @@ export function PromptInput() {
 					options={MODELS.map((m) => m.label)}
 					onSelect={(label) => setModel(MODELS.find((m) => m.label === label)?.id ?? model)}
 				/>
+
+				<button
+					type="button"
+					onClick={() => {
+						const next = !review
+						setReview(next)
+						localStorage.setItem('ppt_visual_review', next ? 'on' : 'off')
+					}}
+					title="Setelah generate, setiap slide dirender lalu dicek ulang oleh Kimi vision dan diperbaiki bila ada teks meluber / placeholder tersisa. Hasil lebih rapi, tapi generate jadi lebih lama."
+					className="flex items-center gap-1.5 rounded-lg border border-[#2d2e42] bg-[#1a1b2e] px-2.5 py-1.5 text-xs text-zinc-300 transition-colors hover:border-[#6c5ce7]"
+				>
+					<ScanEye className={`h-3.5 w-3.5 ${review ? 'text-[#a29bfe]' : 'text-zinc-600'}`} />
+					<span>Verifikasi Kimi</span>
+					<span
+						className={`relative h-4 w-7 rounded-full transition-colors ${review ? 'bg-[#6c5ce7]' : 'bg-[#2d2e42]'}`}
+					>
+						<span
+							className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${review ? 'left-3.5' : 'left-0.5'}`}
+						/>
+					</span>
+				</button>
 
 				<div className="ml-auto flex items-center gap-2">
 					{/* Session status indicator */}

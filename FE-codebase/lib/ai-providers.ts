@@ -53,8 +53,32 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     disable_thinking: true,
   },
   {
+    id: "qwen-vl",
+    label: "Qwen2.5-VL-32B (vision)",
+    envKey: "DEEPINFRA_API_KEY",
+    base_url: "https://api.deepinfra.com/v1/openai",
+    model: "Qwen/Qwen2.5-VL-32B-Instruct",
+    vision: true,
+  },
+  {
+    id: "gemma-vl",
+    label: "Gemma-4-26B (vision)",
+    envKey: "DEEPINFRA_API_KEY",
+    base_url: "https://api.deepinfra.com/v1/openai",
+    model: "google/gemma-4-26B-A4B-it",
+    vision: true,
+  },
+  {
+    id: "llama-vl",
+    label: "Llama-3.2-11B Vision",
+    envKey: "DEEPINFRA_API_KEY",
+    base_url: "https://api.deepinfra.com/v1/openai",
+    model: "meta-llama/Llama-3.2-11B-Vision-Instruct",
+    vision: true,
+  },
+  {
     id: "kimi",
-    label: "Kimi K2.6",
+    label: "Kimi K2.6 (vision)",
     envKey: "KIMI_API_KEY",
     base_url: "https://api.kimi.com/coding/v1",
     model: "kimi-k2.6",
@@ -66,7 +90,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   },
   {
     id: "gpt",
-    label: "GPT-4o",
+    label: "GPT-4o (vision)",
     envKey: "OPENAI_API_KEY",
     base_url: "https://api.openai.com/v1",
     model: "gpt-4o",
@@ -84,7 +108,10 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
 ];
 
 export const DEFAULT_TEXT_PROVIDER = "glm";
-export const DEFAULT_VISION_PROVIDER = "kimi";
+// Qwen2.5-VL-32B is the vision default — strong document/layout understanding
+// for auto-label, cheap, and not subject to Kimi's subscription rate limits.
+// Kimi stays in the preset list as a selectable option when its key is set.
+export const DEFAULT_VISION_PROVIDER = "qwen-vl";
 
 export interface ProviderConfig {
   id: string;

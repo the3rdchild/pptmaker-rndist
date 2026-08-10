@@ -27,6 +27,12 @@ export interface AutoLabelElementInput {
 	 *  results to elements without trusting invented addresses. */
 	i: number;
 	type: string;
+	/** True for image CONTAINERS (frames — photos clipped into a shape), false
+	 *  for plain image elements. The distinction matters: frames are ALWAYS
+	 *  filled with a generated photo, plain images may be decorative backgrounds
+	 *  the generator leaves alone. Without this flag the model sees only
+	 *  type:"image" and tends to ignore frames or treat them as decoration. */
+	is_frame?: boolean;
 	current_name: string | null;
 	sample_text: string | null;
 	font_size: number | null;
@@ -44,6 +50,11 @@ export interface AutoLabelRequest {
 	elements: AutoLabelElementInput[];
 	/** Rendered PNG of the page (data URL) — the model's visual ground truth. */
 	image?: string | null;
+	/** Provider id override (resolved in ai-providers.ts). Absent = the vision
+	 *  default (qwen-vl). Lets the author pick a different model per run —
+	 *  e.g. a text-only model when no screenshot is supplied, or a stronger
+	 *  vision model for tricky layouts. */
+	provider?: string | null;
 }
 
 export interface AutoLabelElementResult {
@@ -108,11 +119,13 @@ CHART ELEMENTS (type "chart"): these are filled with DATA by the generator, not 
 - prune_if_unfilled: true when an empty chart frame would look broken on the slide.
 - OMIT max_words/max_lines — they don't apply.
 
-IMAGE CONTAINERS (type "image"): photos clipped into a shape — the generator fills them with a GENERATED PHOTO, never text. For them:
+IMAGE CONTAINERS (is_frame: true): photos clipped into a shape — the generator fills them with a GENERATED PHOTO, never text. For them:
 - name: snake_case name describing the photo's PURPOSE (e.g. "hero_photo", "team_portrait", "card_photo"). Repeated cards SHOULD share one name.
 - hint: one sentence describing the photo that belongs here (subject, orientation, mood — e.g. "Wide landscape shot of misty mountains at sunrise."). This text doubles as the photo-generation prompt, so make it visual.
 - fill_condition: "always" — a frame left on its placeholder looks broken. Use "if-image-available" only for shots that are genuinely optional.
 - OMIT role, max_words/max_lines and prune_if_unfilled — they don't apply.
+
+IMPORTANT: An element with is_frame: true is ALWAYS an image container that needs labelling, regardless of any decorative flag. Do NOT skip it. Elements with type "image" but is_frame: false are plain images (often background decoration) — skip those unless they carry a clear name and role.
 
 ALLOWED SLOT ROLES:
 ${roleDocs()}
@@ -134,6 +147,7 @@ Every input element MUST appear exactly once in "elements", keyed by its "i".`;
 			elements: input.elements.map((el) => ({
 				i: el.i,
 				type: el.type,
+				is_frame: el.is_frame ?? false,
 				current_name: el.current_name,
 				sample_text: el.sample_text,
 				font_size: el.font_size,
@@ -231,13 +245,16 @@ export function sanitizeAutoLabelResult(raw: Rec): AutoLabelResult {
  *  route maps that to a 502 the panel can show. */
 export async function callKimiAutoLabel(
 	input: AutoLabelRequest,
-	providerId: string | null = DEFAULT_VISION_PROVIDER,
+	providerId?: string | null,
 ): Promise<AutoLabelResult> {
+	const resolved = providerId ?? input.provider ?? DEFAULT_VISION_PROVIDER;
 	const content = await callProvider(
-		providerId,
+		resolved,
 		buildAutoLabelMessages(input),
 		// Reasoning models burn most of the budget thinking; labeling needs
-		// enough headroom for the JSON itself.
+		// enough headroom for the JSON itself. vision flag matches whether a
+		// screenshot was supplied — a text-only model labelling from boxes
+		// alone is a legitimate "blind" mode.
 		{ maxTokens: 16000, vision: Boolean(input.image) },
 	);
 

@@ -159,6 +159,10 @@ export function collectLabelTargets(ui: Rec | null): LabelTarget[] {
 						input: {
 							i: targets.length,
 							type: isFrame ? "image" : type,
+							// Frames must read as image containers to the model, not
+							// plain images — without this flag the model treats
+							// type:"image" as background decoration and skips it.
+							is_frame: isFrame,
 							current_name: typeof element.name === "string" ? element.name : null,
 							sample_text: isText ? previewText(element) : isChart ? chartSummary(element) : null,
 							font_size: isText ? fontSizeOf(element) : null,

@@ -14,6 +14,11 @@ import {
 	type LayoutMeta,
 	type SlotMeta,
 } from "@/components/slide-editor/templates/slot-meta";
+import {
+	callProvider,
+	extractJson,
+	DEFAULT_VISION_PROVIDER,
+} from "@/lib/ai-providers";
 
 type Rec = Record<string, unknown>;
 
@@ -57,15 +62,6 @@ export interface AutoLabelResult {
 	layout_meta: LayoutMeta | null;
 	elements: AutoLabelElementResult[];
 }
-
-const KIMI_BASE_URL = () =>
-	process.env.KIMI_BASE_URL ?? "https://api.kimi.com/coding/v1";
-const KIMI_MODEL = () => process.env.KIMI_MODEL ?? "kimi-k2.6";
-
-/** sk-kimi-* keys are Kimi Code subscription keys: they are only accepted on
- *  api.kimi.com/coding, and that endpoint only authorizes requests carrying a
- *  recognized coding-agent User-Agent. */
-const KIMI_USER_AGENT = "claude-code/0.1.0";
 
 function roleDocs(): string {
 	return SLOT_ROLES.map((r) => `- ${r.id}: ${r.hint}`).join("\n");
@@ -166,41 +162,6 @@ Every input element MUST appear exactly once in "elements", keyed by its "i".`;
 	];
 }
 
-/** Extracts the first balanced {...} JSON object from model output that may
- *  carry reasoning prose or code fences around it. */
-function extractJson(text: string): Rec | null {
-	const start = text.indexOf("{");
-	if (start < 0) return null;
-	let depth = 0;
-	let inString = false;
-	let escaped = false;
-	for (let i = start; i < text.length; i++) {
-		const ch = text[i];
-		if (escaped) {
-			escaped = false;
-			continue;
-		}
-		if (ch === "\\" && inString) {
-			escaped = true;
-			continue;
-		}
-		if (ch === '"') inString = !inString;
-		if (inString) continue;
-		if (ch === "{") depth++;
-		if (ch === "}") {
-			depth--;
-			if (depth === 0) {
-				try {
-					return JSON.parse(text.slice(start, i + 1)) as Rec;
-				} catch {
-					return null;
-				}
-			}
-		}
-	}
-	return null;
-}
-
 const VALID_ROLES = new Set(SLOT_ROLES.map((r) => r.id));
 const VALID_CONDITIONS = new Set(SLOT_FILL_CONDITIONS.map((c) => c.id));
 
@@ -265,42 +226,22 @@ export function sanitizeAutoLabelResult(raw: Rec): AutoLabelResult {
 	return { layout_name: layoutName, layout_description: layoutDescription, layout_meta: layoutMeta, elements: out };
 }
 
-/** One round-trip to Kimi. Throws on HTTP/parse failure — the route maps that
- *  to a 502 the panel can show. */
-export async function callKimiAutoLabel(input: AutoLabelRequest): Promise<AutoLabelResult> {
-	const apiKey = process.env.KIMI_API_KEY;
-	if (!apiKey) throw new Error("KIMI_API_KEY is not configured");
+/** One round-trip to the resolved provider (Kimi by default for historical
+ *  behavior; pass providerId to switch). Throws on HTTP/parse failure — the
+ *  route maps that to a 502 the panel can show. */
+export async function callKimiAutoLabel(
+	input: AutoLabelRequest,
+	providerId: string | null = DEFAULT_VISION_PROVIDER,
+): Promise<AutoLabelResult> {
+	const content = await callProvider(
+		providerId,
+		buildAutoLabelMessages(input),
+		// Reasoning models burn most of the budget thinking; labeling needs
+		// enough headroom for the JSON itself.
+		{ maxTokens: 16000, vision: Boolean(input.image) },
+	);
 
-	const res = await fetch(`${KIMI_BASE_URL()}/chat/completions`, {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			Authorization: `Bearer ${apiKey}`,
-			"User-Agent": KIMI_USER_AGENT,
-		},
-		body: JSON.stringify({
-			model: KIMI_MODEL(),
-			messages: buildAutoLabelMessages(input),
-			// Reasoning models burn most of the budget thinking; labeling needs
-			// enough headroom for the JSON itself. kimi-k2.6 rejects any
-			// temperature other than 1, so it is simply not sent.
-			max_tokens: 16000,
-		}),
-	});
-
-	if (!res.ok) {
-		const text = await res.text().catch(() => "");
-		throw new Error(`Kimi API ${res.status}: ${text.slice(0, 200)}`);
-	}
-
-	const data = (await res.json()) as Rec;
-	const choices = data.choices as Rec[] | undefined;
-	const content = choices?.[0] && (choices[0].message as Rec | undefined)?.content;
-	if (typeof content !== "string" || !content.trim()) {
-		throw new Error("Kimi returned an empty response");
-	}
-
-	const parsed = extractJson(content);
-	if (!parsed) throw new Error("Kimi response was not valid JSON");
+	const parsed = extractJson<Rec>(content);
+	if (!parsed) throw new Error("AI response was not valid JSON");
 	return sanitizeAutoLabelResult(parsed);
 }

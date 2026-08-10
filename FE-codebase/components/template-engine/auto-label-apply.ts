@@ -10,6 +10,7 @@ import type {
 	AutoLabelElementInput,
 	AutoLabelResult,
 } from "@/lib/templates/auto-label";
+import { isImageFrameElement } from "@/components/editor-react/image-frames";
 import { parseSlotMeta, type SlotMeta } from "@/components/slide-editor/templates/slot-meta";
 import {
 	rawFont,
@@ -127,8 +128,9 @@ export interface LabelTarget {
 	input: AutoLabelElementInput;
 }
 
-/** Every fillable (non-decorative text/text-list) element on the page, in
- *  document order, with the compact descriptor the model sees. */
+/** Every fillable element on the page, in document order, with the compact
+ *  descriptor the model sees: non-decorative text/text-list/chart elements,
+ *  plus image containers (frames) even when decorative. */
 export function collectLabelTargets(ui: Rec | null): LabelTarget[] {
 	if (!ui) return [];
 	const components = Array.isArray(ui.components) ? (ui.components as Rec[]) : [];
@@ -146,16 +148,20 @@ export function collectLabelTargets(ui: Rec | null): LabelTarget[] {
 
 				const isText = type === "text" || type === "text-list";
 				const isChart = type === "chart";
-				if ((isText || isChart) && element.decorative !== true) {
+				// Image containers (clipped photo frames) get labelled too — the
+				// generator fills them with photos, so their name + hint matter as
+				// much as a text slot's. Decorative doesn't exempt a frame.
+				const isFrame = isImageFrameElement(element);
+				if (((isText || isChart) && element.decorative !== true) || isFrame) {
 					const measured = isText ? measureTextBudgets(element) : null;
 					targets.push({
 						address: { componentIndex, elementPath },
 						input: {
 							i: targets.length,
-							type,
+							type: isFrame ? "image" : type,
 							current_name: typeof element.name === "string" ? element.name : null,
-							sample_text: isChart ? chartSummary(element) : previewText(element),
-							font_size: isChart ? null : fontSizeOf(element),
+							sample_text: isText ? previewText(element) : isChart ? chartSummary(element) : null,
+							font_size: isText ? fontSizeOf(element) : null,
 							box: boxOf(element),
 							current_slot: parseSlotMeta(element.slot),
 							measured_max_words: measured?.max_words ?? null,

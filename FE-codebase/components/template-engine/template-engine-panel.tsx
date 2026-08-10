@@ -41,6 +41,7 @@ import {
 import { captureSlidePng } from "@/components/editor-react/slide-capture";
 import type { AutoLabelResult } from "@/lib/templates/auto-label";
 import type { AutoLabelThemeResult } from "@/lib/templates/auto-label-theme";
+import { isImageFrameElement } from "@/components/editor-react/image-frames";
 import {
   TEMPLATE_V2_SELECT_ELEMENT_EVENT,
   type TemplateV2SelectElementDetail,
@@ -484,7 +485,7 @@ export function TemplateEnginePanel({
         sameAddress(t.address, selection.selection),
       );
       if (!target) {
-        setLabelError("The selected element is not a fillable text slot.");
+        setLabelError("The selected element is not a fillable slot (text, chart or image container).");
         return;
       }
       setLabelProgress({ done: 0, total: 1 });
@@ -1472,8 +1473,10 @@ function ElementOutlineSection({
     );
   }
 
-  const unlabelled = entries.filter(
-    (entry) => entry.fillable && (!entry.name || !entry.slot?.role),
+  const unlabelled = entries.filter((entry) =>
+    entry.frame
+      ? !entry.name
+      : entry.fillable && (!entry.name || !entry.slot?.role),
   ).length;
 
   return (
@@ -1493,7 +1496,9 @@ function ElementOutlineSection({
             !selected &&
             selection != null &&
             entry.componentIndex === selection.componentIndex;
-          const needsLabel = entry.fillable && (!entry.name || !entry.slot?.role);
+          const needsLabel = entry.frame
+            ? !entry.name
+            : entry.fillable && (!entry.name || !entry.slot?.role);
           return (
             <li key={`${entry.componentIndex}:${entry.elementPath.join(".")}`}>
               <button
@@ -1521,7 +1526,7 @@ function ElementOutlineSection({
                 }
               >
                 <span className="w-[52px] shrink-0 truncate text-[9px] uppercase tracking-wide text-[var(--text-muted)]">
-                  {entry.type}
+                  {entry.frame ? "frame" : entry.type}
                 </span>
                 <span className="min-w-0 flex-1 truncate">{entry.label}</span>
                 {entry.decorative && (
@@ -1651,6 +1656,9 @@ function SlotSection({ selection }: { selection: TemplateSelectionPayload | null
   const slot: SlotMeta = isRecord(element.slot) ? (element.slot as SlotMeta) : {};
   const type = typeof element.type === "string" ? element.type : "element";
   const isTextual = type === "text" || type === "text-list";
+  // Image containers are internal shapes, not media images: no library save,
+  // no decorative toggle, no text role — and the generator always fills them.
+  const isFrame = isImageFrameElement(element);
 
   const patchSlot = (patch: Partial<SlotMeta>) => {
     applyPatch((current) => {
@@ -1677,8 +1685,8 @@ function SlotSection({ selection }: { selection: TemplateSelectionPayload | null
   };
 
   return (
-    <Section title={`Selected slot — ${type}`}>
-      {type === "image" && typeof element.data === "string" && (
+    <Section title={`Selected slot — ${isFrame ? "frame" : type}`}>
+      {type === "image" && !isFrame && typeof element.data === "string" && (
         <SaveImageToLibrary
           src={element.data}
           width={isRecord(element.size) ? Number(element.size.width) || 200 : 200}
@@ -1701,18 +1709,26 @@ function SlotSection({ selection }: { selection: TemplateSelectionPayload | null
         />
       </Field>
 
-      <label className="flex items-center gap-2 py-1 text-[11px] text-[var(--text-secondary)]">
-        <input
-          type="checkbox"
-          checked={element.decorative === true}
-          onChange={(event) => patchElement({ decorative: event.target.checked })}
-        />
-        Decorative — never filled by the generator
-      </label>
+      {isFrame ? (
+        <p className="py-1 text-[10px] leading-snug text-[var(--text-muted)]">
+          Image container — the generator always fills it with a generated
+          photo. The hint below doubles as the photo prompt.
+        </p>
+      ) : (
+        <label className="flex items-center gap-2 py-1 text-[11px] text-[var(--text-secondary)]">
+          <input
+            type="checkbox"
+            checked={element.decorative === true}
+            onChange={(event) => patchElement({ decorative: event.target.checked })}
+          />
+          Decorative — never filled by the generator
+        </label>
+      )}
 
-      {element.decorative !== true && (
+      {(isFrame || element.decorative !== true) && (
         <>
-          <Field label="Role">
+          {!isFrame && (
+            <Field label="Role">
             <select
               value={slot.role ?? ""}
               onChange={(event) =>
@@ -1727,7 +1743,8 @@ function SlotSection({ selection }: { selection: TemplateSelectionPayload | null
                 </option>
               ))}
             </select>
-          </Field>
+            </Field>
+          )}
 
           <Field label="Fill condition">
             <select
@@ -1809,12 +1826,23 @@ function SlotSection({ selection }: { selection: TemplateSelectionPayload | null
             </div>
           )}
 
-          <Field label="Hint for the model">
+          <Field
+            label={isFrame ? "Photo to generate" : "Hint for the model"}
+            hint={
+              isFrame
+                ? "Used verbatim as the image-generation prompt."
+                : undefined
+            }
+          >
             <textarea
               value={slot.hint ?? ""}
               onChange={(event) => patchSlot({ hint: event.target.value })}
               rows={2}
-              placeholder="One benefit, phrased as a verb phrase."
+              placeholder={
+                isFrame
+                  ? "Smiling barista pouring latte art, warm morning light."
+                  : "One benefit, phrased as a verb phrase."
+              }
               className={inputClass}
             />
           </Field>

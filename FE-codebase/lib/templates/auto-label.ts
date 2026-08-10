@@ -83,7 +83,7 @@ export function buildAutoLabelMessages(input: AutoLabelRequest): {
 	role: "system" | "user";
 	content: unknown;
 }[] {
-	const system = `You are a presentation-template metadata author. A template engine stores hand-designed slide layouts whose TEXT and CHART elements need authoring metadata so an AI deck generator can later fill them correctly. You are given one layout's elements (text: with sample text, font size, box, and CLIENT-MEASURED budgets; chart: with its type and data shape) and you invent good metadata for each.
+	const system = `You are a presentation-template metadata author. A template engine stores hand-designed slide layouts whose TEXT, CHART and IMAGE CONTAINER elements need authoring metadata so an AI deck generator can later fill them correctly. You are given one layout's elements (text: with sample text, font size, box, and CLIENT-MEASURED budgets; chart: with its type and data shape; image containers: photos clipped into a shape, with their box) and you invent good metadata for each.
 
 You also receive a RENDERED IMAGE of the layout. Treat it as the primary truth for visual hierarchy: which element is the headline, which blocks are repeated cards, which text sits on colored chips or over photos (those must stay short), and whether two boxes overlap.
 
@@ -111,6 +111,12 @@ CHART ELEMENTS (type "chart"): these are filled with DATA by the generator, not 
 - fill_condition: usually "if-numeric-data" — charts must not carry invented figures when the topic has none.
 - prune_if_unfilled: true when an empty chart frame would look broken on the slide.
 - OMIT max_words/max_lines — they don't apply.
+
+IMAGE CONTAINERS (type "image"): photos clipped into a shape — the generator fills them with a GENERATED PHOTO, never text. For them:
+- name: snake_case name describing the photo's PURPOSE (e.g. "hero_photo", "team_portrait", "card_photo"). Repeated cards SHOULD share one name.
+- hint: one sentence describing the photo that belongs here (subject, orientation, mood — e.g. "Wide landscape shot of misty mountains at sunrise."). This text doubles as the photo-generation prompt, so make it visual.
+- fill_condition: "always" — a frame left on its placeholder looks broken. Use "if-image-available" only for shots that are genuinely optional.
+- OMIT role, max_words/max_lines and prune_if_unfilled — they don't apply.
 
 ALLOWED SLOT ROLES:
 ${roleDocs()}

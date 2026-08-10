@@ -22,6 +22,23 @@
 import { useId } from "react";
 import type { SlideElement } from "@/components/slide-editor/types";
 
+/** An image element clipped into a shape — a photo container, not a plain
+ *  media image. Detected by the clip, not the name, so renamed frames and
+ *  pptx-imported crop-to-shape images both count. Frames are always filled
+ *  with a generated photo at deck-generation time and are labelled "frame" in
+ *  the template engine. */
+export function isImageFrameElement(element: unknown): boolean {
+  if (!element || typeof element !== "object" || Array.isArray(element)) {
+    return false;
+  }
+  const el = element as Record<string, unknown>;
+  if (el.type !== "image") return false;
+  const raw = el.clippath ?? el.clipPath ?? el.clip_path;
+  if (typeof raw !== "string") return false;
+  const trimmed = raw.trim();
+  return trimmed !== "" && trimmed.toLowerCase() !== "none";
+}
+
 export type ImageFrameDef = {
   key: string;
   label: string;

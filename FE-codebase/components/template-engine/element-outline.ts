@@ -7,6 +7,7 @@
 // drive the selection instead of waiting for it.
 
 import { parseSlotMeta, type SlotMeta } from "@/components/slide-editor/templates/slot-meta";
+import { isImageFrameElement } from "@/components/editor-react/image-frames";
 
 type Rec = Record<string, unknown>;
 
@@ -17,6 +18,9 @@ export type OutlineEntry = {
   /** Nesting depth, for indentation. */
   depth: number;
   type: string;
+  /** Image containers (clipped photos) get their own label + fill rules —
+   *  they are internal shapes, not plain media images. */
+  frame: boolean;
   /** The element's slot name, when it has one. */
   name: string | null;
   /** Human-readable line for the list. */
@@ -92,6 +96,7 @@ export function buildElementOutline(ui: Rec | null): OutlineEntry[] {
           elementPath,
           depth,
           type,
+          frame: isImageFrameElement(rawElement),
           name: typeof rawElement.name === "string" ? rawElement.name : null,
           label: labelFor(rawElement, type),
           decorative: rawElement.decorative === true,

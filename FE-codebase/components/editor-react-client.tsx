@@ -98,6 +98,7 @@ import {
   DeckLayoutPicker,
   mapAIPPTSlideToTemplateUi,
   patchHeroImage,
+  findPhotoSlotHint,
   resolveThemeFromPrompt,
   type AIPPTSlide,
 } from "@/components/editor-react/ai-layout-fill";
@@ -865,7 +866,13 @@ export default function EditorReactClient({
       marker: { componentId: string; elementName: string; occurrenceIndex: number },
       subject: string,
     ) => {
-      const prompt = `${subject} — related to ${topic}. ${heroStyle}`;
+      // An authored slot hint ("what photo belongs here", written by hand or
+      // by auto-label) is a far better generation prompt than the generic
+      // slide subject — use it verbatim when the slot carries one.
+      const hint = findPhotoSlotHint(getUi(), marker);
+      const prompt = hint
+        ? `${hint}. ${heroStyle}`
+        : `${subject} — related to ${topic}. ${heroStyle}`;
       void generateImage(currentToken, prompt).then((dataUrl) => {
         if (!dataUrl) return;
         const patched = patchHeroImage(getUi(), marker, dataUrl) as Record<string, unknown>;

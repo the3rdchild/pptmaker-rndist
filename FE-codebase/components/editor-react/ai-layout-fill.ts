@@ -32,6 +32,7 @@ import {
   listThemeIds,
   loadAllThemes,
 } from "@/lib/templates/themes";
+import { isImageFrameElement } from "@/components/editor-react/image-frames";
 
 export type AIPPTSlide =
   | { type: "cover"; data: { title: string; text: string } }
@@ -913,23 +914,34 @@ function roundPhotoCorners(el: Rec, w: number, h: number): void {
   el.border_radius = { tl: radius, tr: radius, br: radius, bl: radius };
 }
 
-/** Finds every non-icon, non-decorative image element in the layout still
- * pointing at a real (fillable) photo slot. */
+/** Finds every fillable photo slot in the layout. Plain images qualify when
+ * they are named, non-icon, non-decorative and big enough to matter. Image
+ * CONTAINERS (frames — clipped images) always qualify, even decorative or
+ * tiny ones: a frame is by definition a photo holder, and leaving it on the
+ * placeholder landscape looks broken. Unnamed frames get a synthetic name so
+ * the patch step can still target them. */
 export function findAllPhotoSlots(components: Rec[]): PhotoCandidate[] {
   const candidates: PhotoCandidate[] = [];
   const occurrenceCounters = new Map<string, number>();
 
   const visit = (el: Rec, componentId: string) => {
-    if (el.type === "image" && el.is_icon !== true && el.decorative !== true && el.name) {
+    const frame = isImageFrameElement(el);
+    if (
+      el.type === "image" &&
+      (frame || (el.is_icon !== true && el.decorative !== true && el.name))
+    ) {
       const size = el.size as Rec | undefined;
       const w = typeof size?.width === "number" ? (size.width as number) : 0;
       const h = typeof size?.height === "number" ? (size.height as number) : 0;
       const area = w * h;
+      if (!el.name) el.name = "frame_photo"; // unnamed frame — see docstring
       const key = `${componentId}::${el.name}`;
       const occurrenceIndex = occurrenceCounters.get(key) ?? 0;
       occurrenceCounters.set(key, occurrenceIndex + 1);
-      if (area > 20000) {
-        roundPhotoCorners(el, w, h);
+      if (frame || area > 20000) {
+        // Corner rounding is for plain photos — a frame's clip already
+        // shapes it, and rounding would cut into the shape's bounding box.
+        if (!frame) roundPhotoCorners(el, w, h);
         candidates.push({ area, componentId, elementName: String(el.name), occurrenceIndex });
       }
       return;
@@ -1011,6 +1023,43 @@ export function patchHeroImage(ui: Rec, marker: HeroImageMarker, dataUrl: string
   const elements = (component.elements as Rec[]) ?? [];
   elements.some(visit);
   return cloned;
+}
+
+/** The slot hint authored for one photo slot ("what photo belongs here") —
+ *  used as the image-generation prompt guidance when present, so an
+ *  auto-labelled frame ("smiling barista, warm tones") beats the generic
+ *  per-slide subject prompt. Returns null when the slot has no hint. */
+export function findPhotoSlotHint(ui: Rec, marker: HeroImageMarker): string | null {
+  const components = (ui.components as Rec[]) ?? [];
+  const component = components.find((c) => c.id === marker.componentId);
+  if (!component) return null;
+
+  let seen = 0;
+  let found: string | null = null;
+  const visit = (el: Rec): boolean => {
+    if (el.type === "image" && el.name === marker.elementName) {
+      if (seen === marker.occurrenceIndex) {
+        const slot =
+          el.slot && typeof el.slot === "object" && !Array.isArray(el.slot)
+            ? (el.slot as Rec)
+            : null;
+        const hint = slot?.hint;
+        found = typeof hint === "string" && hint.trim() ? hint.trim() : null;
+        return true;
+      }
+      seen += 1;
+      return false;
+    }
+    const children = el.children as Rec[] | undefined;
+    if (Array.isArray(children)) return children.some(visit);
+    const child = el.child as Rec | undefined;
+    if (child) return visit(child);
+    return false;
+  };
+
+  const elements = (component.elements as Rec[]) ?? [];
+  elements.some(visit);
+  return found;
 }
 
 export interface FilledSlide {

@@ -237,6 +237,8 @@ export default function EditorReactClient({
     language?: string;
     /** Carried into "Try Again" so a retry honours the homepage toggle. */
     withReview?: boolean;
+    /** Per-section provider choices from the homepage, carried into retry. */
+    providers?: { verify?: string | null; repair?: string | null };
   } | null>(null);
   const [presenting, setPresenting] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -773,7 +775,13 @@ export default function EditorReactClient({
   // auto-generate-on-open flow (?prompt= from the homepage). Throws on real
   // failure (bad response, dead stream) so callers can show a graceful
   // error + retry (PRD #19) instead of silently ending up with 0 slides.
-  const generateDeckFromTopic = async (topic: string, language?: string, model?: string, withReview = true): Promise<number> => {
+  const generateDeckFromTopic = async (
+    topic: string,
+    language?: string,
+    model?: string,
+    withReview = true,
+    providers?: { verify?: string | null; repair?: string | null },
+  ): Promise<number> => {
     if (!token) return 0;
     // Resolve the theme FIRST and fetch its layout manifest — with the
     // manifest in the request body the worker switches to the slot-by-slot
@@ -1067,6 +1075,7 @@ export default function EditorReactClient({
                 language: language ?? "Bahasa Indonesia",
                 slots: layout ? describeLayoutSlots(layout) : [],
                 fills: textFills,
+                provider: providers?.verify ?? null,
               }),
             });
             const verifyBody = await verifyRes.json().catch(() => null);
@@ -1083,6 +1092,7 @@ export default function EditorReactClient({
                 slots: layout ? describeLayoutSlots(layout) : [],
                 fills: textFills,
                 issues,
+                provider: providers?.repair ?? null,
               }),
             });
             const repairBody = await repairRes.json().catch(() => null);
@@ -1104,32 +1114,43 @@ export default function EditorReactClient({
   // creates an empty deck, then routes here with the prompt in the query
   // string — cross-origin-safe, survives a reload). ?review=off comes from
   // the homepage toggle and skips the post-generation Kimi visual review.
+  // ?gen= / ?verify= / ?repair= carry the per-section provider choices from
+  // the homepage dropdowns; absent = the server applies its default.
   useEffect(() => {
     if (autoGenerateRan.current || loading || !token) return;
     const prompt = searchParams.get("prompt");
     if (!prompt) return;
     autoGenerateRan.current = true;
     const language = searchParams.get("lang") ?? undefined;
-    const model = searchParams.get("model") ?? undefined;
+    const genProvider = searchParams.get("gen") ?? undefined;
+    const verifyProvider = searchParams.get("verify") ?? null;
+    const repairProvider = searchParams.get("repair") ?? null;
     const withReview = searchParams.get("review") !== "off";
-    runGeneration(prompt, language, model, withReview);
+    runGeneration(prompt, language, genProvider, withReview, { verify: verifyProvider, repair: repairProvider });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, token, searchParams]);
 
   // Shared by the auto-generate effect and the "Try Again" button — keeps
   // the original prompt text around on failure so retrying doesn't require
   // retyping it (PRD #19).
-  const runGeneration = (topic: string, language?: string, model?: string, withReview = true) => {
+  const runGeneration = (
+    topic: string,
+    language?: string,
+    model?: string,
+    withReview = true,
+    providers?: { verify?: string | null; repair?: string | null },
+  ) => {
     setGenerationError(null);
     setGenerationStatus(null);
     setIsGenerating(true);
-    generateDeckFromTopic(topic, language, model, withReview)
+    generateDeckFromTopic(topic, language, model, withReview, providers)
       .catch((e) => {
         setGenerationError({
           message: e instanceof Error ? e.message : "Something went wrong while generating your deck.",
           topic,
           language,
           withReview,
+          providers,
         });
       })
       .finally(() => {
@@ -1140,7 +1161,13 @@ export default function EditorReactClient({
 
   const retryGeneration = () => {
     if (!generationError) return;
-    runGeneration(generationError.topic, generationError.language, undefined, generationError.withReview);
+    runGeneration(
+      generationError.topic,
+      generationError.language,
+      undefined,
+      generationError.withReview,
+      generationError.providers,
+    );
   };
 
   // Every branch calls an EXISTING function (Redux action or an

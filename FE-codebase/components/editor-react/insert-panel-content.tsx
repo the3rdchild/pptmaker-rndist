@@ -131,7 +131,7 @@ export function TemplatesTab({
       <div className="grid grid-cols-2 gap-3 px-2.5 py-1.5">
         {filtered.map((layout, i) => (
           <button
-            key={`${layout.id ?? i}`}
+            key={`${layout.id ?? i}-${i}`}
             onClick={() => onApplyLayout(layout)}
             className="group relative overflow-hidden rounded-lg bg-white ring-1 ring-[var(--border-strong)] transition-shadow hover:shadow-[var(--shadow-accent-glow)] hover:ring-[var(--accent)]"
             title={String(layout.description ?? `Layout ${i + 1}`).slice(0, 80)}

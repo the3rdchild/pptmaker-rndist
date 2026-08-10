@@ -1296,7 +1296,7 @@ function RawImageElement({
 
 type ParsedImageClipPath =
   | { kind: "polygon"; points: Point[] }
-  | { kind: "path"; data: string }
+  | { kind: "path"; data: string; scale?: boolean }
   | {
     kind: "inset";
     top: number;
@@ -1330,7 +1330,13 @@ function drawImageClipPath(
   if (parsed.kind === "path") {
     if (typeof Path2D !== "undefined") {
       try {
-        return [new Path2D(parsed.data)] as [Path2D];
+        const path = new Path2D(parsed.data);
+        if (!parsed.scale) return [new Path2D(parsed.data)] as [Path2D];
+        // Normalized frame path (authored in a 100×100 box) — scale it onto
+        // the element so the clip reshapes when the frame is resized.
+        const scaled = new Path2D();
+        scaled.addPath(path, new DOMMatrix().scale(width / 100, height / 100));
+        return [scaled] as [Path2D];
       } catch {
         // Fall through to the basic path drawer below.
       }
@@ -1394,6 +1400,11 @@ function parseImageClipPath(
   width: number,
   height: number,
 ): ParsedImageClipPath | null {
+  // frame-path("…") — normalized 100×100 frame shapes from the Elements tab.
+  // Checked first: plain path() clips (pptx imports) stay absolute.
+  const frameData = framePathDataFromValue(value);
+  if (frameData) return { kind: "path", data: frameData, scale: true };
+
   const pathData = clipPathDataFromValue(value);
   if (pathData) return { kind: "path", data: pathData };
 
@@ -1889,6 +1900,24 @@ function clipPathDataFromValue(value: string) {
   }
 
   const data = extractCssPathData(value);
+  return data && isSafeSvgClipPathData(data) ? data : null;
+}
+
+const FRAME_PATH_PREFIX = "frame-path(";
+
+/** Frame clip values (`frame-path("M…")`) carry a normalized 100×100 path —
+ *  unlike imported absolute path() clips, these are scaled onto the element
+ *  at draw time so resizing a frame reshapes the clip with it. */
+function framePathDataFromValue(value: string): string | null {
+  const trimmed = value.trim();
+  if (
+    !trimmed.toLowerCase().startsWith(FRAME_PATH_PREFIX) ||
+    !trimmed.endsWith(")")
+  ) {
+    return null;
+  }
+  const body = trimmed.slice(FRAME_PATH_PREFIX.length, -1).trim();
+  const data = extractCssPathData(body);
   return data && isSafeSvgClipPathData(data) ? data : null;
 }
 

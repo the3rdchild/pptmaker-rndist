@@ -10,11 +10,17 @@ import {
 } from "lucide-react";
 import { createElementInsertElements } from "@/components/slide-editor/insert/insert-elements";
 import { ShapePreview, shapeDataUri, type ShapeKind } from "@/components/editor-react/shape-icons";
+import {
+  IMAGE_FRAMES,
+  buildFrameElement,
+  FramePreview,
+} from "@/components/editor-react/image-frames";
 import { MOTIF_BUILDERS } from "@/components/editor-react/motif-library";
 import type { TemplateV2InsertComponent } from "@/components/slide-editor/events/events";
 import type { SlideElement } from "@/components/slide-editor/types";
 
 export type ElementCategory =
+  | "frames"
   | "lines"
   | "basic"
   | "polygons"
@@ -29,7 +35,8 @@ export type ElementCatalogEntry = {
   category: ElementCategory;
   icon:
     | { kind: "lucide"; Icon: ComponentType<LucideProps> }
-    | { kind: "shape"; shape: ShapeKind };
+    | { kind: "shape"; shape: ShapeKind }
+    | { kind: "frame"; clippath: string | null };
   // Most entries insert loose elements (each becomes its own movable box).
   // Motifs return a single positioned component so their children move
   // together as one composed graphic while staying individually editable.
@@ -51,6 +58,7 @@ function iconShapeElement(shape: ShapeKind): SlideElement {
 }
 
 export const ELEMENT_CATEGORY_LABELS: Record<ElementCategory, string> = {
+  frames: "Image containers",
   lines: "Lines",
   basic: "Basic shapes",
   polygons: "Polygons",
@@ -61,6 +69,15 @@ export const ELEMENT_CATEGORY_LABELS: Record<ElementCategory, string> = {
 };
 
 export const ELEMENT_CATALOG: ElementCatalogEntry[] = [
+  // Image containers — cover-fit photos clipped to a shape (see
+  // image-frames.tsx). Abstract clip-path shapes join this list in phase 2.
+  ...IMAGE_FRAMES.map((frame) => ({
+    key: `frame-${frame.key}`,
+    label: frame.label,
+    category: "frames" as const,
+    icon: { kind: "frame" as const, clippath: frame.clippath },
+    build: () => [buildFrameElement(frame)],
+  })),
   {
     key: "line",
     label: "Line",
@@ -218,12 +235,15 @@ export const ELEMENT_CATALOG: ElementCatalogEntry[] = [
 ];
 
 export function elementCategoryOrder(): ElementCategory[] {
-  return ["infographics", "lines", "basic", "polygons", "stars", "arrows", "flowchart"];
+  return ["frames", "infographics", "lines", "basic", "polygons", "stars", "arrows", "flowchart"];
 }
 
 export function renderCatalogIcon(entry: ElementCatalogEntry, size = 22) {
   if (entry.icon.kind === "shape") {
     return <ShapePreview kind={entry.icon.shape} size={size} />;
+  }
+  if (entry.icon.kind === "frame") {
+    return <FramePreview clippath={entry.icon.clippath} size={size} />;
   }
   const Icon = entry.icon.Icon;
   return <Icon size={size} />;

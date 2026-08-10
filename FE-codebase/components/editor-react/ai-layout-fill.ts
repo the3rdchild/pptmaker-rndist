@@ -17,6 +17,7 @@ import {
   rawFont,
   layoutRenderTextRuns,
   lineRenderHeight,
+  type RenderTextFont,
   type RenderTextRun,
 } from "@/components/slide-editor/text/template-v2-text";
 import {
@@ -26,6 +27,8 @@ import {
   childArrayInfo,
   normalizeId,
   cloneJson,
+  type Point,
+  type Size,
 } from "@/components/slide-editor/model/model";
 import {
   DEFAULT_THEME_ID,
@@ -517,42 +520,227 @@ function collectComponent(component: Rec): { global: TextLeaf[]; slots: ItemSlot
 const MIN_FONT_SCALE = 0.55;
 const FIT_ITERATIONS = 6;
 
-/** AI-generated text is routinely much longer than the template's own tiny
- * sample copy the box was originally sized for — written at full size with
- * no adjustment, it wraps to more lines than the box height allows and
- * visibly overflows into whatever sits below it (title text bleeding into
- * the next card, etc). Shrinks the font size (down to a floor) until the
- * text's ACTUAL wrapped height — measured with the same layoutRenderTextRuns/
- * lineRenderHeight functions the real renderer uses, not a rough guess —
- * fits within the element's own box height. Returns null if no box size is
- * known or the text already fits at the original size (leaves it alone). */
-function fittedFontSize(text: string, el: Rec): number | null {
-  const size = el.size as Rec | undefined;
-  const width = typeof size?.width === "number" ? size.width : undefined;
-  const height = typeof size?.height === "number" ? size.height : undefined;
-  if (!width || !height || !text.trim()) return null;
+/* --------------------- Box-resize before font-shrink --------------------- *
+ * The generator now has authority to RESIZE a text box before shrinking its
+ * font. Overflow is handled in priority order:
+ *   1. measure wrapped height at the original font size — if it already fits,
+ *      leave everything alone;
+ *   2. otherwise try to GROW the box into surrounding empty space (the widest
+ *      gap to the nearest sibling or the stage edge, in the single best
+ *      direction) so the text still fits at full size;
+ *   3. only if growing is impossible or insufficient, shrink the font (down to
+ *      MIN_FONT_SCALE) against whatever box size we ended up with.
+ * Growing first keeps titles/headlines readable; font-shrink is the last
+ * resort, not the first. `elementBox` from model/model.ts is NOT used here
+ * because it returns the VISUAL box (auto-grown to content) for text — we need
+ * the AUTHORED box (position+size as designed) to detect overflow at all. */
 
-  const baseFont = rawFont(el as never);
-  let scale = 1;
-  let fittedSize = baseFont.size;
-
-  for (let i = 0; i < FIT_ITERATIONS; i++) {
-    const testFont = { ...baseFont, size: baseFont.size * scale };
-    const runs: RenderTextRun[] = [{ text, font: testFont }];
-    const lines = layoutRenderTextRuns(runs, width, undefined);
-    const totalHeight = lines.reduce(
-      (sum, line) => sum + lineRenderHeight(line, testFont.lineHeight),
-      0,
-    );
-    fittedSize = testFont.size;
-    if (totalHeight <= height || scale <= MIN_FONT_SCALE) break;
-    scale = Math.max(MIN_FONT_SCALE, scale * (height / totalHeight));
-  }
-
-  return fittedSize < baseFont.size - 0.5 ? fittedSize : null;
+interface AuthoredBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
-export function setText(el: Rec, text: string): void {
+function authoredBox(el: Rec): AuthoredBox | null {
+  const pos = el.position as Rec | undefined;
+  const size = el.size as Rec | undefined;
+  const x = typeof pos?.x === "number" ? pos.x : undefined;
+  const y = typeof pos?.y === "number" ? pos.y : undefined;
+  const w = typeof size?.width === "number" ? size.width : undefined;
+  const h = typeof size?.height === "number" ? size.height : undefined;
+  if (x == null || y == null || w == null || h == null) return null;
+  return { x, y, w, h };
+}
+
+/** Collects authored boxes of every OTHER element in the slide (siblings),
+ *  walking the same children/child/elements nesting collectNamedTextSlots
+ *  uses — so a box nested deep inside a card still counts as an obstacle. */
+function collectObstacleBoxes(components: Rec[], skip: Rec): AuthoredBox[] {
+  const out: AuthoredBox[] = [];
+  const stack: Rec[] = [...components];
+  while (stack.length) {
+    const node = stack.pop()!;
+    if (node && node !== skip) {
+      const box = authoredBox(node);
+      if (box) out.push(box);
+    }
+    const children = node?.children as Rec[] | undefined;
+    if (Array.isArray(children)) stack.push(...children);
+    const child = node?.child as Rec | undefined;
+    if (child && typeof child === "object") stack.push(child);
+    const elements = node?.elements as Rec[] | undefined;
+    if (Array.isArray(elements)) stack.push(...elements);
+  }
+  return out;
+}
+
+function aabbOverlap(a: AuthoredBox, b: AuthoredBox, eps = 0.5): boolean {
+  return (
+    a.x < b.x + b.w - eps &&
+    a.x + a.w > b.x + eps &&
+    a.y < b.y + b.h - eps &&
+    a.y + a.h > b.y + eps
+  );
+}
+
+interface Space4 {
+  up: number;
+  down: number;
+  left: number;
+  right: number;
+}
+
+/** For each of the four directions, the distance from the box edge to the
+ *  nearest blocker (a sibling or the stage boundary). A direction with zero
+ *  room can't grow that way at all. */
+function availableSpace(
+  box: AuthoredBox,
+  obstacles: AuthoredBox[],
+  stage: { w: number; h: number },
+): Space4 {
+  let up = box.y; // distance to top stage edge
+  let down = stage.h - (box.y + box.h);
+  let left = box.x;
+  let right = stage.w - (box.x + box.w);
+  for (const o of obstacles) {
+    // Only obstacles that are horizontally aligned constrain up/down growth.
+    const horizontallyAligned = o.x < box.x + box.w && o.x + o.w > box.x;
+    if (horizontallyAligned) {
+      if (o.y + o.h <= box.y) up = Math.min(up, box.y - (o.y + o.h));
+      if (o.y >= box.y + box.h) down = Math.min(down, o.y - (box.y + box.h));
+    }
+    const verticallyAligned = o.y < box.y + box.h && o.y + o.h > box.y;
+    if (verticallyAligned) {
+      if (o.x + o.w <= box.x) left = Math.min(left, box.x - (o.x + o.w));
+      if (o.x >= box.x + box.w) right = Math.min(right, o.x - (box.x + box.w));
+    }
+  }
+  return { up: Math.max(0, up), down: Math.max(0, down), left: Math.max(0, left), right: Math.max(0, right) };
+}
+
+/** Grows the box into its largest empty direction until the text fits or the
+ *  space is exhausted. Returns the grown box, or null if no single direction
+ *  offered enough room. Only one direction is chosen (the widest) to avoid the
+ *  box sprawling diagonally into other content. */
+function tryGrowBoxToFit(
+  box: AuthoredBox,
+  needed: { w: number; h: number },
+  space: Space4,
+): AuthoredBox | null {
+  // Pick the single direction with the most room. Prefer the direction that
+  // actually addresses the deficit (down/right for width, up/down for height).
+  const dirs = [
+    { key: "down" as const, room: space.down, axis: "v" as const },
+    { key: "up" as const, room: space.up, axis: "v" as const },
+    { key: "right" as const, room: space.right, axis: "h" as const },
+    { key: "left" as const, room: space.left, axis: "h" as const },
+  ];
+  for (const dir of dirs.sort((a, b) => b.room - a.room)) {
+    if (dir.room <= 0.5) continue;
+    let next: AuthoredBox;
+    if (dir.key === "down") {
+      const grow = Math.min(dir.room, Math.max(0, needed.h - box.h));
+      if (grow <= 0) continue;
+      next = { ...box, h: box.h + grow };
+    } else if (dir.key === "up") {
+      const grow = Math.min(dir.room, Math.max(0, needed.h - box.h));
+      if (grow <= 0) continue;
+      next = { ...box, y: box.y - grow, h: box.h + grow };
+    } else if (dir.key === "right") {
+      const grow = Math.min(dir.room, Math.max(0, needed.w - box.w));
+      if (grow <= 0) continue;
+      next = { ...box, w: box.w + grow };
+    } else {
+      const grow = Math.min(dir.room, Math.max(0, needed.w - box.w));
+      if (grow <= 0) continue;
+      next = { ...box, x: box.x - grow, w: box.w + grow };
+    }
+    return next;
+  }
+  return null;
+}
+
+/** Measures the wrapped height of `text` at `font` within `width`, using the
+ *  same layoutRenderTextRuns/lineRenderHeight the renderer uses. */
+function wrappedHeight(text: string, font: RenderTextFont, width: number): number {
+  const runs: RenderTextRun[] = [{ text, font }];
+  const lines = layoutRenderTextRuns(runs, width, undefined);
+  return lines.reduce((sum, line) => sum + lineRenderHeight(line, font.lineHeight), 0);
+}
+
+export interface SetTextOptions {
+  /** Other elements on the slide — used as grow-obstacles. When omitted, only
+   *  font-shrink runs (legacy behavior). */
+  siblings?: Rec[];
+  stage?: { w: number; h: number };
+}
+
+/** Resolves how to fit `text` into the element's authored box. Returns null
+ *  if it already fits (no change), otherwise either a grown box (font kept),
+ *  a shrunk font (box kept), or both. */
+function fitTextToBox(
+  el: Rec,
+  text: string,
+  opts: SetTextOptions,
+): { font?: number; size?: Size; position?: Point } | null {
+  const box = authoredBox(el);
+  if (!box || !text.trim()) return null;
+  const baseFont = rawFont(el as never);
+  const stage = opts.stage ?? { w: 1280, h: 720 };
+
+  const originalHeight = wrappedHeight(text, baseFont, box.w);
+  if (originalHeight <= box.h) return null; // already fits, leave alone
+
+  // Step 1: try to grow the box into empty space. Wider boxes wrap to fewer
+  // lines so a horizontal grow can fix a vertical overflow too — re-measure
+  // after each candidate to account for that.
+  if (opts.siblings && opts.siblings.length > 0) {
+    const obstacles = collectObstacleBoxes(opts.siblings, el);
+    const space = availableSpace(box, obstacles, stage);
+    // Try width-grow first (often resolves overflow via fewer wrap lines with
+    // no font cost), then height-grow.
+    const widthGrown = tryGrowBoxToFit(box, { w: box.w * 2, h: box.h }, space);
+    if (widthGrown) {
+      const hAfter = wrappedHeight(text, baseFont, widthGrown.w);
+      if (hAfter <= widthGrown.h && !obstacles.some((o) => aabbOverlap(widthGrown, o))) {
+        return {
+          size: { width: widthGrown.w, height: widthGrown.h },
+          position: { x: widthGrown.x, y: widthGrown.y },
+        };
+      }
+    }
+    const heightGrown = tryGrowBoxToFit(box, { w: box.w, h: originalHeight + 1 }, space);
+    // Only accept the height grow if it actually reaches the text's needed
+    // height (width unchanged ⇒ wrapped height is still originalHeight) AND the
+    // grown box doesn't collide with a sibling — otherwise the box grew for
+    // nothing and we fall through to font-shrink.
+    if (heightGrown && heightGrown.h >= originalHeight) {
+      if (!obstacles.some((o) => aabbOverlap(heightGrown, o))) {
+        return {
+          size: { width: heightGrown.w, height: heightGrown.h },
+          position: { x: heightGrown.x, y: heightGrown.y },
+        };
+      }
+    }
+  }
+
+  // Step 2: font-shrink against the (possibly unchanged) box. Iteratively
+  // reduce scale until wrapped height fits, floor at MIN_FONT_SCALE.
+  let scale = 1;
+  let fittedSize = baseFont.size;
+  for (let i = 0; i < FIT_ITERATIONS; i++) {
+    const testFont = { ...baseFont, size: baseFont.size * scale };
+    const totalHeight = wrappedHeight(text, testFont, box.w);
+    fittedSize = testFont.size;
+    if (totalHeight <= box.h || scale <= MIN_FONT_SCALE) break;
+    scale = Math.max(MIN_FONT_SCALE, scale * (box.h / totalHeight));
+  }
+  if (fittedSize < baseFont.size - 0.5) return { font: fittedSize };
+  return null;
+}
+
+export function setText(el: Rec, text: string, opts?: SetTextOptions): void {
   if (el.type === "text-list") {
     const items = (el.items as unknown[][]) ?? [];
     const firstRun = items[0]?.[0] as Rec | undefined;
@@ -565,12 +753,14 @@ export function setText(el: Rec, text: string): void {
   }
   const runs = (el.runs as Rec[]) ?? [];
   const font = (runs[0]?.font as Rec) ?? (el.font as Rec) ?? {};
-  const fitted = fittedFontSize(text, el);
-  const finalFont = fitted !== null ? { ...font, size: fitted } : font;
+  const fit = fitTextToBox(el, text, opts ?? {});
+  const finalFont = fit?.font != null ? { ...font, size: fit.font } : font;
   el.runs = [{ text, font: finalFont }];
-  if (fitted !== null) {
-    el.font = { ...((el.font as Rec) ?? {}), size: fitted };
+  if (fit?.font != null) {
+    el.font = { ...((el.font as Rec) ?? {}), size: fit.font };
   }
+  if (fit?.size) el.size = { width: fit.size.width, height: fit.size.height };
+  if (fit?.position) el.position = { x: fit.position.x, y: fit.position.y };
 }
 
 function fillItemSlot(slot: ItemSlot, item: { title: string; text: string }): void {

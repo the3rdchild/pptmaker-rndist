@@ -191,8 +191,16 @@ export function TemplateEnginePanel({
         if (cancelled || !data) return;
         // Auto-label works with or without a screenshot, so offer BOTH text
         // and vision providers — a text-only run is "blind" (boxes only).
+        // Vision providers also appear in the text list (vision models handle
+        // text fine), so dedupe by id to avoid duplicate <option> keys.
         const all = [...(data.text ?? []), ...(data.vision ?? [])];
-        if (Array.isArray(all)) setLabelProviders(all.map(({ id, label }: { id: string; label: string }) => ({ id, label })));
+        if (Array.isArray(all)) {
+          const seen = new Set<string>();
+          const merged = all
+            .filter(({ id }: { id: string }) => (seen.has(id) ? false : (seen.add(id), true)))
+            .map(({ id, label }: { id: string; label: string }) => ({ id, label }));
+          setLabelProviders(merged);
+        }
       })
       .catch(() => {});
     return () => { cancelled = true };

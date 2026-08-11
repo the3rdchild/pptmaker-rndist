@@ -11,10 +11,11 @@ import { contentTypeFor, getObject } from "@/lib/storage/s3";
 
 export const runtime = "nodejs";
 
-/** Only the two prefixes this app owns, and only image-ish keys. Keeps the
- *  route from becoming a general-purpose reader for the whole bucket. */
+/** Only the two prefixes this app owns, and only asset extensions served to
+ *  the browser — images plus the font extensions uploaded fonts are stored
+ *  with. Keeps the route from becoming a general-purpose bucket reader. */
 const KEY_PATTERN =
-  /^(templates|elements)\/[a-z0-9][a-z0-9_\-./]{0,200}\.(png|jpe?g|gif|webp|bmp|svg)$/i;
+  /^(templates|elements)\/[a-z0-9][a-z0-9_\-./]{0,200}\.(png|jpe?g|gif|webp|bmp|svg|woff2?|ttf|otf)$/i;
 
 export async function GET(
   _request: Request,

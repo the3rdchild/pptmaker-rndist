@@ -214,6 +214,11 @@ export type ImageElement = ElementBase & {
   clipPath?: string | null;
   color?: string | null;
   prompt?: string | null;
+  /** Attribution captured when this frame was filled from a stock-photo
+   *  search — required by provider API terms (Unsplash especially). */
+  credit?: string | null;
+  credit_url?: string | null;
+  source_url?: string | null;
   is_icon?: boolean | null;
   /** True for image CONTAINERS (frames — photos clipped into a shape, or the
    *  clip-less Square frame) inserted via the Elements tab. Distinguishes a

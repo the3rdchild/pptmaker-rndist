@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import {
   AlertTriangle,
   Check,
@@ -10,6 +11,8 @@ import {
   Save,
   Sparkles,
   Trash2,
+  Upload,
+  X,
 } from "lucide-react";
 
 import type { TemplateSelectionPayload } from "@/components/slide-editor/surface/TemplateV2KonvaSlide";
@@ -50,6 +53,9 @@ import {
   importPptxAsTemplatePages,
   type TemplateImportProgress,
 } from "@/components/slide-editor/importing/pptx-template-pages";
+import { uploadGlobalFont } from "@/lib/fonts/global-fonts";
+import type { RootState } from "@/store/store";
+import { setPresentationData } from "@/store/slices/presentationGeneration";
 import { ThemePaletteEditor } from "@/components/template-engine/theme-palette-editor";
 import { SaveToLibraryDialog } from "@/components/editor-react/save-to-library-dialog";
 import type { PastedImage } from "@/components/editor-react/paste-image";
@@ -159,6 +165,20 @@ export function TemplateEnginePanel({
     useState<TemplateImportProgress | null>(null);
   const [importNote, setImportNote] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  /** Missing-font gate during .pptx import: the dialog lists the file's
+   *  unresolvable families and waits for uploads before the import proceeds.
+   *  finish() answers the gate's promise (false = abort the import). */
+  const [fontGate, setFontGate] = useState<{
+    families: string[];
+    uploaded: Set<string>;
+    uploading: string | null;
+    error: string | null;
+    finish: (proceed: boolean) => void;
+  } | null>(null);
+  const dispatch = useDispatch();
+  const presentationData = useSelector(
+    (state: RootState) => state.presentationGeneration.presentationData,
+  );
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Auto-label (AI fills slot name/role/condition/budgets + layout meta).
@@ -717,6 +737,61 @@ export function TemplateEnginePanel({
     [pageUis],
   );
 
+  /** Uploads one missing family into the global library from the import gate
+   *  and merges it into the live fonts map so the freshly-imported pages
+   *  render with it immediately. */
+  const handleGateFontUpload = useCallback(
+    async (family: string, file: File) => {
+      setFontGate((current) =>
+        current ? { ...current, uploading: family, error: null } : current,
+      );
+      try {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = reader.result;
+            if (typeof result === "string") resolve(result);
+            else reject(new Error("Could not read font file"));
+          };
+          reader.onerror = () => reject(new Error("Could not read font file"));
+          reader.readAsDataURL(file);
+        });
+        const { url } = await uploadGlobalFont(family, dataUrl, file.name);
+        if (presentationData) {
+          const currentFonts =
+            (presentationData.fonts as Record<string, string> | null) ?? {};
+          dispatch(
+            setPresentationData({
+              ...presentationData,
+              fonts: { ...currentFonts, [family]: url },
+            }),
+          );
+        }
+        setFontGate((current) =>
+          current
+            ? {
+                ...current,
+                uploading: null,
+                uploaded: new Set([...current.uploaded, family]),
+              }
+            : current,
+        );
+      } catch (error) {
+        setFontGate((current) =>
+          current
+            ? {
+                ...current,
+                uploading: null,
+                error:
+                  error instanceof Error ? error.message : "Font upload failed",
+              }
+            : current,
+        );
+      }
+    },
+    [dispatch, presentationData],
+  );
+
   /** Turns a .pptx into pages on the canvas. Every slide lands as an unsaved
    *  layout so the author can label its slots and save the ones worth keeping —
    *  importing is a starting point for authoring, not a bulk publish. */
@@ -732,11 +807,25 @@ export function TemplateEnginePanel({
       setImportNote(null);
       setImportProgress({ stage: "parsing", done: 0, total: 0 });
       try {
-        const result = await importPptxAsTemplatePages(
-          file,
-          themeId,
-          setImportProgress,
-        );
+        const theme = themes.find((t) => t.id === themeId);
+        const result = await importPptxAsTemplatePages(file, themeId, {
+          onProgress: setImportProgress,
+          availableFamilies: Object.keys(theme?.fonts ?? {}),
+          onMissingFonts: (families) =>
+            new Promise<boolean>((resolve) => {
+              setFontGate({
+                families,
+                uploaded: new Set(),
+                uploading: null,
+                error: null,
+                finish: (proceed) => {
+                  setFontGate(null);
+                  resolve(proceed);
+                },
+              });
+            }),
+        });
+        if (!result) return; // aborted at the missing-font gate
         if (result.pages.length === 0) {
           setImportError("That file has no slides.");
           return;
@@ -773,7 +862,7 @@ export function TemplateEnginePanel({
         setImportProgress(null);
       }
     },
-    [onImportPages, themeId],
+    [onImportPages, themeId, themes],
   );
 
   const pageCount = pageUis.filter(Boolean).length;
@@ -1232,7 +1321,139 @@ export function TemplateEnginePanel({
             : `Save this page to ${themeLabel}`}
         </button>
       </div>
+
+      {fontGate && (
+        <MissingFontsDialog
+          families={fontGate.families}
+          uploaded={fontGate.uploaded}
+          uploading={fontGate.uploading}
+          error={fontGate.error}
+          onUpload={handleGateFontUpload}
+          onCancel={() => fontGate.finish(false)}
+          onProceed={() => fontGate.finish(true)}
+        />
+      )}
     </aside>
+  );
+}
+
+/** Import gate: the .pptx uses fonts nothing in the library can resolve. The
+ *  author can upload each one (into the global library — the family name is
+ *  already known, only the file is needed) and then start the import with the
+ *  real typefaces, or proceed and let the still-missing ones be substituted. */
+function MissingFontsDialog({
+  families,
+  uploaded,
+  uploading,
+  error,
+  onUpload,
+  onCancel,
+  onProceed,
+}: {
+  families: string[];
+  uploaded: Set<string>;
+  uploading: string | null;
+  error: string | null;
+  onUpload: (family: string, file: File) => void;
+  onCancel: () => void;
+  onProceed: () => void;
+}) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingFamilyRef = useRef<string | null>(null);
+  const remaining = families.filter((family) => !uploaded.has(family));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-[400px] max-w-full rounded-xl border border-[var(--border)] bg-[var(--bg-panel)] p-4 shadow-2xl">
+        <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+          {families.length} font{families.length === 1 ? "" : "s"} missing from the library
+        </h3>
+        <p className="mt-1 text-[11px] leading-relaxed text-[var(--text-muted)]">
+          Upload them now and every page imports with the real typeface.
+          Anything still missing when the import starts is substituted with a
+          similar Google Font.
+        </p>
+
+        <ul className="mt-3 max-h-56 space-y-1 overflow-y-auto">
+          {families.map((family) => {
+            const done = uploaded.has(family);
+            const busy = uploading === family;
+            return (
+              <li
+                key={family}
+                className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-2.5 py-1.5"
+              >
+                <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-[var(--text-primary)]">
+                  {family}
+                </span>
+                {done ? (
+                  <span className="flex shrink-0 items-center gap-1 text-[10px] text-emerald-400">
+                    <Check size={12} /> Uploaded
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={uploading !== null}
+                    onClick={() => {
+                      pendingFamilyRef.current = family;
+                      fileInputRef.current?.click();
+                    }}
+                    className="flex shrink-0 items-center gap-1 rounded-md bg-[var(--accent)] px-2 py-1 text-[10px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                  >
+                    {busy ? (
+                      <Loader2 size={11} className="animate-spin" />
+                    ) : (
+                      <Upload size={11} />
+                    )}
+                    {busy ? "Uploading…" : "Upload file"}
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".woff2,.woff,.ttf,.otf"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            const family = pendingFamilyRef.current;
+            event.target.value = "";
+            pendingFamilyRef.current = null;
+            if (file && family) onUpload(family, file);
+          }}
+        />
+
+        {error && (
+          <p className="mt-2 rounded-md bg-red-500/10 px-2 py-1.5 text-[11px] text-red-300">
+            {error}
+          </p>
+        )}
+
+        <div className="mt-4 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
+          >
+            <X size={12} /> Cancel import
+          </button>
+          <button
+            type="button"
+            onClick={onProceed}
+            disabled={uploading !== null}
+            className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-[11px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            {remaining.length > 0
+              ? `Import anyway — substitute ${remaining.length}`
+              : "Start import"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -12,6 +12,7 @@
 
 import {
   importPptxFile,
+  findUnresolvableFonts,
   resolveUnresolvedFonts,
   type FontSubstitution,
 } from "@/components/slide-editor/importing/pptx-import";
@@ -37,6 +38,20 @@ export type TemplateImportProgress = {
   stage: "parsing" | "assets" | "done";
   done: number;
   total: number;
+};
+
+export type TemplateImportOptions = {
+  onProgress?: (progress: TemplateImportProgress) => void;
+  /** Extra resolvable families beyond the Google catalogue + the global font
+   *  library — e.g. the target theme's own bundle fonts. */
+  availableFamilies?: Iterable<string>;
+  /** Gate invoked when the file uses fonts nothing can resolve. Awaited BEFORE
+   *  any substitution or asset storage — the panel opens its upload dialog
+   *  inside it. Return false to abort the import (resolves to null). Fonts
+   *  uploaded during the gate land in the global library, so the re-check
+   *  inside resolveUnresolvedFonts leaves them untouched; only the
+   *  still-missing families get AI-substituted. */
+  onMissingFonts?: (families: string[]) => Promise<boolean>;
 };
 
 function isRecord(value: unknown): value is Rec {
@@ -96,13 +111,28 @@ async function storeAsset(themeId: string, dataUrl: string): Promise<{ url: stri
 export async function importPptxAsTemplatePages(
   file: File,
   themeId: string,
-  onProgress?: (progress: TemplateImportProgress) => void,
-): Promise<TemplatePagesImport> {
+  options?: TemplateImportOptions,
+): Promise<TemplatePagesImport | null> {
+  const onProgress = options?.onProgress;
   onProgress?.({ stage: "parsing", done: 0, total: 0 });
   const parsed = await importPptxFile(file);
+
+  // Missing-font gate: let the author upload the file's fonts into the global
+  // library BEFORE anything is substituted or stored, so pages land with the
+  // real typeface instead of a substituted one to fix page by page.
+  if (options?.onMissingFonts) {
+    const missing = await findUnresolvableFonts(parsed, options.availableFamilies);
+    if (missing.length > 0) {
+      const proceed = await options.onMissingFonts(missing);
+      if (!proceed) return null;
+    }
+  }
+
   // Resolve unresolved fonts BEFORE extracting image data URLs so the rewrite
-  // applies to the same tree the pages are built from.
-  const deck = await resolveUnresolvedFonts(parsed);
+  // applies to the same tree the pages are built from. Families uploaded
+  // during the gate are in the global library by now, so this only rewrites
+  // the fonts that are STILL missing.
+  const deck = await resolveUnresolvedFonts(parsed, options?.availableFamilies);
 
   const dataUrls = new Set<string>();
   deck.slides.forEach((slide) => collectDataUrls(slide.ui, dataUrls));

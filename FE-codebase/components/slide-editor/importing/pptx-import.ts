@@ -32,6 +32,7 @@ import {
   isGoogleFontFamily,
   loadGoogleFontOptions,
 } from "@/components/slide-editor/text/google-fonts";
+import { getGlobalFonts } from "@/lib/fonts/global-fonts";
 
 type Rec = Record<string, unknown>;
 
@@ -261,16 +262,15 @@ function rewriteFontFamilies(value: unknown, mapping: Map<string, string>) {
 
 const DEFAULT_SUBSTITUTE_FALLBACK = "Inter";
 
-/** After importPptxFile has produced its result, find font names the renderer
- *  cannot resolve (anything not in the Google Fonts catalogue — commercial
- *  fonts like Pagkaki Full are the canonical case), ask the substitution route
- *  for a visually similar Google Font, and rewrite every affected
- *  `font.family` in place while preserving the original name as
- *  `font.original_family`. Returns the same result with `fontSubstitutions`
- *  filled in. No-op (and no network call) when every font already resolves. */
-export async function resolveUnresolvedFonts(
+/** Font families from an imported file that the renderer cannot resolve:
+ *  not in the Google Fonts catalogue, not in the global font library
+ *  (/api/fonts), and not in `extraFamilies` (e.g. a theme's bundle fonts).
+ *  The catalogue and registry are lazy-loaded here so callers get a complete
+ *  answer without their own setup. */
+export async function findUnresolvableFonts(
   result: PptxImportResult,
-): Promise<PptxImportResult> {
+  extraFamilies?: Iterable<string>,
+): Promise<string[]> {
   // The Google Fonts catalogue is lazy-loaded into the isGoogleFontFamily
   // lookup; make sure it is populated before filtering, otherwise everything
   // outside the 42 hardcoded GOOGLE_FONT_OPTIONS would be treated as
@@ -283,13 +283,43 @@ export async function resolveUnresolvedFonts(
     // keeps the import correct.
   }
 
+  const available = new Set<string>();
+  if (extraFamilies) {
+    for (const family of extraFamilies) {
+      available.add(family.trim().toLowerCase());
+    }
+  }
+  try {
+    const globalFonts = await getGlobalFonts();
+    for (const family of Object.keys(globalFonts)) {
+      available.add(family.trim().toLowerCase());
+    }
+  } catch {
+    // Registry unreachable — its families simply count as unresolved.
+  }
+
   const families = new Set<string>();
   result.slides.forEach((slide) => collectUiFontFamilies(slide.ui, families));
 
   const unresolved: string[] = [];
   families.forEach((family) => {
+    if (available.has(family.trim().toLowerCase())) return;
     if (!isGoogleFontFamily(family)) unresolved.push(family);
   });
+  return unresolved;
+}
+
+/** After importPptxFile has produced its result, find font names the renderer
+ *  cannot resolve (see findUnresolvableFonts), ask the substitution route
+ *  for a visually similar Google Font, and rewrite every affected
+ *  `font.family` in place while preserving the original name as
+ *  `font.original_family`. Returns the same result with `fontSubstitutions`
+ *  filled in. No-op (and no network call) when every font already resolves. */
+export async function resolveUnresolvedFonts(
+  result: PptxImportResult,
+  extraFamilies?: Iterable<string>,
+): Promise<PptxImportResult> {
+  const unresolved = await findUnresolvableFonts(result, extraFamilies);
 
   if (unresolved.length === 0) {
     return { ...result, fontSubstitutions: [] };

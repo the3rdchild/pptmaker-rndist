@@ -54,6 +54,7 @@ import type { SlideData } from "@/store/presentationGeneration";
 import { adaptDeckToPresentation } from "@/components/editor-react/deck-adapt";
 import { useSessionStore } from "@/store/session.store";
 import { getDeck, saveDeck, streamAipptDeck, fetchThemeManifest, chooseThemeForTopic, generateImage, type AgentAction } from "@/lib/api";
+import { getGlobalFonts } from "@/lib/fonts/global-fonts";
 import type { StockImageResult } from "@/lib/stock-image-providers";
 import {
   DEFAULT_THEME_ID,
@@ -462,6 +463,12 @@ export default function EditorReactClient({
       const requested = requestedId
         ? all.find((theme) => theme.id === requestedId) ?? null
         : null;
+      // Global font library: uploaded once anywhere, available in every
+      // context. Merged UNDER the theme's own fonts so a theme-defined family
+      // always wins a same-named global one.
+      const globalFonts = await getGlobalFonts();
+      if (cancelled) return;
+      const mergedFonts = { ...globalFonts, ...(requested?.fonts ?? {}) };
       // Cloned: these records are the theme registry's cached copies, and the
       // canvas is about to be edited in place from here on.
       const pages = (requested?.layouts ?? []).map(
@@ -477,12 +484,13 @@ export default function EditorReactClient({
         setPresentationData({
           id: "template-engine",
           title: requested ? requested.name : "Untitled template",
-          // Seed the theme's font map so uploaded fonts survive a reload —
-          // registerThemeFont persists bundle.fonts to template.json, and
-          // loadTheme surfaces it as requested.fonts, but without seeding it
-          // here presentationData.fonts stays undefined on every reopen and
-          // the canvas loses the font until the next in-session upload.
-          ...(requested?.fonts ? { fonts: requested.fonts } : {}),
+          // Seed the theme's font map (plus the global library) so uploaded
+          // fonts survive a reload — registerThemeFont persists bundle.fonts
+          // to template.json, and loadTheme surfaces it as requested.fonts,
+          // but without seeding it here presentationData.fonts stays
+          // undefined on every reopen and the canvas loses the font until
+          // the next in-session upload.
+          ...(Object.keys(mergedFonts).length > 0 ? { fonts: mergedFonts } : {}),
           slides:
             pages.length > 0
               ? pages.map((ui) => ({ ui }))
@@ -503,14 +511,31 @@ export default function EditorReactClient({
     (async () => {
       if (!token) return;
       try {
-        const deck = await getDeck(token, deckId);
+        const [deck, globalFonts] = await Promise.all([
+          getDeck(token, deckId),
+          getGlobalFonts(),
+        ]);
         const adapted = adaptDeckToPresentation(
           deckId,
           deck.payload as Record<string, unknown> | null
         );
         if (cancelled) return;
         if (adapted && adapted.slides.length > 0) {
-          dispatch(setPresentationData(adapted));
+          // The global font library rides along under the deck's own saved
+          // fonts, so an uploaded font is usable in every deck — even decks
+          // saved before the library existed.
+          const mergedFonts = {
+            ...globalFonts,
+            ...((adapted.fonts as Record<string, string> | null) ?? {}),
+          };
+          dispatch(
+            setPresentationData({
+              ...adapted,
+              ...(Object.keys(mergedFonts).length > 0
+                ? { fonts: mergedFonts }
+                : {}),
+            })
+          );
         } else {
           const layout = await loadDefaultLayout();
           if (cancelled) return;
@@ -518,6 +543,9 @@ export default function EditorReactClient({
             setPresentationData({
               id: deckId,
               title: deck.title,
+              ...(Object.keys(globalFonts).length > 0
+                ? { fonts: globalFonts }
+                : {}),
               slides: [{ ui: layout }],
             })
           );

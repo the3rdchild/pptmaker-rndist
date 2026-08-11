@@ -13,9 +13,12 @@ export const runtime = "nodejs";
 
 /** Only the two prefixes this app owns, and only asset extensions served to
  *  the browser — images plus the font extensions uploaded fonts are stored
- *  with. Keeps the route from becoming a general-purpose bucket reader. */
+ *  with. The first path character may be an underscore so the global font
+ *  library (templates/_fonts/) resolves; that name can never collide with a
+ *  theme id (THEME_ID_PATTERN requires an alphanumeric first char). Keeps the
+ *  route from becoming a general-purpose bucket reader. */
 const KEY_PATTERN =
-  /^(templates|elements)\/[a-z0-9][a-z0-9_\-./]{0,200}\.(png|jpe?g|gif|webp|bmp|svg|woff2?|ttf|otf)$/i;
+  /^(templates|elements)\/[a-z0-9_][a-z0-9_\-./]{0,200}\.(png|jpe?g|gif|webp|bmp|svg|woff2?|ttf|otf)$/i;
 
 export async function GET(
   _request: Request,

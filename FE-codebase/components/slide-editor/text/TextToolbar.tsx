@@ -44,6 +44,11 @@ import {
   type TemplateFontOption,
 } from "@/components/slide-editor/text/google-fonts";
 import {
+  deleteGlobalFont,
+  getGlobalFonts,
+  uploadGlobalFont,
+} from "@/lib/fonts/global-fonts";
+import {
   fontForTextSelection,
   normalizedTextSelectionRange,
   textRunsContent,
@@ -733,6 +738,10 @@ function FontFamilyPicker({
   >(null);
   const [uploadingFont, setUploadingFont] = useState(false);
   const [deletingFont, setDeletingFont] = useState(false);
+  /** Families living in the global library (/api/fonts) — deletable from any
+   *  context, unlike theme-bundle fonts which only the template engine may
+   *  delete. Refreshed each time the menu opens (the registry is cached). */
+  const [globalFamilies, setGlobalFamilies] = useState<Set<string>>(new Set());
   const fontFileInputRef = useRef<HTMLInputElement | null>(null);
   const [activeSource, setActiveSource] = useState<FontPickerSource>(() =>
     templateFonts.some(({ family }) => family === selectedFamily)
@@ -756,6 +765,17 @@ function FontFamilyPicker({
       },
     );
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void getGlobalFonts().then((fonts) => {
+      if (!cancelled) setGlobalFamilies(new Set(Object.keys(fonts)));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -808,7 +828,7 @@ function FontFamilyPicker({
   const handleFontFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (!file || !themeId) return;
+    if (!file) return;
 
     // The family name is what links the uploaded file to text elements that
     // already reference it (e.g. "Pagkaki Full" carried in from a .pptx). The
@@ -837,27 +857,14 @@ function FontFamilyPicker({
         reader.readAsDataURL(file);
       });
 
-      const res = await fetch("/api/template-engine/fonts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        // filename lets the server recover the extension when the browser's
-        // claimed MIME type is a generic application/octet-stream — common on
-        // Windows for .ttf/.otf when the OS has no font association.
-        body: JSON.stringify({ themeId, family, data: dataUrl, filename: file.name }),
-      });
-      const data = (await res.json()) as {
-        ok?: boolean;
-        url?: string;
-        error?: string;
-      };
-      if (!res.ok || !data.ok || !data.url) {
-        throw new Error(data.error || `Upload failed (${res.status})`);
-      }
+      // Global library — one upload is usable in every theme and every deck.
+      const data = await uploadGlobalFont(family, dataUrl, file.name);
+      setGlobalFamilies((current) => new Set([...current, family]));
 
       // Update Redux presentationData.fonts so ensureTemplateFontLoaded picks
       // the new font up immediately on the canvas — server-side registration
-      // persists it to template.json for the next session, but the in-memory
-      // map is what the live renderer reads.
+      // persists it to the global registry for the next session, but the
+      // in-memory map is what the live renderer reads.
       if (presentationData) {
         const currentFonts =
           (presentationData.fonts as Record<string, string> | null) ?? {};
@@ -868,7 +875,7 @@ function FontFamilyPicker({
           }),
         );
       }
-      notify.success("Font uploaded", `${family} is now available in this theme.`);
+      notify.success("Font uploaded", `${family} is now available everywhere.`);
       onSelect(family);
       setOpen(false);
     } catch (error) {
@@ -882,7 +889,10 @@ function FontFamilyPicker({
   };
 
   const handleDeleteFamily = async (family: string) => {
-    if (!themeId) return;
+    const isGlobal = globalFamilies.has(family);
+    // Theme-bundle fonts can only be deleted from the template engine (they
+    // belong to the theme); global fonts can go from anywhere.
+    if (!isGlobal && !themeId) return;
     const confirmed = window.confirm(
       `Delete font "${family}"? Text using it will fall back to the default font.`,
     );
@@ -890,23 +900,28 @@ function FontFamilyPicker({
 
     setDeletingFont(true);
     try {
-      const res = await fetch("/api/template-engine/fonts", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ themeId, family }),
-      });
-      const data = (await res.json()) as {
-        ok?: boolean;
-        removedUrl?: string | null;
-        error?: string;
-      };
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error || `Delete failed (${res.status})`);
+      if (isGlobal) {
+        await deleteGlobalFont(family);
+        setGlobalFamilies((current) => {
+          const next = new Set(current);
+          next.delete(family);
+          return next;
+        });
+      } else {
+        const res = await fetch("/api/template-engine/fonts", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ themeId, family }),
+        });
+        const data = (await res.json()) as { ok?: boolean; error?: string };
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error || `Delete failed (${res.status})`);
+        }
       }
 
       // Mirror the upload merge in reverse: drop the family from the in-memory
-      // map so the canvas stops loading it. Server-side unregisterThemeFont
-      // already persisted the change to template.json for next session.
+      // map so the canvas stops loading it. Server-side the registry/bundle
+      // change is already persisted for the next session.
       if (presentationData) {
         const currentFonts =
           (presentationData.fonts as Record<string, string> | null) ?? {};
@@ -919,7 +934,7 @@ function FontFamilyPicker({
           }),
         );
       }
-      notify.success("Font deleted", `${family} was removed from this theme.`);
+      notify.success("Font deleted", `${family} was removed.`);
     } catch (error) {
       notify.error(
         "Font delete failed",
@@ -934,6 +949,16 @@ function FontFamilyPicker({
   const templateFontFamilySet = useMemo(
     () => new Set(templateFonts.map(({ family }) => family)),
     [templateFonts],
+  );
+  /** Global fonts are deletable anywhere; theme-bundle fonts only in the
+   *  template engine (they belong to the theme). */
+  const deletableFontFamilies = useMemo(
+    () =>
+      new Set([
+        ...globalFamilies,
+        ...(themeId ? [...templateFontFamilySet] : []),
+      ]),
+    [globalFamilies, templateFontFamilySet, themeId],
   );
   const normalizedQuery = query.trim().toLowerCase();
   const hasSearchQuery = searching && normalizedQuery.length > 0;
@@ -1067,46 +1092,46 @@ function FontFamilyPicker({
             selectedFamily={selectedFamily}
             onSelect={selectFamily}
             onSwap={swapFontSource}
-            deletableFamilies={themeId ? templateFontFamilySet : undefined}
+            deletableFamilies={deletableFontFamilies}
             deletingFamily={deletingFont}
-            onDeleteFamily={themeId ? handleDeleteFamily : undefined}
+            onDeleteFamily={handleDeleteFamily}
           />
-          {themeId ? (
-            <>
-              <div aria-hidden="true" style={textToolbarStyles.fontMenuDivider} />
-              <button
-                type="button"
-                title="Upload a font file (woff2/woff/ttf/otf)"
-                disabled={uploadingFont}
-                onClick={() => fontFileInputRef.current?.click()}
-                style={{
-                  display: "flex",
-                  width: "100%",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: "8px 12px",
-                  background: "transparent",
-                  border: 0,
-                  cursor: uploadingFont ? "progress" : "pointer",
-                  fontSize: 12,
-                  color: "#191919",
-                  textAlign: "left",
-                }}
-              >
-                <Upload size={14} strokeWidth={2} aria-hidden="true" />
-                <span>
-                  {uploadingFont ? "Uploading…" : "Upload font…"}
-                </span>
-              </button>
-              <input
-                ref={fontFileInputRef}
-                type="file"
-                accept=".woff2,.woff,.ttf,.otf,application/font-woff2,application/font-woff,application/x-font-ttf,application/x-font-otf,font/woff2,font/woff,font/ttf,font/otf"
-                onChange={handleFontFileChange}
-                style={{ display: "none" }}
-              />
-            </>
-          ) : null}
+          {/* Global upload — one upload is available in every theme/deck,
+              so it's offered in the deck editor too, not just the engine. */}
+          <>
+            <div aria-hidden="true" style={textToolbarStyles.fontMenuDivider} />
+            <button
+              type="button"
+              title="Upload a font file (woff2/woff/ttf/otf)"
+              disabled={uploadingFont}
+              onClick={() => fontFileInputRef.current?.click()}
+              style={{
+                display: "flex",
+                width: "100%",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 12px",
+                background: "transparent",
+                border: 0,
+                cursor: uploadingFont ? "progress" : "pointer",
+                fontSize: 12,
+                color: "#191919",
+                textAlign: "left",
+              }}
+            >
+              <Upload size={14} strokeWidth={2} aria-hidden="true" />
+              <span>
+                {uploadingFont ? "Uploading…" : "Upload font…"}
+              </span>
+            </button>
+            <input
+              ref={fontFileInputRef}
+              type="file"
+              accept=".woff2,.woff,.ttf,.otf,application/font-woff2,application/font-woff,application/x-font-ttf,application/x-font-otf,font/woff2,font/woff,font/ttf,font/otf"
+              onChange={handleFontFileChange}
+              style={{ display: "none" }}
+            />
+          </>
         </FloatingToolbarPanel>
       ) : null}
     </div>

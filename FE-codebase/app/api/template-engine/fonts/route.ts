@@ -19,6 +19,7 @@ import {
   assetExtensionFor,
   registerThemeFont,
   saveThemeFont,
+  unregisterThemeFont,
 } from "@/lib/templates/server/store";
 
 export const runtime = "nodejs";
@@ -93,6 +94,46 @@ export async function POST(request: Request) {
       url: saved.url,
       reused: saved.reused,
     });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 400 },
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  const blocked = templateWritesBlocked("deleted");
+  if (blocked) return blocked;
+
+  let body: { themeId?: unknown; family?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const themeId = typeof body.themeId === "string" ? body.themeId : "";
+  const family =
+    typeof body.family === "string"
+      ? body.family.trim().slice(0, FAMILY_NAME_MAX)
+      : "";
+  if (!themeId) {
+    return NextResponse.json({ error: "themeId is required" }, { status: 400 });
+  }
+  if (!family) {
+    return NextResponse.json({ error: "family is required" }, { status: 400 });
+  }
+
+  try {
+    const result = await unregisterThemeFont(themeId, family);
+    if (result.removedUrl === null) {
+      return NextResponse.json(
+        { error: `Font "${family}" is not registered in this theme` },
+        { status: 404 },
+      );
+    }
+    return NextResponse.json({ ok: true, family, removedUrl: result.removedUrl });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unknown error" },

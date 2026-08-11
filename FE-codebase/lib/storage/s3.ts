@@ -75,6 +75,17 @@ export function publicUrl(key: string): string {
   return `${publicBase}/${key.replace(/^\/+/, "")}`;
 }
 
+/** Inverse of publicUrl — recovers the S3 key from a stored public URL.
+ *  Returns null (not throw) when the URL didn't come from this bucket, so a
+ *  caller can pass a foreign URL without an exception taking down the request.
+ *  Only URLs in the canonical CDN form (`<CDN_PUBLIC_URL>/<key>`) round-trip;
+ *  proxy URLs (`/api/templates/asset/...`) are a response-layer rewrite and
+ *  never reach S3 storage, so they are rejected here on purpose. */
+export function keyFromPublicUrl(url: string): string | null {
+  const prefix = `${publicBase}/`;
+  return url.startsWith(prefix) ? url.slice(prefix.length) : null;
+}
+
 const CONTENT_TYPES: Record<string, string> = {
   json: "application/json",
   png: "image/png",

@@ -17,6 +17,7 @@ import { createHash } from "node:crypto";
 import {
   deleteObjects,
   deletePrefix,
+  keyFromPublicUrl,
   listFolders,
   listKeys,
   objectExists,
@@ -220,6 +221,37 @@ export async function registerThemeFont(
   // regenerates bundle from scratch; it preserves `...bundle` so fonts survive,
   // but we already wrote the canonical bundle above, so no rebuild needed.
   return next;
+}
+
+/** Removes `family` from bundle.fonts in template.json. Only deletes the S3
+ *  object when no other family in the theme still points at the same URL —
+ *  content-addressed keys are shared if the same file is uploaded twice under
+ *  different names, and removing one name must not orphan the other. */
+export async function unregisterThemeFont(
+  themeId: string,
+  family: string,
+): Promise<{ removedUrl: string | null }> {
+  assertSafeThemeId(themeId);
+  const bundleKey = themeKey(themeId, "template.json");
+  const bundle =
+    (await readJson<Record<string, unknown>>(bundleKey)) ??
+    ({} as Record<string, unknown>);
+  const fonts =
+    bundle.fonts && typeof bundle.fonts === "object" && !Array.isArray(bundle.fonts)
+      ? { ...(bundle.fonts as Record<string, string>) }
+      : {};
+  const removedUrl = fonts[family] ?? null;
+  if (removedUrl === null) {
+    return { removedUrl: null };
+  }
+  delete fonts[family];
+  await writeJson(bundleKey, { ...bundle, fonts });
+
+  if (!Object.values(fonts).includes(removedUrl)) {
+    const key = keyFromPublicUrl(removedUrl);
+    if (key) await deleteObjects([key]);
+  }
+  return { removedUrl };
 }
 
 export type SaveLayoutInput = {

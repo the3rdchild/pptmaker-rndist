@@ -84,6 +84,10 @@ const CONTENT_TYPES: Record<string, string> = {
   webp: "image/webp",
   bmp: "image/bmp",
   svg: "image/svg+xml",
+  woff2: "font/woff2",
+  woff: "font/woff",
+  ttf: "font/ttf",
+  otf: "font/otf",
 };
 
 export function contentTypeFor(key: string): string {

@@ -108,6 +108,18 @@ const ASSET_EXTENSIONS: Record<string, string> = {
   "image/webp": "webp",
   "image/bmp": "bmp",
   "image/svg+xml": "svg",
+  "font/woff2": "woff2",
+  "font/woff": "woff",
+  "font/ttf": "ttf",
+  "font/otf": "otf",
+  // Browsers/proxies sometimes send these legacy variants; map them to the
+  // canonical extension so the data: URL still resolves to a real asset.
+  "application/font-woff2": "woff2",
+  "application/font-woff": "woff",
+  "application/x-font-woff": "woff",
+  "application/x-font-ttf": "ttf",
+  "application/x-font-otf": "otf",
+  "application/vnd.ms-fontobject": "eot",
 };
 
 export function assetExtensionFor(mimeType: string): string | null {
@@ -151,6 +163,63 @@ export async function saveThemeAsset({
 
   const url = await putObject(key, bytes);
   return { url, bytes: bytes.length, reused: false };
+}
+
+/** Uploads one font file under `<theme>/static/fonts/` (scoped per-theme, never
+ *  a global `fonts/` folder — fonts are licensed property, so a theme's fonts
+ *  must not bleed into another theme's namespace or a shared pool).
+ *
+ *  Same content-addressed naming as saveThemeAsset, so re-uploading the same
+ *  Pagkaki file for a second theme reuses one object instead of duplicating. */
+export async function saveThemeFont({
+  themeId,
+  bytes,
+  extension,
+}: {
+  themeId: string;
+  bytes: Buffer;
+  extension: string;
+}): Promise<{ url: string; bytes: number; reused: boolean }> {
+  assertSafeThemeId(themeId);
+  if (!Object.values(ASSET_EXTENSIONS).includes(extension)) {
+    throw new Error(`Unsupported font type: ${extension}`);
+  }
+
+  const digest = createHash("sha256").update(bytes).digest("hex").slice(0, 16);
+  const key = themeKey(themeId, "static", "fonts", `${digest}.${extension}`);
+
+  if (await objectExists(key)) {
+    return { url: publicUrl(key), bytes: bytes.length, reused: true };
+  }
+  const url = await putObject(key, bytes);
+  return { url, bytes: bytes.length, reused: false };
+}
+
+/** Registers `{ family: url }` into the theme's bundle.fonts in template.json,
+ *  then rebuilds the bundle so the merged file stays consistent. This is the
+ *  write-path the font upload uses; `ensureTemplateFontLoaded` on the client
+ *  reads whatever ends up here, no extra wiring needed. */
+export async function registerThemeFont(
+  themeId: string,
+  family: string,
+  url: string,
+): Promise<Record<string, unknown>> {
+  assertSafeThemeId(themeId);
+  const bundleKey = themeKey(themeId, "template.json");
+  const bundle =
+    (await readJson<Record<string, unknown>>(bundleKey)) ??
+    ({} as Record<string, unknown>);
+  const fonts =
+    bundle.fonts && typeof bundle.fonts === "object" && !Array.isArray(bundle.fonts)
+      ? { ...(bundle.fonts as Record<string, string>) }
+      : {};
+  fonts[family] = url;
+  const next = { ...bundle, fonts };
+  await writeJson(bundleKey, next);
+  // rebuildThemeBundle would re-derive layouts and drop our fonts edit if it
+  // regenerates bundle from scratch; it preserves `...bundle` so fonts survive,
+  // but we already wrote the canonical bundle above, so no rebuild needed.
+  return next;
 }
 
 export type SaveLayoutInput = {

@@ -41,18 +41,22 @@ function useAvailableProviders() {
 // Fetch which stock-photo providers (Pexels/Unsplash/Pixabay) have a
 // server-side key configured — same env-aware shape as useAvailableProviders,
 // so the "Stock photos" toggle can be disabled when nothing backs it.
+// null = "not resolved yet" (distinct from `false`), so the disable-effect
+// below doesn't wipe a persisted 'stock' choice just because the check
+// hasn't come back yet — only an explicit `false` should ever clear it.
 function useAvailableStockProviders() {
-	const [hasStockProvider, setHasStockProvider] = useState(false)
+	const [hasStockProvider, setHasStockProvider] = useState<boolean | null>(null)
 	useEffect(() => {
 		let cancelled = false
 		fetch('/api/stock-images/providers')
 			.then((r) => (r.ok ? r.json() : null))
 			.then((data) => {
-				if (!cancelled && data && Array.isArray(data.providers)) {
-					setHasStockProvider(data.providers.length > 0)
-				}
+				if (cancelled) return
+				setHasStockProvider(Array.isArray(data?.providers) ? data.providers.length > 0 : false)
 			})
-			.catch(() => {})
+			.catch(() => {
+				if (!cancelled) setHasStockProvider(false)
+			})
 		return () => { cancelled = true }
 	}, [])
 	return hasStockProvider
@@ -96,7 +100,10 @@ export function PromptInput() {
 		setImageSource(localStorage.getItem('ppt_image_source') === 'stock' ? 'stock' : 'ai')
 	}, [])
 	useEffect(() => {
-		if (imageSource === 'stock' && !hasStockProvider) {
+		// hasStockProvider === false is a resolved "no provider configured";
+		// null just means the check hasn't come back yet — must not clear a
+		// persisted choice on that transient state.
+		if (imageSource === 'stock' && hasStockProvider === false) {
 			setImageSource('ai')
 			localStorage.removeItem('ppt_image_source')
 		}

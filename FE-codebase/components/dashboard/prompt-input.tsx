@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { Wand2, Plus, ChevronDown, Loader2, ScanEye, Check } from 'lucide-react'
+import { Wand2, Plus, ChevronDown, Loader2, ScanEye, Check, ImageIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useSessionStore } from '@/store/session.store'
 import { createDeck, saveDeck } from '@/lib/api'
@@ -38,6 +38,26 @@ function useAvailableProviders() {
 	return providers
 }
 
+// Fetch which stock-photo providers (Pexels/Unsplash/Pixabay) have a
+// server-side key configured — same env-aware shape as useAvailableProviders,
+// so the "Stock photos" toggle can be disabled when nothing backs it.
+function useAvailableStockProviders() {
+	const [hasStockProvider, setHasStockProvider] = useState(false)
+	useEffect(() => {
+		let cancelled = false
+		fetch('/api/stock-images/providers')
+			.then((r) => (r.ok ? r.json() : null))
+			.then((data) => {
+				if (!cancelled && data && Array.isArray(data.providers)) {
+					setHasStockProvider(data.providers.length > 0)
+				}
+			})
+			.catch(() => {})
+		return () => { cancelled = true }
+	}, [])
+	return hasStockProvider
+}
+
 export function PromptInput() {
 	const router = useRouter()
 	const token = useSessionStore((s) => s.token)
@@ -65,6 +85,22 @@ export function PromptInput() {
 	useEffect(() => {
 		setReview(localStorage.getItem('ppt_visual_review') !== 'off')
 	}, [])
+	// Photo-slot source: AI-generated (DeepInfra, default) or real stock
+	// photos (Pexels/Unsplash/Pixabay). Persisted in localStorage; travels to
+	// the editor as ?images=stock when picked. Forced back to 'ai' if no
+	// stock provider is configured server-side, so the toggle never points at
+	// a mode that can't actually run.
+	const hasStockProvider = useAvailableStockProviders()
+	const [imageSource, setImageSource] = useState<'ai' | 'stock'>('ai')
+	useEffect(() => {
+		setImageSource(localStorage.getItem('ppt_image_source') === 'stock' ? 'stock' : 'ai')
+	}, [])
+	useEffect(() => {
+		if (imageSource === 'stock' && !hasStockProvider) {
+			setImageSource('ai')
+			localStorage.removeItem('ppt_image_source')
+		}
+	}, [hasStockProvider, imageSource])
 	const [submitting, setSubmitting] = useState(false)
 	const [importing, setImporting] = useState(false)
 	const [localError, setLocalError] = useState<string | null>(null)
@@ -96,6 +132,7 @@ export function PromptInput() {
 			if (verifyProvider) qs.set('verify', verifyProvider)
 			if (repairProvider) qs.set('repair', repairProvider)
 			if (!review) qs.set('review', 'off')
+			if (imageSource === 'stock') qs.set('images', 'stock')
 			router.push(`/editor-react/${deck.id}?${qs.toString()}`)
 		} catch (e) {
 			setLocalError(e instanceof Error ? e.message : 'Failed to start')
@@ -230,6 +267,33 @@ export function PromptInput() {
 					>
 						<span
 							className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${review ? 'left-3.5' : 'left-0.5'}`}
+						/>
+					</span>
+				</button>
+
+				<button
+					type="button"
+					disabled={!hasStockProvider}
+					onClick={() => {
+						const next = imageSource === 'stock' ? 'ai' : 'stock'
+						setImageSource(next)
+						if (next === 'stock') localStorage.setItem('ppt_image_source', 'stock')
+						else localStorage.removeItem('ppt_image_source')
+					}}
+					title={
+						hasStockProvider
+							? 'Isi tiap slot foto dengan foto asli dari Pexels/Unsplash/Pixabay, bukan gambar AI generate. Kalau pencarian gak nemu hasil, otomatis balik ke AI generate.'
+							: 'Belum ada API key stock-photo (Pexels/Unsplash/Pixabay) yang di-set server-side.'
+					}
+					className="flex items-center gap-1.5 rounded-lg border border-[#2d2e42] bg-[#1a1b2e] px-2.5 py-1.5 text-xs text-zinc-300 transition-colors hover:border-[#6c5ce7] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[#2d2e42]"
+				>
+					<ImageIcon className={`h-3.5 w-3.5 ${imageSource === 'stock' ? 'text-[#a29bfe]' : 'text-zinc-600'}`} />
+					<span>Foto Stock</span>
+					<span
+						className={`relative h-4 w-7 rounded-full transition-colors ${imageSource === 'stock' ? 'bg-[#6c5ce7]' : 'bg-[#2d2e42]'}`}
+					>
+						<span
+							className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${imageSource === 'stock' ? 'left-3.5' : 'left-0.5'}`}
 						/>
 					</span>
 				</button>

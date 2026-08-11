@@ -180,22 +180,63 @@ function isBlankTemplateUi(ui: unknown): boolean {
   return components.length === 0 && elements.length === 0;
 }
 
-/** Top result for a stock-photo search, for the homepage's "Stock photos"
+const STOCK_QUERY_STOPWORDS = new Set([
+  "a", "an", "the", "of", "in", "on", "at", "to", "for", "with", "and", "or",
+  "that", "this", "such", "as", "is", "are", "be", "high", "quality",
+  "related", "topic", "topic's",
+]);
+
+/** AI-authored photo hints ("A candid lifestyle or adventure shot, square
+ *  orientation.") are full sentences meant as generation prompts — but
+ *  Unsplash/Pixabay's search is keyword-oriented and unreliable on them
+ *  (verified empirically: some full-sentence hints return ZERO results,
+ *  where the same words as bare keywords return thousands). Strips
+ *  punctuation and filler words, keeps the first few remaining words —
+ *  composition/orientation notes ("square orientation") are usually near
+ *  the end of the sentence, so capping naturally drops them along with the
+ *  filler. Never returns empty for non-empty input. */
+function simplifyStockSearchQuery(text: string): string {
+  const clean = text.replace(/[^\p{L}\p{N}\s]/gu, " ");
+  const words = clean
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((w) => !STOCK_QUERY_STOPWORDS.has(w.toLowerCase()));
+  const simplified = words.slice(0, 6).join(" ").trim();
+  return simplified || clean.trim().split(/\s+/).slice(0, 6).join(" ");
+}
+
+/** Search results for a stock-photo hint, for the homepage's "Stock photos"
  *  image-source mode. Same-origin fetch to this app's own route — the
  *  provider keys live server-side in lib/stock-image-providers.ts and are
- *  never reachable from client code directly. Never throws: returns null on
- *  any failure or empty result so callers fall back to AI generation. */
-async function fetchStockPhotoForHint(hint: string): Promise<StockImageResult | null> {
-  const query = hint.trim();
-  if (!query) return null;
+ *  never reachable from client code directly. Fetches a small pool (not just
+ *  the top hit) so the caller can skip photos already used elsewhere in the
+ *  same deck — many photo slots share the same generic authored hint (e.g.
+ *  "A scenic travel or adventure photo..."), and a fixed search always
+ *  returns the same top result for the same query, so always taking #1
+ *  means every slot with that hint gets the identical photo. Never throws:
+ *  returns [] on any failure so callers fall back to AI generation. */
+async function fetchStockPhotosForHint(hint: string, perPage = 8): Promise<StockImageResult[]> {
+  const query = simplifyStockSearchQuery(hint.trim());
+  if (!query) return [];
   try {
-    const res = await fetch(`/api/stock-images/search?query=${encodeURIComponent(query)}&per_page=1`);
-    if (!res.ok) return null;
+    const res = await fetch(`/api/stock-images/search?query=${encodeURIComponent(query)}&per_page=${perPage}`);
+    if (!res.ok) return [];
     const data = (await res.json()) as { results?: StockImageResult[] };
-    return data.results?.[0] ?? null;
+    return data.results ?? [];
   } catch {
-    return null;
+    return [];
   }
+}
+
+/** First result whose id hasn't been used yet in this deck; falls back to
+ *  the top result (accepting a repeat) rather than leaving a slot empty if
+ *  every candidate in the pool is already taken. */
+function pickUnusedStockPhoto(
+  results: StockImageResult[],
+  usedIds: Set<string>,
+): StockImageResult | null {
+  if (results.length === 0) return null;
+  return results.find((r) => !usedIds.has(r.id)) ?? results[0];
 }
 
 /** Fire-and-forget Unsplash download-tracking ping (API Guidelines require
@@ -233,6 +274,12 @@ export default function EditorReactClient({
    *  generation time so regenerate_slide (a separate code path) can honour
    *  the same choice without re-parsing searchParams. */
   const imageSourceRef = useRef<"ai" | "stock">("ai");
+  /** Stock-photo ids already used in this deck (across every slide), so the
+   *  same photo doesn't get reused for a different slot just because two
+   *  slots share a generic hint. Reset per deck generation; regenerate_slide
+   *  adds to the same set so a regenerated slide doesn't reintroduce a photo
+   *  already sitting on another slide. */
+  const usedStockPhotoIdsRef = useRef<Set<string>>(new Set());
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -821,6 +868,7 @@ export default function EditorReactClient({
   ): Promise<number> => {
     if (!token) return 0;
     imageSourceRef.current = imageSource;
+    usedStockPhotoIdsRef.current = new Set(); // fresh deck — start with no photos "used"
     // Resolve the theme FIRST and fetch its layout manifest — with the
     // manifest in the request body the worker switches to the slot-by-slot
     // contract (model fills NAMED slots under their authored budgets) instead
@@ -943,11 +991,17 @@ export default function EditorReactClient({
         applyAiGenerated();
         return;
       }
-      void fetchStockPhotoForHint(hint || `${subject} ${topic}`).then((result) => {
+      // For the search query specifically (unlike the AI prompt above),
+      // `subject` alone is a far better fallback than appending the entire
+      // raw deck topic — a whole paragraph as a search query reliably
+      // returns 0 results on Unsplash/Pixabay (verified empirically).
+      void fetchStockPhotosForHint(hint || subject).then((results) => {
+        const result = pickUnusedStockPhoto(results, usedStockPhotoIdsRef.current);
         if (!result) {
           applyAiGenerated();
           return;
         }
+        usedStockPhotoIdsRef.current.add(result.id);
         const patched = patchHeroImage(getUi(), marker, result.url, {
           credit: result.credit,
           credit_url: result.creditUrl ?? null,
@@ -1352,11 +1406,13 @@ export default function EditorReactClient({
           // generation time (imageSourceRef, set once per deck generation);
           // falls back to AI generation if the stock search comes up empty.
           if (imageSourceRef.current === "stock") {
-            void fetchStockPhotoForHint(imagePrompt).then((result) => {
+            void fetchStockPhotosForHint(imagePrompt).then((results) => {
+              const result = pickUnusedStockPhoto(results, usedStockPhotoIdsRef.current);
               if (!result) {
                 applyAiGenerated();
                 return;
               }
+              usedStockPhotoIdsRef.current.add(result.id);
               dispatch(updateSlideUi({
                 index: slideIndex,
                 ui: patchHeroImage(baseUi, marker, result.url, {

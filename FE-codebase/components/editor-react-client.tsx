@@ -54,6 +54,7 @@ import type { SlideData } from "@/store/presentationGeneration";
 import { adaptDeckToPresentation } from "@/components/editor-react/deck-adapt";
 import { useSessionStore } from "@/store/session.store";
 import { getDeck, saveDeck, streamAipptDeck, fetchThemeManifest, chooseThemeForTopic, generateImage, type AgentAction } from "@/lib/api";
+import type { StockImageResult } from "@/lib/stock-image-providers";
 import {
   DEFAULT_THEME_ID,
   invalidateThemeCache,
@@ -179,6 +180,35 @@ function isBlankTemplateUi(ui: unknown): boolean {
   return components.length === 0 && elements.length === 0;
 }
 
+/** Top result for a stock-photo search, for the homepage's "Stock photos"
+ *  image-source mode. Same-origin fetch to this app's own route — the
+ *  provider keys live server-side in lib/stock-image-providers.ts and are
+ *  never reachable from client code directly. Never throws: returns null on
+ *  any failure or empty result so callers fall back to AI generation. */
+async function fetchStockPhotoForHint(hint: string): Promise<StockImageResult | null> {
+  const query = hint.trim();
+  if (!query) return null;
+  try {
+    const res = await fetch(`/api/stock-images/search?query=${encodeURIComponent(query)}&per_page=1`);
+    if (!res.ok) return null;
+    const data = (await res.json()) as { results?: StockImageResult[] };
+    return data.results?.[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Fire-and-forget Unsplash download-tracking ping (API Guidelines require
+ *  this once a photo is actually applied, not just previewed). */
+function trackStockPhotoDownload(result: StockImageResult): void {
+  if (result.provider !== "unsplash" || !result.downloadLocation) return;
+  void fetch("/api/stock-images/track-download", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ downloadLocation: result.downloadLocation }),
+  }).catch(() => {});
+}
+
 export default function EditorReactClient({
   deckId,
   templateMode = false,
@@ -199,6 +229,10 @@ export default function EditorReactClient({
   const token = useSessionStore((s) => s.token);
   const searchParams = useSearchParams();
   const autoGenerateRan = useRef(false);
+  /** The homepage's "Stock photos" toggle (?images=stock), captured once at
+   *  generation time so regenerate_slide (a separate code path) can honour
+   *  the same choice without re-parsing searchParams. */
+  const imageSourceRef = useRef<"ai" | "stock">("ai");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -239,6 +273,8 @@ export default function EditorReactClient({
     withReview?: boolean;
     /** Per-section provider choices from the homepage, carried into retry. */
     providers?: { verify?: string | null; repair?: string | null };
+    /** Homepage image-source toggle, carried into retry. */
+    imageSource?: "ai" | "stock";
   } | null>(null);
   const [presenting, setPresenting] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -781,8 +817,10 @@ export default function EditorReactClient({
     model?: string,
     withReview = true,
     providers?: { verify?: string | null; repair?: string | null },
+    imageSource: "ai" | "stock" = "ai",
   ): Promise<number> => {
     if (!token) return 0;
+    imageSourceRef.current = imageSource;
     // Resolve the theme FIRST and fetch its layout manifest — with the
     // manifest in the request body the worker switches to the slot-by-slot
     // contract (model fills NAMED slots under their authored budgets) instead
@@ -887,11 +925,37 @@ export default function EditorReactClient({
       const prompt = hint
         ? `${hint}. ${heroStyle}`
         : `${subject} — related to ${topic}. ${heroStyle}`;
-      void generateImage(currentToken, prompt).then((dataUrl) => {
-        if (!dataUrl) return;
-        const patched = patchHeroImage(getUi(), marker, dataUrl) as Record<string, unknown>;
+
+      const applyAiGenerated = () => {
+        void generateImage(currentToken, prompt).then((dataUrl) => {
+          if (!dataUrl) return;
+          const patched = patchHeroImage(getUi(), marker, dataUrl) as Record<string, unknown>;
+          setUi(patched);
+          dispatch(updateSlideUi({ index, ui: patched }));
+        });
+      };
+
+      // "Stock photos" mode: search first, using the same hint that would
+      // otherwise become the AI prompt. Empty/failed search falls back to AI
+      // generation — a slot must never end up unfilled just because the
+      // stock search had no match.
+      if (imageSource !== "stock") {
+        applyAiGenerated();
+        return;
+      }
+      void fetchStockPhotoForHint(hint || `${subject} ${topic}`).then((result) => {
+        if (!result) {
+          applyAiGenerated();
+          return;
+        }
+        const patched = patchHeroImage(getUi(), marker, result.url, {
+          credit: result.credit,
+          credit_url: result.creditUrl ?? null,
+          source_url: result.sourceUrl,
+        }) as Record<string, unknown>;
         setUi(patched);
         dispatch(updateSlideUi({ index, ui: patched }));
+        trackStockPhotoDownload(result);
       });
     };
 
@@ -1116,6 +1180,8 @@ export default function EditorReactClient({
   // the homepage toggle and skips the post-generation Kimi visual review.
   // ?gen= / ?verify= / ?repair= carry the per-section provider choices from
   // the homepage dropdowns; absent = the server applies its default.
+  // ?images=stock switches photo slots from AI generation to stock-photo
+  // search (falls back to AI per-slot if a search comes up empty).
   useEffect(() => {
     if (autoGenerateRan.current || loading || !token) return;
     const prompt = searchParams.get("prompt");
@@ -1126,7 +1192,8 @@ export default function EditorReactClient({
     const verifyProvider = searchParams.get("verify") ?? null;
     const repairProvider = searchParams.get("repair") ?? null;
     const withReview = searchParams.get("review") !== "off";
-    runGeneration(prompt, language, genProvider, withReview, { verify: verifyProvider, repair: repairProvider });
+    const imageSource = searchParams.get("images") === "stock" ? "stock" : "ai";
+    runGeneration(prompt, language, genProvider, withReview, { verify: verifyProvider, repair: repairProvider }, imageSource);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, token, searchParams]);
 
@@ -1139,11 +1206,12 @@ export default function EditorReactClient({
     model?: string,
     withReview = true,
     providers?: { verify?: string | null; repair?: string | null },
+    imageSource: "ai" | "stock" = "ai",
   ) => {
     setGenerationError(null);
     setGenerationStatus(null);
     setIsGenerating(true);
-    generateDeckFromTopic(topic, language, model, withReview, providers)
+    generateDeckFromTopic(topic, language, model, withReview, providers, imageSource)
       .catch((e) => {
         setGenerationError({
           message: e instanceof Error ? e.message : "Something went wrong while generating your deck.",
@@ -1151,6 +1219,7 @@ export default function EditorReactClient({
           language,
           withReview,
           providers,
+          imageSource,
         });
       })
       .finally(() => {
@@ -1167,6 +1236,7 @@ export default function EditorReactClient({
       undefined,
       generationError.withReview,
       generationError.providers,
+      generationError.imageSource,
     );
   };
 
@@ -1269,11 +1339,37 @@ export default function EditorReactClient({
           const marker = filled.heroImage;
           const baseUi = filled.ui;
           const imagePrompt = String(action.args.image_prompt || title);
-          const prompt = `${imagePrompt}. editorial photograph, cinematic natural lighting, cohesive color grading, no text, no watermark, no logo`;
-          void generateImage(token, prompt).then((dataUrl) => {
-            if (!dataUrl) return;
-            dispatch(updateSlideUi({ index: slideIndex, ui: patchHeroImage(baseUi, marker, dataUrl) }));
-          });
+
+          const applyAiGenerated = () => {
+            const prompt = `${imagePrompt}. editorial photograph, cinematic natural lighting, cohesive color grading, no text, no watermark, no logo`;
+            void generateImage(token, prompt).then((dataUrl) => {
+              if (!dataUrl) return;
+              dispatch(updateSlideUi({ index: slideIndex, ui: patchHeroImage(baseUi, marker, dataUrl) }));
+            });
+          };
+
+          // Honours the same homepage image-source toggle used at
+          // generation time (imageSourceRef, set once per deck generation);
+          // falls back to AI generation if the stock search comes up empty.
+          if (imageSourceRef.current === "stock") {
+            void fetchStockPhotoForHint(imagePrompt).then((result) => {
+              if (!result) {
+                applyAiGenerated();
+                return;
+              }
+              dispatch(updateSlideUi({
+                index: slideIndex,
+                ui: patchHeroImage(baseUi, marker, result.url, {
+                  credit: result.credit,
+                  credit_url: result.creditUrl ?? null,
+                  source_url: result.sourceUrl,
+                }),
+              }));
+              trackStockPhotoDownload(result);
+            });
+          } else {
+            applyAiGenerated();
+          }
         }
 
         return `Updated slide ${slideIndex}: "${title}"${filled.heroImage ? " (generating a new hero image…)" : ""}.`;

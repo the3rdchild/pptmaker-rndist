@@ -22,6 +22,7 @@ import {
   Repeat2,
   Search,
   Settings,
+  Trash2,
   Underline,
   Upload,
   XCircle,
@@ -731,6 +732,7 @@ function FontFamilyPicker({
     GoogleFontOption[] | null
   >(null);
   const [uploadingFont, setUploadingFont] = useState(false);
+  const [deletingFont, setDeletingFont] = useState(false);
   const fontFileInputRef = useRef<HTMLInputElement | null>(null);
   const [activeSource, setActiveSource] = useState<FontPickerSource>(() =>
     templateFonts.some(({ family }) => family === selectedFamily)
@@ -875,6 +877,56 @@ function FontFamilyPicker({
       setUploadingFont(false);
     }
   };
+
+  const handleDeleteFamily = async (family: string) => {
+    if (!themeId) return;
+    const confirmed = window.confirm(
+      `Delete font "${family}"? Text using it will fall back to the default font.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingFont(true);
+    try {
+      const res = await fetch("/api/template-engine/fonts", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ themeId, family }),
+      });
+      const data = (await res.json()) as {
+        ok?: boolean;
+        removedUrl?: string | null;
+        error?: string;
+      };
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || `Delete failed (${res.status})`);
+      }
+
+      // Mirror the upload merge in reverse: drop the family from the in-memory
+      // map so the canvas stops loading it. Server-side unregisterThemeFont
+      // already persisted the change to template.json for next session.
+      if (presentationData) {
+        const currentFonts =
+          (presentationData.fonts as Record<string, string> | null) ?? {};
+        const nextFonts = { ...currentFonts };
+        delete nextFonts[family];
+        dispatch(
+          setPresentationData({
+            ...presentationData,
+            fonts: nextFonts,
+          }),
+        );
+      }
+      notify.success("Font deleted", `${family} was removed from this theme.`);
+    } catch (error) {
+      notify.error(
+        "Font delete failed",
+        error instanceof Error ? error.message : "Please try again.",
+      );
+    } finally {
+      setDeletingFont(false);
+    }
+  };
+
   const resolvedGoogleFonts = loadedGoogleFonts ?? googleFonts;
   const templateFontFamilySet = useMemo(
     () => new Set(templateFonts.map(({ family }) => family)),
@@ -1012,6 +1064,9 @@ function FontFamilyPicker({
             selectedFamily={selectedFamily}
             onSelect={selectFamily}
             onSwap={swapFontSource}
+            deletableFamilies={themeId ? templateFontFamilySet : undefined}
+            deletingFamily={deletingFont}
+            onDeleteFamily={themeId ? handleDeleteFamily : undefined}
           />
           {themeId ? (
             <>
@@ -1061,12 +1116,20 @@ function FontMenuSection({
   selectedFamily,
   onSelect,
   onSwap,
+  deletableFamilies,
+  deletingFamily,
+  onDeleteFamily,
 }: {
   title: string;
   families: string[];
   selectedFamily: string;
   onSelect: (family: string) => void;
   onSwap: () => void;
+  /** Families that may be deleted (template-engine uploaded fonts only).
+   *  Undefined hides the trash affordance entirely (Google Fonts, deck-editor). */
+  deletableFamilies?: Set<string>;
+  deletingFamily?: boolean;
+  onDeleteFamily?: (family: string) => void;
 }) {
   const optionsRef = useRef<HTMLDivElement | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -1125,10 +1188,12 @@ function FontMenuSection({
             {virtualFamilies.map((family, offset) => {
               const familyIndex = firstVisibleIndex + offset;
               const selected = family === selectedFamily;
+              const canDelete = Boolean(
+                deletableFamilies?.has(family) && onDeleteFamily,
+              );
               return (
-                <button
+                <div
                   key={family}
-                  type="button"
                   role="option"
                   aria-selected={selected}
                   title={family}
@@ -1136,6 +1201,9 @@ function FontMenuSection({
                     ...textToolbarStyles.fontMenuOption,
                     ...textToolbarStyles.fontMenuOptionVirtual,
                     top: familyIndex * FONT_MENU_OPTION_HEIGHT,
+                    gridTemplateColumns: canDelete
+                      ? "22px minmax(0, 1fr) 24px 22px"
+                      : undefined,
                     ...(selected
                       ? textToolbarStyles.fontMenuOptionSelected
                       : {}),
@@ -1152,7 +1220,37 @@ function FontMenuSection({
                     {family}
                   </span>
                   <span style={textToolbarStyles.fontMenuSample}>Aa</span>
-                </button>
+                  {canDelete ? (
+                    <button
+                      type="button"
+                      aria-label={`Delete font ${family}`}
+                      title={
+                        deletingFamily ? "Deleting…" : `Delete font ${family}`
+                      }
+                      disabled={deletingFamily}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDeleteFamily?.(family);
+                      }}
+                      style={{
+                        width: 22,
+                        minWidth: 22,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        margin: 0,
+                        padding: 0,
+                        border: 0,
+                        background: "transparent",
+                        color: "#9B9CA3",
+                        cursor: deletingFamily ? "progress" : "pointer",
+                      }}
+                      onMouseDown={(event) => event.stopPropagation()}
+                    >
+                      <Trash2 size={13} strokeWidth={2} aria-hidden="true" />
+                    </button>
+                  ) : null}
+                </div>
               );
             })}
           </div>

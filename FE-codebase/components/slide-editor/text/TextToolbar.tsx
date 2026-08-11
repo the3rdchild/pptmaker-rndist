@@ -23,6 +23,7 @@ import {
   Search,
   Settings,
   Underline,
+  Upload,
   XCircle,
 } from "lucide-react";
 import type { TextSlideElement } from "@/components/slide-editor/state/state";
@@ -62,6 +63,10 @@ import {
   preventInvalidNumberInput,
   sanitizeNumericInput,
 } from "@/components/slide-editor/toolbar/numericInput";
+import { notify } from "@/components/ui/sonner";
+import { useDispatch, useSelector } from "react-redux";
+import type { RootState } from "@/store/store";
+import { setPresentationData } from "@/store/slices/presentationGeneration";
 
 const EMPTY_TEMPLATE_FONTS: TemplateFontOption[] = [];
 
@@ -132,6 +137,7 @@ export function TextToolbar({
   listMarker,
   selectionRange,
   templateFonts = EMPTY_TEMPLATE_FONTS,
+  themeId = null,
   onChange,
   onListMarkerChange,
 }: {
@@ -148,6 +154,7 @@ export function TextToolbar({
   listMarker?: Marker | null;
   selectionRange?: TextSelectionRange | null;
   templateFonts?: TemplateFontOption[];
+  themeId?: string | null;
   onChange: (index: number, element: TextSlideElement) => void;
   onListMarkerChange?: (marker: Marker) => void;
 }) {
@@ -420,6 +427,7 @@ export function TextToolbar({
             selectedFamily={font.family}
             templateFonts={templateFonts}
             googleFonts={GOOGLE_FONT_OPTIONS}
+            themeId={themeId}
             onSelect={updateFontFamily}
           />
           <Divider />
@@ -703,19 +711,27 @@ function FontFamilyPicker({
   selectedFamily,
   templateFonts,
   googleFonts,
+  themeId,
   onSelect,
 }: {
   selectedFamily: string;
   templateFonts: TemplateFontOption[];
   googleFonts: GoogleFontOption[];
+  themeId?: string | null;
   onSelect: (family: string) => void;
 }) {
+  const dispatch = useDispatch();
+  const presentationData = useSelector(
+    (state: RootState) => state.presentationGeneration.presentationData,
+  );
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(selectedFamily);
   const [searching, setSearching] = useState(false);
   const [loadedGoogleFonts, setLoadedGoogleFonts] = useState<
     GoogleFontOption[] | null
   >(null);
+  const [uploadingFont, setUploadingFont] = useState(false);
+  const fontFileInputRef = useRef<HTMLInputElement | null>(null);
   const [activeSource, setActiveSource] = useState<FontPickerSource>(() =>
     templateFonts.some(({ family }) => family === selectedFamily)
       ? "template"
@@ -785,6 +801,79 @@ function FontFamilyPicker({
   const selectFamily = (family: string) => {
     onSelect(family);
     setOpen(false);
+  };
+
+  const handleFontFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !themeId) return;
+
+    // The family name is what links the uploaded file to text elements that
+    // already reference it (e.g. "Pagkaki Full" carried in from a .pptx). The
+    // server doesn't parse the font's internal name — the uploader owns the
+    // exact string. Default to the file name minus extension, but prompt so a
+    // Pagkaki upload can target "Pagkaki Full" specifically.
+    const defaultFamily = file.name.replace(/\.[^.]+$/, "");
+    const family = window
+      .prompt(
+        "Font family name — must EXACTLY match the name your deck uses:",
+        defaultFamily,
+      )
+      ?.trim();
+    if (!family) return;
+
+    setUploadingFont(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result;
+          if (typeof result === "string") resolve(result);
+          else reject(new Error("Could not read font file"));
+        };
+        reader.onerror = () => reject(new Error("Could not read font file"));
+        reader.readAsDataURL(file);
+      });
+
+      const res = await fetch("/api/template-engine/fonts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ themeId, family, data: dataUrl }),
+      });
+      const data = (await res.json()) as {
+        ok?: boolean;
+        url?: string;
+        error?: string;
+      };
+      if (!res.ok || !data.ok || !data.url) {
+        throw new Error(data.error || `Upload failed (${res.status})`);
+      }
+
+      // Update Redux presentationData.fonts so ensureTemplateFontLoaded picks
+      // the new font up immediately on the canvas — server-side registration
+      // persists it to template.json for the next session, but the in-memory
+      // map is what the live renderer reads.
+      if (presentationData) {
+        const currentFonts =
+          (presentationData.fonts as Record<string, string> | null) ?? {};
+        dispatch(
+          setPresentationData({
+            ...presentationData,
+            fonts: { ...currentFonts, [family]: data.url },
+          }),
+        );
+      }
+      notify.success("Font uploaded", `${family} is now available in this theme.`);
+      onSelect(family);
+      setOpen(false);
+    } catch (error) {
+      notify.error(
+        "Font upload failed",
+        error instanceof Error ? error.message : "Please try again.",
+      );
+    } finally {
+      setUploadingFont(false);
+    }
   };
   const resolvedGoogleFonts = loadedGoogleFonts ?? googleFonts;
   const templateFontFamilySet = useMemo(
@@ -924,6 +1013,42 @@ function FontFamilyPicker({
             onSelect={selectFamily}
             onSwap={swapFontSource}
           />
+          {themeId ? (
+            <>
+              <div aria-hidden="true" style={textToolbarStyles.fontMenuDivider} />
+              <button
+                type="button"
+                title="Upload a font file (woff2/woff/ttf/otf)"
+                disabled={uploadingFont}
+                onClick={() => fontFileInputRef.current?.click()}
+                style={{
+                  display: "flex",
+                  width: "100%",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "8px 12px",
+                  background: "transparent",
+                  border: 0,
+                  cursor: uploadingFont ? "progress" : "pointer",
+                  fontSize: 12,
+                  color: "#191919",
+                  textAlign: "left",
+                }}
+              >
+                <Upload size={14} strokeWidth={2} aria-hidden="true" />
+                <span>
+                  {uploadingFont ? "Uploading…" : "Upload font…"}
+                </span>
+              </button>
+              <input
+                ref={fontFileInputRef}
+                type="file"
+                accept=".woff2,.woff,.ttf,.otf,application/font-woff2,application/font-woff,application/x-font-ttf,application/x-font-otf,font/woff2,font/woff,font/ttf,font/otf"
+                onChange={handleFontFileChange}
+                style={{ display: "none" }}
+              />
+            </>
+          ) : null}
         </FloatingToolbarPanel>
       ) : null}
     </div>

@@ -1890,6 +1890,7 @@ export default function EditorReactClient({
                 presentationId={deckId}
                 slideIndex={safeActive}
                 fonts={presentationData?.fonts}
+                themeId={templateMode ? templateThemeId : null}
                 onTemplateSelection={
                   templateMode ? handleTemplateSelection : undefined
                 }

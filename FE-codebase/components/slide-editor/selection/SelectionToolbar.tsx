@@ -44,6 +44,9 @@ type TemplateV2SelectionToolbarProps = {
   tableTarget: TemplateV2TableSelectionToolbarTarget | null;
   targetComponentActions: TemplateV2SelectionComponentActions | null;
   templateFonts?: TemplateFontOption[];
+  /** Template-engine theme id for font upload scoping, or null in deck-editor
+   *  where the Upload-font button is hidden. */
+  themeId?: string | null;
   toolbarBounds: TemplateV2ToolbarViewportBounds | null;
   onChartChange: (element: ChartSlideElement) => void;
   onChartEdit: () => void;
@@ -75,6 +78,7 @@ export function TemplateV2SelectionToolbar({
   tableTarget,
   targetComponentActions,
   templateFonts,
+  themeId,
   toolbarBounds,
   onChartChange,
   onChartEdit,
@@ -113,6 +117,7 @@ export function TemplateV2SelectionToolbar({
         componentActions={componentActions}
         selectedTableCell={null}
         templateFonts={templateFonts}
+        themeId={themeId}
         onChange={(_index, element) => onEditorChange(element)}
         onEditImage={() => undefined}
         onFillFromStock={() => undefined}

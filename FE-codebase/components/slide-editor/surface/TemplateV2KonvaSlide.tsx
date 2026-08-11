@@ -276,6 +276,9 @@ type TemplateV2KonvaSlideProps = {
   slideIndex: number;
   renderIndex?: number;
   fonts?: unknown;
+  /** Active template-engine theme id (the S3 scope font uploads land under),
+   *  or null in deck-editor mode where font upload is hidden. */
+  themeId?: string | null;
   /** Exposes the underlying Konva Stage so a caller can rasterize it (e.g.
    * PDF export's stage.toDataURL()) without the component otherwise needing
    * to know its consumer cares about that. */
@@ -306,6 +309,7 @@ function TemplateV2KonvaSlideComponent({
   slideIndex,
   renderIndex,
   fonts,
+  themeId,
   stageRef,
   onTemplateSelection,
 }: TemplateV2KonvaSlideProps) {
@@ -2685,6 +2689,7 @@ function TemplateV2KonvaSlideComponent({
         tableTarget={tableToolbarTarget}
         targetComponentActions={targetComponentActions}
         templateFonts={templateFonts}
+        themeId={themeId}
         toolbarBounds={selectionToolbarBounds}
         onChartChange={applyChartToolbarElementChange}
         onChartEdit={() => {
@@ -2740,6 +2745,7 @@ function TemplateV2KonvaSlideComponent({
           scale={1}
           selectedTableCell={selectedTableCell}
           templateFonts={templateFonts}
+          themeId={themeId}
           textSelectionRange={
             inlineEdit &&
               (inlineEdit.kind === "text" || inlineEdit.kind === "text-list") &&

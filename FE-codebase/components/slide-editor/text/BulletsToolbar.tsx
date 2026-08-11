@@ -17,6 +17,7 @@ export function BulletsToolbar({
   componentActions,
   selectionRange,
   templateFonts,
+  themeId,
   onChange,
 }: {
   element: BulletsSlideElement;
@@ -31,6 +32,7 @@ export function BulletsToolbar({
   componentActions?: ComponentActionsMenuActions | null;
   selectionRange?: TextSelectionRange | null;
   templateFonts?: TemplateFontOption[];
+  themeId?: string | null;
   onChange: (index: number, element: BulletsSlideElement) => void;
 }) {
   const marker = readMarker(element.marker);
@@ -71,6 +73,7 @@ export function BulletsToolbar({
       listMarker={marker}
       selectionRange={selectionRange}
       templateFonts={templateFonts}
+      themeId={themeId}
       onChange={updateTextElement}
       onListMarkerChange={updateMarker}
     />

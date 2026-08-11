@@ -33,6 +33,8 @@ type ElementToolbarProps = {
   onEditImage: (index: number, path?: string) => void;
   onFillFromStock: (index: number, path?: string) => void;
   onEditText?: (index: number, path?: string) => void;
+  /** Template-engine theme id (font upload scope), or null in deck-editor. */
+  themeId?: string | null;
 };
 
 type ToolbarRenderer = (props: ElementToolbarProps) => ReactNode;
@@ -49,6 +51,7 @@ const TOOLBAR_RENDERERS: Partial<
     scale,
     componentActions,
     templateFonts,
+    themeId,
     textSelectionRange,
   }) =>
     element.type === "text" ? (
@@ -60,6 +63,7 @@ const TOOLBAR_RENDERERS: Partial<
         componentActions={componentActions}
         selectionRange={textSelectionRange}
         templateFonts={templateFonts}
+        themeId={themeId}
         onChange={(index, element) => onChange(index, element, path)}
       />
     ) : null,
@@ -72,6 +76,7 @@ const TOOLBAR_RENDERERS: Partial<
     scale,
     componentActions,
     templateFonts,
+    themeId,
     textSelectionRange,
   }) =>
     element.type === "text-list" ? (
@@ -83,6 +88,7 @@ const TOOLBAR_RENDERERS: Partial<
         componentActions={componentActions}
         selectionRange={textSelectionRange}
         templateFonts={templateFonts}
+        themeId={themeId}
         onChange={(index, element) => onChange(index, element, path)}
       />
     ) : null,

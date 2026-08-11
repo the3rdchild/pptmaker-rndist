@@ -34,9 +34,11 @@ export async function GET(req: NextRequest) {
   }
 
   const page = Math.max(1, Number(searchParams.get("page") ?? 1) || 1);
+  // Pixabay rejects per_page < 3; clamp the floor there so the endpoint is
+  // robust on its own, not just because the UI always sends 24.
   const perPage = Math.min(
     48,
-    Math.max(1, Number(searchParams.get("per_page") ?? 24) || 24),
+    Math.max(3, Number(searchParams.get("per_page") ?? 24) || 24),
   );
 
   try {

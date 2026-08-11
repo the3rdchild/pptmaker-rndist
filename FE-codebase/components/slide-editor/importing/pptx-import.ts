@@ -584,7 +584,52 @@ async function buildGroup(
     elements.push(...built.elements);
     skipped += built.skipped;
   }
+
+  // A group's own rotation applies to everything inside it — Canva exports
+  // tilted photos as a rotated group around an unrotated frame + picture, so
+  // dropping this made every such image import straight. Rotate each child's
+  // centre around the group's centre and compose the angle with the child's
+  // own rotation. (Group flips are similarly unhandled, but rare enough to
+  // leave until one shows up in the wild.)
+  const groupRot = readAttrNumber(xfrm, "@_rot");
+  if (groupRot) {
+    const degrees = (((groupRot / 60000) % 360) + 360) % 360;
+    if (degrees !== 0) {
+      const centreX = emuToPx(offX + extCx / 2, ctx.deck.geo, parentTransform, "x");
+      const centreY = emuToPx(offY + extCy / 2, ctx.deck.geo, parentTransform, "y");
+      for (const element of elements) {
+        rotateBuiltElement(element, centreX, centreY, degrees);
+      }
+    }
+  }
+
   return { elements, skipped };
+}
+
+/** Rotates one built element around (cx, cy) in canvas px, composing the
+ *  angle with any rotation the element already carries. pptx `rot` and Konva
+ *  share the same convention — clockwise-positive degrees around the centre —
+ *  so the composition is plain addition. */
+function rotateBuiltElement(
+  built: BuiltElement,
+  cx: number,
+  cy: number,
+  degrees: number,
+): void {
+  const radians = (degrees * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const dx = built.box.x + built.box.width / 2 - cx;
+  const dy = built.box.y + built.box.height / 2 - cy;
+  built.box = {
+    ...built.box,
+    x: cx + dx * cos - dy * sin - built.box.width / 2,
+    y: cy + dx * sin + dy * cos - built.box.height / 2,
+  };
+  const own = typeof built.el.rotation === "number" ? built.el.rotation : 0;
+  const next = (((own + degrees) % 360) + 360) % 360;
+  if (next === 0) delete built.el.rotation;
+  else built.el.rotation = next;
 }
 
 function emuToPx(emu: number, geo: GeoContext, transform: NodeTransform, axis: "x" | "y"): number {

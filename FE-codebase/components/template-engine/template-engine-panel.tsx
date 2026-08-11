@@ -756,6 +756,14 @@ export function TemplateEnginePanel({
         if (result.skippedShapeCount > 0) {
           notes.push(`${result.skippedShapeCount} chart/table shape${result.skippedShapeCount === 1 ? "" : "s"} skipped`);
         }
+        if (result.fontSubstitutions.length > 0) {
+          const list = result.fontSubstitutions
+            .map((sub) => `${sub.original}→${sub.substitute}`)
+            .join(", ");
+          notes.push(
+            `${result.fontSubstitutions.length} unresolved font${result.fontSubstitutions.length === 1 ? "" : "s"} substituted (${list})`,
+          );
+        }
         setImportNote(`${notes.join(" · ")}.`);
       } catch (error) {
         setImportError(

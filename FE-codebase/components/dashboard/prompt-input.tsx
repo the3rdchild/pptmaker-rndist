@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useSessionStore } from '@/store/session.store'
 import { createDeck, saveDeck } from '@/lib/api'
 import { Button } from '@/components/shared/button'
-import { importPptxFile } from '@/components/slide-editor/importing/pptx-import'
+import { importPptxFile, resolveUnresolvedFonts } from '@/components/slide-editor/importing/pptx-import'
 import { notify } from '@/components/ui/sonner'
 
 const LANGUAGES = ['Bahasa Indonesia', 'English', 'Español', '中文', '日本語']
@@ -162,15 +162,25 @@ export function PromptInput() {
 		setLocalError(null)
 		try {
 			const parsed = await importPptxFile(file)
-			const deck = await createDeck(token, { title: parsed.title })
+			const resolved = await resolveUnresolvedFonts(parsed)
+			const deck = await createDeck(token, { title: resolved.title })
 			await saveDeck(token, deck.id, {
-				title: parsed.title,
-				payload: { title: parsed.title, slides: parsed.slides },
+				title: resolved.title,
+				payload: { title: resolved.title, slides: resolved.slides },
 			} as unknown as Parameters<typeof saveDeck>[2])
-			if (parsed.skippedShapeCount > 0) {
+			if (resolved.skippedShapeCount > 0) {
 				notify.info(
 					'Sebagian elemen dilewati',
-					`${parsed.skippedShapeCount} elemen (chart/tabel/grafik kompleks) belum didukung dan tidak ikut ter-import.`,
+					`${resolved.skippedShapeCount} elemen (chart/tabel/grafik kompleks) belum didukung dan tidak ikut ter-import.`,
+				)
+			}
+			if (resolved.fontSubstitutions.length > 0) {
+				const list = resolved.fontSubstitutions
+					.map((sub) => `${sub.original} → ${sub.substitute}`)
+					.join(', ')
+				notify.info(
+					'Font tidak tersedia diganti dengan font serupa',
+					`${resolved.fontSubstitutions.length} font tidak tersedia diganti dengan Google Font terdekat: ${list}.`,
 				)
 			}
 			router.push(`/editor-react/${deck.id}`)

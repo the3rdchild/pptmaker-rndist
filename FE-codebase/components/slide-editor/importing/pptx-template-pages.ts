@@ -10,7 +10,11 @@
 // deck makes to the same file (a Canva export tiles one pattern image across
 // every slide) onto a single asset.
 
-import { importPptxFile } from "@/components/slide-editor/importing/pptx-import";
+import {
+  importPptxFile,
+  resolveUnresolvedFonts,
+  type FontSubstitution,
+} from "@/components/slide-editor/importing/pptx-import";
 
 type Rec = Record<string, unknown>;
 
@@ -24,6 +28,9 @@ export type TemplatePagesImport = {
   /** Images that could not be stored; those elements keep their inline data so
    *  the page still renders, and the author is told which ones. */
   failedAssetCount: number;
+  /** Font names from the source that the renderer cannot resolve and were
+   *  rewritten to a similar Google Font. Empty in the common case. */
+  fontSubstitutions: FontSubstitution[];
 };
 
 export type TemplateImportProgress = {
@@ -92,7 +99,10 @@ export async function importPptxAsTemplatePages(
   onProgress?: (progress: TemplateImportProgress) => void,
 ): Promise<TemplatePagesImport> {
   onProgress?.({ stage: "parsing", done: 0, total: 0 });
-  const deck = await importPptxFile(file);
+  const parsed = await importPptxFile(file);
+  // Resolve unresolved fonts BEFORE extracting image data URLs so the rewrite
+  // applies to the same tree the pages are built from.
+  const deck = await resolveUnresolvedFonts(parsed);
 
   const dataUrls = new Set<string>();
   deck.slides.forEach((slide) => collectDataUrls(slide.ui, dataUrls));
@@ -141,5 +151,6 @@ export async function importPptxAsTemplatePages(
     reusedAssetCount,
     skippedShapeCount: deck.skippedShapeCount,
     failedAssetCount,
+    fontSubstitutions: deck.fontSubstitutions,
   };
 }

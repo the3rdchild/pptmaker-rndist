@@ -35,3 +35,16 @@ export function proxyAssetUrls(json: string): string {
   if (!base || !assetProxyEnabled()) return json;
   return json.replaceAll(`"${base}/`, `"${ASSET_PROXY_PREFIX}/`);
 }
+
+/** Single-URL counterpart to proxyAssetUrls, for routes that hand back one
+ *  freshly-written URL directly in a response body rather than through a
+ *  template.json read (which already goes through proxyAssetUrls). Without
+ *  this, a client that uses the raw response URL immediately — e.g. merging
+ *  it into live state right after an upload, instead of re-reading the theme
+ *  — bypasses the rewrite entirely and gets a URL the browser cannot load
+ *  cross-origin from an uncorsed bucket. */
+export function proxyAssetUrl(url: string): string {
+  const base = (process.env.CDN_PUBLIC_URL ?? "").replace(/\/+$/, "");
+  if (!base || !assetProxyEnabled() || !url.startsWith(`${base}/`)) return url;
+  return `${ASSET_PROXY_PREFIX}/${url.slice(base.length + 1)}`;
+}

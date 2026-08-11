@@ -14,6 +14,7 @@
 
 import { NextResponse } from "next/server";
 
+import { proxyAssetUrl } from "@/lib/storage/asset-proxy";
 import { templateWritesBlocked } from "@/lib/templates/server/guard";
 import {
   assetExtensionFor,
@@ -101,11 +102,19 @@ export async function POST(request: Request) {
 
   try {
     const saved = await saveThemeFont({ themeId, bytes, extension });
+    // template.json keeps the raw CDN URL (documented contract of
+    // proxyAssetUrl/proxyAssetUrls — storage never changes so the proxy flag
+    // can be flipped without a migration). Only the response the client acts
+    // on immediately gets the proxy form: a reload picks up the proxied URL
+    // via the template.json GET path, but the in-session Redux merge this
+    // response feeds has no such rewrite step of its own, and the raw CDN
+    // domain has no CORS policy — an unproxied font URL loads a @font-face
+    // that the browser silently refuses to fetch cross-origin.
     await registerThemeFont(themeId, family, saved.url);
     return NextResponse.json({
       ok: true,
       family,
-      url: saved.url,
+      url: proxyAssetUrl(saved.url),
       reused: saved.reused,
     });
   } catch (error) {
@@ -147,7 +156,11 @@ export async function DELETE(request: Request) {
         { status: 404 },
       );
     }
-    return NextResponse.json({ ok: true, family, removedUrl: result.removedUrl });
+    return NextResponse.json({
+      ok: true,
+      family,
+      removedUrl: proxyAssetUrl(result.removedUrl),
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unknown error" },

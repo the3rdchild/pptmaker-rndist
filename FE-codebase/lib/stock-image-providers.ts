@@ -71,6 +71,39 @@ export interface StockImageSearchResponse {
   total: number;
 }
 
+export interface StockImageSearchResult extends StockImageSearchResponse {
+  provider: StockImageProviderId;
+}
+
+/** Searches `preferredId` first (when it's configured), then falls through
+ *  every other configured provider in preset order, so one provider being
+ *  rate-limited or down doesn't take stock search out entirely when another
+ *  key is also configured (e.g. Unsplash's demo key caps at 50 req/hour —
+ *  common to blow through mid-deck-generation). Throws only when every
+ *  configured provider has failed. */
+export async function searchStockImagesWithFallback(
+  preferredId: StockImageProviderId | null,
+  query: string,
+  opts: StockImageSearchOptions,
+): Promise<StockImageSearchResult> {
+  const available = availableStockImageProviders();
+  const ordered = [
+    ...available.filter((p) => p.id === preferredId),
+    ...available.filter((p) => p.id !== preferredId),
+  ];
+  let lastError: unknown = null;
+  for (const preset of ordered) {
+    try {
+      const data = await searchStockImages(preset.id, query, opts);
+      return { provider: preset.id, ...data };
+    } catch (err) {
+      lastError = err;
+      console.error(`stock image search failed on ${preset.id}, trying next provider`, err);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("all stock image providers failed");
+}
+
 /** Searches a single provider and normalizes its response to StockImageResult.
  *  Throws on HTTP failure — the route handler maps that to a 502. */
 export async function searchStockImages(

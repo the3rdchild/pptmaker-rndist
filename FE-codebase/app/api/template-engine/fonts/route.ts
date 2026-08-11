@@ -30,12 +30,15 @@ export const dynamic = "force-dynamic";
 const MAX_FONT_BYTES = 8 * 1024 * 1024;
 const DATA_URL_PATTERN = /^data:([a-z0-9.+/-]+);base64,([\s\S]*)$/i;
 const FAMILY_NAME_MAX = 80;
+/** Same four formats assetExtensionFor()'s font entries accept — used only to
+ *  validate a client-supplied filename, never to widen what gets stored. */
+const FONT_FILENAME_PATTERN = /\.(woff2|woff|ttf|otf)$/i;
 
 export async function POST(request: Request) {
   const blocked = templateWritesBlocked("uploaded");
   if (blocked) return blocked;
 
-  let body: { themeId?: unknown; family?: unknown; data?: unknown };
+  let body: { themeId?: unknown; family?: unknown; data?: unknown; filename?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -66,7 +69,18 @@ export async function POST(request: Request) {
     );
   }
 
-  const extension = assetExtensionFor(match[1]);
+  // The browser's claimed MIME type isn't reliable for fonts — Windows in
+  // particular reports application/octet-stream for .ttf/.otf whenever the OS
+  // has no font association registered, which is common outside a font-editor
+  // install. Fall back to the uploaded filename's own extension in that case;
+  // still whitelist-only (FONT_FILENAME_PATTERN), so this only recovers a
+  // false negative, it never accepts a type the MIME path wouldn't otherwise.
+  let extension = assetExtensionFor(match[1]);
+  if (!extension) {
+    const filename = typeof body.filename === "string" ? body.filename : "";
+    const fromName = FONT_FILENAME_PATTERN.exec(filename)?.[1];
+    extension = fromName ? fromName.toLowerCase() : null;
+  }
   if (!extension) {
     return NextResponse.json(
       { error: `Unsupported font type: ${match[1]}` },

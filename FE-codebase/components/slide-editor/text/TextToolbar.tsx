@@ -840,7 +840,10 @@ function FontFamilyPicker({
       const res = await fetch("/api/template-engine/fonts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ themeId, family, data: dataUrl }),
+        // filename lets the server recover the extension when the browser's
+        // claimed MIME type is a generic application/octet-stream — common on
+        // Windows for .ttf/.otf when the OS has no font association.
+        body: JSON.stringify({ themeId, family, data: dataUrl, filename: file.name }),
       });
       const data = (await res.json()) as {
         ok?: boolean;

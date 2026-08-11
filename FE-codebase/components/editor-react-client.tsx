@@ -554,6 +554,13 @@ export default function EditorReactClient({
           payload: {
             title: presentationData.title ?? "Untitled",
             slides: presentationData.slides,
+            // The font map (theme typefaces + uploaded fonts) is part of the
+            // deck — dropping it here is what made uploaded/theme fonts
+            // vanish on reload. adaptDeckToPresentation already reads
+            // payload.fonts back; the write side was the missing half.
+            ...(presentationData.fonts
+              ? { fonts: presentationData.fonts }
+              : {}),
           },
         } as unknown as Parameters<typeof saveDeck>[2]);
         setSaveState("saved");

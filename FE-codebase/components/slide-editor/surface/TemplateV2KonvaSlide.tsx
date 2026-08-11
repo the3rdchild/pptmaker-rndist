@@ -66,6 +66,8 @@ import { bucketFileSize, sanitizeAnalyticsError } from "@/utils/analytics";
 import { MixpanelEvent, trackEvent } from "@/utils/mixpanel";
 import { ImagesApi } from "@/app/(presentation-generator)/services/api/images";
 import IconsEditor from "@/components/slide-editor/images/IconsEditor";
+import StockPhotoEditor from "@/components/slide-editor/images/StockPhotoEditor";
+import type { StockImageResult } from "@/lib/stock-image-providers";
 import {
   createTemplateV2ClipboardPayload,
   pasteTemplateV2ClipboardPayload,
@@ -357,6 +359,8 @@ function TemplateV2KonvaSlideComponent({
     keyForSelection,
   });
   const [iconEditorSelection, setIconEditorSelection] =
+    useState<ElementSelection | null>(null);
+  const [stockPhotoSelection, setStockPhotoSelection] =
     useState<ElementSelection | null>(null);
   const [chartEditorSelection, setChartEditorSelection] =
     useState<ElementSelection | null>(null);
@@ -659,6 +663,9 @@ function TemplateV2KonvaSlideComponent({
     : null;
   const iconEditorElement = iconEditorSelection
     ? getElementAtSelection(uiDraft, iconEditorSelection)
+    : null;
+  const stockPhotoImageElement = stockPhotoSelection
+    ? getElementAtSelection(uiDraft, stockPhotoSelection)
     : null;
   const chartEditorElement = chartEditorSelection
     ? getElementAtSelection(uiDraft, chartEditorSelection)
@@ -2090,6 +2097,19 @@ function TemplateV2KonvaSlideComponent({
     [activateSurface, clearInlineEdit],
   );
 
+  const openStockPhotoPicker = useCallback(
+    (elementSelection: ElementSelection) => {
+      const element = getElementAtSelection(currentUiRef.current, elementSelection);
+      if (readString(element?.type) !== "image") return;
+      activateSurface(elementSelection);
+      setSelection(elementSelection);
+      clearInlineEdit();
+      setIconEditorSelection(null);
+      setStockPhotoSelection(elementSelection);
+    },
+    [activateSurface, clearInlineEdit],
+  );
+
   const handleIconChange = useCallback(
     (newIconUrl: string, query?: string) => {
       if (!iconEditorSelection || !newIconUrl) return;
@@ -2105,6 +2125,37 @@ function TemplateV2KonvaSlideComponent({
       });
     },
     [editorAnalyticsProps, iconEditorSelection, updateElement],
+  );
+
+  const handleStockPhotoChange = useCallback(
+    (result: StockImageResult) => {
+      if (!stockPhotoSelection) return;
+      updateElement(stockPhotoSelection, (element) => ({
+        ...element,
+        data: result.url,
+        is_frame: true,
+        credit: result.credit,
+        credit_url: result.creditUrl ?? null,
+        source_url: result.sourceUrl,
+      }));
+      // Unsplash API Guidelines require apps to ping download_location when a
+      // photo is actually used. Fire-and-forget — the route handles the auth.
+      if (result.provider === "unsplash" && result.downloadLocation) {
+        void fetch("/api/stock-images/track-download", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            downloadLocation: result.downloadLocation,
+          }),
+        });
+      }
+      trackEvent(MixpanelEvent.Editor_Image_Replaced, {
+        ...editorAnalyticsProps({
+          source: `stock:${result.provider}`,
+        }),
+      });
+    },
+    [editorAnalyticsProps, stockPhotoSelection, updateElement],
   );
 
   const openChartEditor = useCallback(
@@ -2698,6 +2749,7 @@ function TemplateV2KonvaSlideComponent({
           }
           onChange={(_index, element) => applyToolbarElementChange(element)}
           onEditImage={() => openImageUpload(selection)}
+          onFillFromStock={() => openStockPhotoPicker(selection)}
           onEditText={() => openInlineEditor(selection)}
         />
       ) : null}
@@ -2767,6 +2819,21 @@ function TemplateV2KonvaSlideComponent({
           currentIconUrl={readString(iconEditorElement.data) ?? ""}
           onClose={() => setIconEditorSelection(null)}
           onIconChange={handleIconChange}
+        />
+      ) : null}
+      {isEditMode &&
+      stockPhotoSelection &&
+      stockPhotoImageElement &&
+      readString(stockPhotoImageElement.type) === "image" ? (
+        <StockPhotoEditor
+          key={keyForSelection(stockPhotoSelection)}
+          initialQuery={
+            readString(stockPhotoImageElement.slot?.hint) ||
+            readString(stockPhotoImageElement.name) ||
+            ""
+          }
+          onClose={() => setStockPhotoSelection(null)}
+          onPhotoChange={handleStockPhotoChange}
         />
       ) : null}
       {isUploadingImage ? (

@@ -6,6 +6,7 @@ import {
   FlipHorizontal2,
   FlipVertical2,
   Image as ImageIcon,
+  ImagePlus,
   RotateCcw,
   Scan,
   X,
@@ -253,6 +254,7 @@ export function ImageToolbar({
   scale,
   onChange,
   onUpload,
+  onFillFromStock,
 }: {
   anchorBox?: FloatingToolbarBox | null;
   element: ImageSlideElement;
@@ -260,6 +262,7 @@ export function ImageToolbar({
   scale: number;
   onChange: (index: number, element: ImageSlideElement) => void;
   onUpload: (index: number) => void;
+  onFillFromStock: (index: number) => void;
 }) {
   const [openPanel, setOpenPanel] = useState<ImagePanel>(null);
   const fit = element.fit ?? "contain";
@@ -537,6 +540,19 @@ export function ImageToolbar({
           className="rounded-[2px] border-0 bg-transparent p-1 text-[#05070A] hover:bg-[#F4F3FF]"
         >
           <ImageIcon size={16} strokeWidth={1.8} aria-hidden="true" />
+        </button>
+
+        <button
+          type="button"
+          title="Fill with stock photo"
+          aria-label="Fill with stock photo"
+          onClick={() => {
+            setOpenPanel(null);
+            onFillFromStock(index);
+          }}
+          className="rounded-[2px] border-0 bg-transparent p-1 text-[#05070A] hover:bg-[#F4F3FF]"
+        >
+          <ImagePlus size={16} strokeWidth={1.8} aria-hidden="true" />
         </button>
 
         <Divider />

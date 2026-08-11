@@ -115,6 +115,7 @@ export function TemplateV2SelectionToolbar({
         templateFonts={templateFonts}
         onChange={(_index, element) => onEditorChange(element)}
         onEditImage={() => undefined}
+        onFillFromStock={() => undefined}
       />
     );
   }

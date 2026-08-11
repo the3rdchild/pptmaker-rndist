@@ -31,6 +31,7 @@ type ElementToolbarProps = {
   textSelectionRange?: TextSelectionRange | null;
   onChange: (index: number, element: SlideElement, path?: string) => void;
   onEditImage: (index: number, path?: string) => void;
+  onFillFromStock: (index: number, path?: string) => void;
   onEditText?: (index: number, path?: string) => void;
 };
 
@@ -85,7 +86,7 @@ const TOOLBAR_RENDERERS: Partial<
         onChange={(index, element) => onChange(index, element, path)}
       />
     ) : null,
-  image: ({ anchorBox, element, index, onChange, onEditImage, path, scale }) =>
+  image: ({ anchorBox, element, index, onChange, onEditImage, onFillFromStock, path, scale }) =>
     element.type === "image" ? (
       <ImageToolbar
         element={element}
@@ -94,6 +95,7 @@ const TOOLBAR_RENDERERS: Partial<
         scale={scale}
         onChange={(index, element) => onChange(index, element, path)}
         onUpload={(index) => onEditImage(index, path)}
+        onFillFromStock={(index) => onFillFromStock(index, path)}
       />
     ) : null,
   rectangle: ({ anchorBox, componentActions, element, index, onChange, path, scale }) =>

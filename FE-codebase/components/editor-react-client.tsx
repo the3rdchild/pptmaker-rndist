@@ -477,6 +477,12 @@ export default function EditorReactClient({
         setPresentationData({
           id: "template-engine",
           title: requested ? requested.name : "Untitled template",
+          // Seed the theme's font map so uploaded fonts survive a reload —
+          // registerThemeFont persists bundle.fonts to template.json, and
+          // loadTheme surfaces it as requested.fonts, but without seeding it
+          // here presentationData.fonts stays undefined on every reopen and
+          // the canvas loses the font until the next in-session upload.
+          ...(requested?.fonts ? { fonts: requested.fonts } : {}),
           slides:
             pages.length > 0
               ? pages.map((ui) => ({ ui }))

@@ -1186,8 +1186,15 @@ export function findSecondaryImages(candidates: PhotoCandidate[], hero: HeroImag
 
 /** Deep-clones `ui` and swaps ONE photo slot's `data` for a generated image
  * URL/data-URL, using occurrenceIndex to pick out the right element among
- * same-named siblings. No-ops if the marker no longer matches anything. */
-export function patchHeroImage(ui: Rec, marker: HeroImageMarker, dataUrl: string): Rec {
+ * same-named siblings. No-ops if the marker no longer matches anything.
+ * `extra` optionally stamps attribution fields (stock-photo fills only —
+ * AI-generated images have no photographer/source to credit). */
+export function patchHeroImage(
+  ui: Rec,
+  marker: HeroImageMarker,
+  dataUrl: string,
+  extra?: Partial<Pick<Rec, "credit" | "credit_url" | "source_url">>,
+): Rec {
   const cloned = JSON.parse(JSON.stringify(ui)) as Rec;
   const components = (cloned.components as Rec[]) ?? [];
   const component = components.find((c) => c.id === marker.componentId);
@@ -1198,6 +1205,7 @@ export function patchHeroImage(ui: Rec, marker: HeroImageMarker, dataUrl: string
     if (el.type === "image" && el.name === marker.elementName) {
       if (seen === marker.occurrenceIndex) {
         el.data = dataUrl;
+        if (extra) Object.assign(el, extra);
         return true;
       }
       seen += 1;

@@ -745,13 +745,7 @@ async function buildShape(
   // so treating these as plain rectangles loses all the imagery in the deck.
   const picture = await imageFromBlipFill(asRecord(spPr?.["a:blipFill"]), ctx, box);
   if (picture) {
-    // is_frame marks it as an image CONTAINER (same as one dropped in from the
-    // Elements tab) rather than a flat picture, so the click-to-replace/crop
-    // toolchain and AI/stock-photo fill pick it up post-import.
-    elements.push({
-      el: withRotation({ ...picture, is_frame: true, ...shapeFlip(spPr) }, rotation),
-      box,
-    });
+    elements.push({ el: withRotation({ ...picture, ...shapeFlip(spPr) }, rotation), box });
   }
 
   const text = textElement(node, ctx, box);
@@ -806,10 +800,7 @@ async function buildPicture(
   if (!box) return null;
   const picture = await imageFromBlipFill(asRecord(node["p:blipFill"]), ctx, box);
   if (!picture) return null;
-  return {
-    el: withRotation({ ...picture, is_frame: true, ...shapeFlip(spPr) }, shapeRotation(spPr)),
-    box,
-  };
+  return { el: withRotation({ ...picture, ...shapeFlip(spPr) }, shapeRotation(spPr)), box };
 }
 
 function withRotation(el: Rec, rotation: number | null): Rec {

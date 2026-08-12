@@ -9,6 +9,7 @@ import {
   ImagePlus,
   RotateCcw,
   Scan,
+  Shapes,
   X,
 } from "lucide-react";
 import {
@@ -22,6 +23,11 @@ import {
   type ReactNode,
 } from "react";
 import { cn } from "@/lib/utils";
+import {
+  IMAGE_FRAMES,
+  FramePreview,
+  type ImageFrameDef,
+} from "@/components/editor-react/image-frames";
 import {
   STAGE_HEIGHT,
   STAGE_WIDTH,
@@ -40,7 +46,7 @@ import {
 import { OpacitySwatchIcon } from "@/components/slide-editor/toolbar/OpacitySwatchIcon";
 import { resolveBackendAssetSource } from "@/utils/api";
 
-type ImagePanel = "fit" | "crop" | "radius" | "opacity" | null;
+type ImagePanel = "fit" | "crop" | "radius" | "opacity" | "shape" | null;
 type ImageFit = "contain" | "cover" | "fill";
 type CropPoint = { x: number; y: number };
 type CropFrame = { left: number; top: number; width: number; height: number };
@@ -80,6 +86,12 @@ const FIT_LABELS: Record<ImageFit, string> = {
 
 const clampPercent = (value: number | null | undefined) =>
   Math.min(100, Math.max(0, value ?? 50));
+
+function normalizeClippath(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed && trimmed.toLowerCase() !== "none" ? trimmed : null;
+}
 
 const CROP_ACTION_BAR_WIDTH = 118;
 const CROP_ACTION_BAR_HEIGHT = 42;
@@ -364,6 +376,20 @@ export function ImageToolbar({
     onChange(index, { ...element, ...changes });
   };
 
+  const currentClippath = normalizeClippath(
+    element.clippath ?? element.clipPath ?? element.clip_path,
+  );
+
+  const applyFrameShape = (frame: ImageFrameDef) => {
+    update({
+      clippath: frame.clippath ?? undefined,
+      clipPath: undefined,
+      clip_path: undefined,
+      is_frame: true,
+    });
+    setOpenPanel(null);
+  };
+
   const commitCrop = (next = cropDraft) => {
     const draft = normalizeCropDraft(next);
     const committed = committedCropRef.current;
@@ -644,6 +670,47 @@ export function ImageToolbar({
                     className="w-full cursor-pointer accent-[#7A5AF8]"
                   />
                 </label>
+              </Panel>
+            ) : null}
+          </div>
+
+          <div className="relative">
+            <button
+              type="button"
+              title="Replace with image container"
+              aria-label="Replace with image container"
+              aria-pressed={openPanel === "shape"}
+              onClick={() => togglePanel("shape")}
+              className={cn(
+                "rounded-[2px] border-0 bg-transparent p-1 text-[#05070A] hover:bg-[#F4F3FF]",
+                openPanel === "shape" && "bg-[#F4F1FF] text-[#7C3AED]",
+              )}
+            >
+              <Shapes size={16} strokeWidth={1.7} aria-hidden="true" />
+            </button>
+            {openPanel === "shape" ? (
+              <Panel className="grid max-h-[280px] w-[248px] grid-cols-4 gap-1.5 overflow-y-auto p-2.5">
+                {IMAGE_FRAMES.map((frame) => {
+                  const selected = frame.clippath
+                    ? frame.clippath === currentClippath
+                    : currentClippath === null;
+                  return (
+                    <button
+                      key={frame.key}
+                      type="button"
+                      title={frame.label}
+                      aria-label={frame.label}
+                      aria-pressed={selected}
+                      onClick={() => applyFrameShape(frame)}
+                      className={cn(
+                        "flex flex-col items-center justify-center rounded-[8px] p-1.5 hover:bg-[#F4F3FF]",
+                        selected && "bg-[#F4F1FF] ring-1 ring-[#7A5AF8]",
+                      )}
+                    >
+                      <FramePreview clippath={frame.clippath} size={26} />
+                    </button>
+                  );
+                })}
               </Panel>
             ) : null}
           </div>

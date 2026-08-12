@@ -380,7 +380,7 @@ async function importOneSlide(
   if (spTree) {
     let counter = 0;
     for (const { key, node } of childShapes(spTree, ctx.order)) {
-      const built = await buildShapesFromNode(key, node, ctx, IDENTITY_TRANSFORM);
+      const built = await buildShapesFromNode(key, node, ctx, IDENTITY_TRANSFORM, true);
       for (const element of built.elements) {
         counter++;
         components.push({
@@ -481,7 +481,10 @@ function backgroundComponent(index: number, element: Rec): Rec {
 // -------------------------------------------------------------------- shapes
 
 type Box = { x: number; y: number; width: number; height: number };
-type BuiltElement = { el: Rec; box: Box };
+/** `directChild` marks an element produced by a shape that hangs straight off
+ * a top-level `p:grpSp` (as opposed to one nested inside a further group) —
+ * used only to pick the anchor angle in `normalizeGroupImageRotation`. */
+type BuiltElement = { el: Rec; box: Box; directChild?: boolean };
 
 /** A node's own transform composed with whatever group transform it's
  * nested inside (identity at the top level). Lets group children resolve to
@@ -532,8 +535,9 @@ async function buildShapesFromNode(
   node: Rec,
   ctx: PartContext,
   transform: NodeTransform,
+  topLevel = false,
 ): Promise<{ elements: BuiltElement[]; skipped: number }> {
-  if (key === "p:grpSp") return buildGroup(node, ctx, transform);
+  if (key === "p:grpSp") return buildGroup(node, ctx, transform, topLevel);
   if (key === "p:sp") return buildShape(node, ctx, transform);
   if (key === "p:cxnSp") {
     const line = buildLine(node, ctx, transform);
@@ -551,6 +555,7 @@ async function buildGroup(
   node: Rec,
   ctx: PartContext,
   parentTransform: NodeTransform,
+  topLevel = false,
 ): Promise<{ elements: BuiltElement[]; skipped: number }> {
   const xfrm = asRecord(asRecord(node["p:grpSpPr"])?.["a:xfrm"]);
   const off = asRecord(xfrm?.["a:off"]);
@@ -581,6 +586,9 @@ async function buildGroup(
   let skipped = 0;
   for (const { key, node: child } of childShapes(node, ctx.order)) {
     const built = await buildShapesFromNode(key, child, ctx, transform);
+    if (topLevel && key !== "p:grpSp") {
+      for (const element of built.elements) element.directChild = true;
+    }
     elements.push(...built.elements);
     skipped += built.skipped;
   }
@@ -603,7 +611,49 @@ async function buildGroup(
     }
   }
 
+  if (topLevel) normalizeGroupImageRotation(elements);
+
   return { elements, skipped };
+}
+
+/** Canva exports a tilted polaroid as an outer rotated group holding an
+ * unrotated frame overlay plus a further-nested group (its own, slightly
+ * different rotation) holding the photo. Composing group rotations above
+ * reproduces that structure exactly — which is faithful to the source XML,
+ * and is genuinely what PowerPoint renders (a sliver of the frame's window
+ * peeking out from under the photo) — but it reads as unintended skew rather
+ * than a deliberate choice. When every image in a top-level group ends up
+ * within a few degrees of each other, snap them all to the frame's angle so
+ * the photo sits parallel to its frame. Groups that intentionally mix
+ * near-perpendicular rotations (e.g. a portrait photo stacked in a landscape
+ * frame) fail the spread gate below and are left exactly as composed. */
+function normalizeGroupImageRotation(elements: BuiltElement[]): void {
+  const images = elements.filter((element) => element.el.type === "image");
+  if (images.length < 2) return;
+
+  const rotations = images.map((image) => (typeof image.el.rotation === "number" ? image.el.rotation : 0));
+  if (circularSpreadDegrees(rotations) > 20) return;
+
+  const anchor = images.find((image) => image.directChild) ?? images[0];
+  const target = typeof anchor.el.rotation === "number" ? anchor.el.rotation : 0;
+  for (const image of images) {
+    if (image === anchor) continue;
+    if (target === 0) delete image.el.rotation;
+    else image.el.rotation = target;
+  }
+}
+
+/** Smallest arc (in degrees) that contains every angle, so two rotations on
+ * opposite sides of the 0/360 wrap (e.g. 357° and 3°) read as 6° apart
+ * rather than 354° — a plain max-min would misfire the safety gate above. */
+function circularSpreadDegrees(anglesDeg: number[]): number {
+  if (anglesDeg.length <= 1) return 0;
+  const sorted = [...anglesDeg].sort((a, b) => a - b);
+  let maxGap = sorted[0] + 360 - sorted[sorted.length - 1];
+  for (let i = 1; i < sorted.length; i++) {
+    maxGap = Math.max(maxGap, sorted[i] - sorted[i - 1]);
+  }
+  return 360 - maxGap;
 }
 
 /** Rotates one built element around (cx, cy) in canvas px, composing the

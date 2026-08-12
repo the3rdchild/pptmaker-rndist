@@ -383,13 +383,20 @@ async function importOneSlide(
       const built = await buildShapesFromNode(key, node, ctx, IDENTITY_TRANSFORM, true);
       for (const element of built.elements) {
         counter++;
+        // Rotation belongs on the component (the outer Group the selection
+        // transformer tracks) rather than the element — leaving it on the
+        // element still renders the shape rotated, but around a Konva node
+        // the transformer never sees, so the selection outline stays square
+        // while the content underneath visibly rotates.
+        const { rotation, ...elRest } = element.el as Rec & { rotation?: number };
         components.push({
           id: `imported_${index + 1}_${counter}`,
           position: { x: element.box.x, y: element.box.y },
           size: { width: element.box.width, height: element.box.height },
+          ...(typeof rotation === "number" ? { rotation } : {}),
           elements: [
             {
-              ...element.el,
+              ...elRest,
               position: { x: 0, y: 0 },
               size: { width: element.box.width, height: element.box.height },
               __presenton_manual_position: true,

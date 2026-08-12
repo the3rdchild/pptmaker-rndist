@@ -1342,7 +1342,10 @@ export default function EditorReactClient({
         const empty = buildEmptySlideUi(layout, index + 1);
         dispatch(addSlide({ ui: empty.ui }));
         count++;
-        setActiveIndex(0);
+        // Follow the build: the canvas shows the slide CURRENTLY being
+        // generated (the newest one), not slide 1 — so the user watches each
+        // page fill in as it streams instead of being pinned to the cover.
+        setActiveIndex(index);
         setGenerationStatus(`Building slide ${index + 1}…`);
         pendingStream = { index, layoutId: start.layout_id, fills: [] };
         // Photos start NOW — image generation is the slowest piece, and the
@@ -1380,7 +1383,7 @@ export default function EditorReactClient({
           enqueueReview(index);
         }
         count++;
-        setActiveIndex(0);
+        setActiveIndex(index); // follow the newest slide as it's generated
         requestSlidePhotos(index, filled.ui, filled.heroImage, filled.secondaryImages, filled.subject);
       }
     };

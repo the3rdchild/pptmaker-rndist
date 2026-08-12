@@ -972,6 +972,12 @@ function runFont(
   const family = fontFamilyOf(rPr, ctx.theme) ?? fontFamilyOf(defaults, ctx.theme);
   if (family) font.family = family;
 
+  // Character spacing (`spc`, 1/100 pt) — without it text reflows wider than
+  // PowerPoint's own rendering (tight tracking makes headlines fit one line
+  // there, wrap here).
+  const spacing = readAttrNumber(rPr, "@_spc") ?? readAttrNumber(defaults, "@_spc");
+  if (spacing != null) font.letter_spacing = letterSpacingPx(spacing, ctx.deck.geo);
+
   return Object.keys(font).length ? font : null;
 }
 
@@ -979,6 +985,12 @@ function runFont(
  * same factor as every position and length on it. */
 function fontPx(sizeHundredthsPt: number, geo: GeoContext): number {
   return Math.max(1, Math.round((sizeHundredthsPt / 100) * EMU_PER_POINT * geo.scale));
+}
+
+/** Character spacing scales like any other length — but unlike fontPx it may
+ * be zero or negative (tighter-than-default tracking), so no clamp-to-1. */
+function letterSpacingPx(spcHundredthsPt: number, geo: GeoContext): number {
+  return round2((spcHundredthsPt / 100) * EMU_PER_POINT * geo.scale);
 }
 
 function fontFamilyOf(rPr: Rec | null, theme: ThemeContext | null): string | null {

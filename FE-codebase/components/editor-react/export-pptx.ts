@@ -80,6 +80,7 @@ function runsToText(runs: unknown): { text: string; opts: pptxgen.TextPropsOptio
   let italic = false;
   let underline = false;
   let fontFamily = "Arial";
+  let letterSpacing: number | null = null;
 
   for (const run of arr) {
     text += typeof run.text === "string" ? run.text : "";
@@ -91,6 +92,7 @@ function runsToText(runs: unknown): { text: string; opts: pptxgen.TextPropsOptio
       if (font.italic) italic = true;
       if (font.underline) underline = true;
       if (typeof font.family === "string") fontFamily = font.family;
+      if (typeof font.letter_spacing === "number") letterSpacing = font.letter_spacing;
     }
   }
 
@@ -103,6 +105,11 @@ function runsToText(runs: unknown): { text: string; opts: pptxgen.TextPropsOptio
       italic,
       underline: underline ? { style: "sng" as const } : undefined,
       fontFace: fontFamily,
+      // charSpacing is in points — same px→pt factor as fontSize.
+      charSpacing:
+        letterSpacing != null && letterSpacing !== 0
+          ? Math.round(letterSpacing * PX_TO_IN_Y * 72 * 100) / 100
+          : undefined,
     },
   };
 }

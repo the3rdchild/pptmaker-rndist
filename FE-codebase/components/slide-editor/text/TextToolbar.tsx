@@ -84,8 +84,10 @@ const HORIZONTAL_ALIGNMENT_ICONS = {
 
 const MIN_FONT_SIZE = 4;
 const MAX_FONT_SIZE = 240;
-const MIN_LETTER_SPACING = -200;
-const MAX_LETTER_SPACING = 600;
+// Letter spacing is stored in PX — Konva, the CSS inline editor and the text
+// measurer all treat the value as pixels, so the toolbar does too.
+const MIN_LETTER_SPACING = -10;
+const MAX_LETTER_SPACING = 40;
 const MIN_LINE_HEIGHT = 0.8;
 const MAX_LINE_HEIGHT = 2.2;
 const DEFAULT_LINE_HEIGHT = 1.15;
@@ -126,8 +128,7 @@ function formatLineHeight(value: number) {
 }
 
 function formatSettingsLetterSpacing(value: number) {
-  const pixels = value / 100;
-  return pixels.toFixed(1).replace(/\.0$/, "");
+  return value.toFixed(1).replace(/\.0$/, "");
 }
 
 function formatOpacity(value: number) {
@@ -1350,7 +1351,8 @@ function TextSettingsPanel({
         valueLabel={formatSettingsLetterSpacing(letterSpacing)}
         min={MIN_LETTER_SPACING}
         max={MAX_LETTER_SPACING}
-        step={10}
+        step={0.5}
+        editable
         onChange={onLetterSpacingChange}
       />
       <SettingsSliderRow
@@ -1415,6 +1417,7 @@ function SettingsSliderRow({
   min,
   max,
   step,
+  editable = false,
   onChange,
 }: {
   icon: ReactNode;
@@ -1424,6 +1427,9 @@ function SettingsSliderRow({
   min: number;
   max: number;
   step: number;
+  /** Show a typeable value field instead of a read-only badge (letter
+   *  spacing needs arbitrary values, not just slider steps). */
+  editable?: boolean;
   onChange: (value: number) => void;
 }) {
   const progress =
@@ -1435,7 +1441,17 @@ function SettingsSliderRow({
     <label style={textToolbarStyles.settingsSliderRow}>
       <span style={textToolbarStyles.settingsSliderHeader}>
         <span style={textToolbarStyles.settingsSliderIcon}>{icon}</span>
-        <span style={textToolbarStyles.settingsValueBadge}>{valueLabel}</span>
+        {editable ? (
+          <SettingsValueInput
+            label={label}
+            valueLabel={valueLabel}
+            min={min}
+            max={max}
+            onCommit={onChange}
+          />
+        ) : (
+          <span style={textToolbarStyles.settingsValueBadge}>{valueLabel}</span>
+        )}
       </span>
       <span style={textToolbarStyles.settingsSliderWrap}>
         <span aria-hidden="true" style={textToolbarStyles.settingsSliderTrack}>
@@ -1464,6 +1480,59 @@ function SettingsSliderRow({
         />
       </span>
     </label>
+  );
+}
+
+function SettingsValueInput({
+  label,
+  valueLabel,
+  min,
+  max,
+  onCommit,
+}: {
+  label: string;
+  valueLabel: string;
+  min: number;
+  max: number;
+  onCommit: (value: number) => void;
+}) {
+  // Draft-then-commit like the font-size field: while typing, the raw draft
+  // is shown; the parsed, clamped value is committed on Enter/blur.
+  const [draft, setDraft] = useState<string | null>(null);
+  const options = { allowDecimal: true, min };
+  const commit = () => {
+    if (draft == null) return;
+    const parsed = Number.parseFloat(draft);
+    if (draft.trim() && Number.isFinite(parsed)) {
+      onCommit(clampMetric(parsed, min, max));
+    }
+    setDraft(null);
+  };
+  return (
+    <input
+      aria-label={`${label} value`}
+      inputMode={numericInputMode(options)}
+      value={draft ?? valueLabel}
+      onChange={(event) =>
+        setDraft(sanitizeNumericInput(event.target.value, options))
+      }
+      onKeyDown={(event) => {
+        preventInvalidNumberInput(event, options);
+        if (event.key === "Enter") {
+          commit();
+          event.currentTarget.blur();
+        } else if (event.key === "Escape") {
+          setDraft(null);
+          event.currentTarget.blur();
+        }
+      }}
+      onBlur={commit}
+      style={{
+        ...textToolbarStyles.settingsValueBadge,
+        background: "#FFFFFF",
+        outline: "none",
+      }}
+    />
   );
 }
 

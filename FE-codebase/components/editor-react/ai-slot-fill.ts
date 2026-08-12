@@ -67,8 +67,11 @@ export interface SlotFill {
   chart?: ChartSpec;
 }
 
-/** The new JSONL contract — one line per slide:
- *  {"type":"slide","layout_id":"...","fills":[{"name":"...","text":"..."}, ...]} */
+/** One slide's fills in the manifest contract. Assembled client-side from the
+ *  streamed sequence
+ *    {"type":"slide_start","layout_id":"..."} → {"type":"fill",...} × N → {"type":"slide_end"}
+ *  (the fills land live, one element at a time), or parsed from the legacy
+ *  one-line-per-slide form {"type":"slide","layout_id":"...","fills":[...]}. */
 export interface ManifestSlideLine {
   type: "slide";
   layout_id: string;
@@ -144,6 +147,49 @@ export function parseManifestSlideLine(line: string): ManifestSlideLine | null {
     if (chart) fills.push({ name, chart });
   }
   return { type: "slide", layout_id: rec.layout_id, fills };
+}
+
+/** Parses a streamed {"type":"slide_start","layout_id":"..."} line — the model
+ *  has picked the layout, the client mounts the empty template immediately. */
+export function parseSlideStartLine(line: string): { layout_id: string } | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const rec = parsed as Rec;
+  if (rec.type !== "slide_start") return null;
+  if (typeof rec.layout_id !== "string" || !rec.layout_id) return null;
+  return { layout_id: rec.layout_id };
+}
+
+/** Parses one streamed {"type":"fill","name":"...","text"|"chart":...} line. */
+export function parseStreamFillLine(line: string): SlotFill | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const rec = parsed as Rec;
+  if (rec.type !== "fill") return null;
+  if (typeof rec.name !== "string" || !rec.name) return null;
+  if (typeof rec.text === "string") return { name: rec.name, text: rec.text };
+  const chart = parseChartSpec(rec.chart);
+  return chart ? { name: rec.name, chart } : null;
+}
+
+/** The streamed {"type":"slide_end"} sentinel closing a slide sequence. */
+export function isSlideEndLine(line: string): boolean {
+  try {
+    const parsed = JSON.parse(line) as { type?: string };
+    return parsed.type === "slide_end";
+  } catch {
+    return false;
+  }
 }
 
 /* ------------------------- Constraint enforcement ------------------------- */
@@ -389,6 +435,91 @@ export function fillLayoutWithSlotMap(
   return { ui: { id: layout.id, components }, heroImage, secondaryImages };
 }
 
+/* --------------------------- Streamed slide mode --------------------------- */
+
+/** Stream-mode slide mount (`slide_start`): the layout is cloned with every
+ *  named text slot CLEARED — no fallbacks, no pruning — so the user sees the
+ *  empty template the instant the model picks it, and each streamed fill then
+ *  lands live via applyFillsToUi. The unfilled-slot policy (fallbacks/pruning)
+ *  is deferred to finalizeStreamedSlide at `slide_end`, because a slot that is
+ *  empty RIGHT NOW may simply not have streamed in yet. Photo markers are
+ *  collected here (they don't move with text) so photo jobs can start before
+ *  the first fill even arrives. */
+export function buildEmptySlideUi(
+  layout: TemplateLayout,
+  pageNumber?: number,
+): FilledSlide {
+  const components = JSON.parse(JSON.stringify(layout.components)) as Rec[];
+  const namedSlots = collectNamedTextSlots(components);
+  for (const named of namedSlots) {
+    if (named.kind === "chart") continue; // an unfilled chart keeps its frame
+    if (named.slot?.role === "page-number") {
+      setText(named.el, pageNumber != null ? String(pageNumber) : "");
+      continue;
+    }
+    setText(named.el, "");
+  }
+  const photoSlots = findAllPhotoSlots(components);
+  const heroImage = findHeroImage(photoSlots);
+  const secondaryImages = findSecondaryImages(photoSlots, heroImage);
+  return { ui: { id: layout.id, components }, heroImage, secondaryImages };
+}
+
+/** Stream-mode finalization (`slide_end`): the safety-net half of
+ *  fillLayoutWithSlotMap, applied to a slide whose fills already streamed in
+ *  via applyFillsToUi. Slots the model never sent a fill for get the batch
+ *  path's exact treatment — "always" slots backstopped from the deck's own
+ *  material, prune-marked elements removed, optional leftovers cleared —
+ *  without touching the text/charts/photos that are already in place. Returns
+ *  a new ui (input is not mutated). */
+export function finalizeStreamedSlide(
+  ui: Rec,
+  line: ManifestSlideLine,
+  ctx: { topic: string; pageNumber?: number },
+): Rec {
+  const next = JSON.parse(JSON.stringify(ui)) as Rec;
+  const components = (next.components as Rec[]) ?? [];
+  const namedSlots = collectNamedTextSlots(components);
+  const textOpts: SetTextOptions = {
+    siblings: components,
+    stage: { w: EDITOR_STAGE_WIDTH, h: EDITOR_STAGE_HEIGHT },
+  };
+
+  const fillsByName = new Map<string, SlotFill[]>();
+  for (const fill of line.fills) {
+    const list = fillsByName.get(fill.name) ?? [];
+    list.push(fill);
+    fillsByName.set(fill.name, list);
+  }
+
+  const headline =
+    line.fills.find((f) => /title|headline|heading/i.test(f.name))?.text ?? "";
+
+  for (const named of namedSlots) {
+    if (named.slot?.role === "page-number") continue; // stamped at slide_start
+    // Shift EVERY occurrence with a fill to keep the Nth-fill → Nth-element
+    // alignment — the fill itself was already applied when it streamed in.
+    const fill = fillsByName.get(named.name)?.shift();
+    if (fill) continue;
+    if (named.kind === "chart") {
+      if (named.slot?.prune_if_unfilled) named.remove();
+      continue;
+    }
+    const condition = named.slot?.fill_condition ?? "always";
+    if (condition === "always") {
+      const fallback = fallbackForAlwaysSlot(named.slot, headline, ctx.topic);
+      setText(named.el, enforceSlotBudgets(fallback, named.slot, named.el), textOpts);
+    } else if (named.slot?.prune_if_unfilled) {
+      named.remove();
+    } else {
+      setText(named.el, "");
+    }
+  }
+
+  for (const component of components) pruneEmptyContainers(component);
+  return next;
+}
+
 /** Compact per-slot descriptors (name/role/budgets) of a layout — the payload
  *  the visual reviewer checks a rendered slide against. */
 export function describeLayoutSlots(
@@ -403,8 +534,10 @@ export function describeLayoutSlots(
   }));
 }
 
-/** Targeted repair pass on an EXISTING slide ui (used by the post-generation
- *  visual review): writes corrected fills into the named slots in place.
+/** Targeted fill application on an EXISTING slide ui: writes fills into the
+ *  named slots in place. Used by both consumers that patch a live slide —
+ *  the streamed per-element fills during generation (one fill at a time, as
+ *  each `{"type":"fill"}` line arrives) and the visual review's repair pass.
  *  Unlike fillLayoutWithSlotMap nothing is pruned, fall-backed or re-laid
  *  out — photos and icons already patched into the slide survive. Returns a
  *  new ui (input is not mutated). */

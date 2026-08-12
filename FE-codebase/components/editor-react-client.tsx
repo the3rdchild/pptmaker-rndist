@@ -101,15 +101,22 @@ import {
   mapAIPPTSlideToTemplateUi,
   patchHeroImage,
   findPhotoSlotHint,
+  fillPlaceholderIcons,
   resolveThemeFromPrompt,
   type AIPPTSlide,
 } from "@/components/editor-react/ai-layout-fill";
 import {
   fillManifestSlide,
   parseManifestSlideLine,
+  parseSlideStartLine,
+  parseStreamFillLine,
+  isSlideEndLine,
   applyFillsToUi,
+  buildEmptySlideUi,
+  finalizeStreamedSlide,
   describeLayoutSlots,
   type ManifestSlideLine,
+  type SlotFill,
 } from "@/components/editor-react/ai-slot-fill";
 import { captureSlidePng } from "@/components/editor-react/slide-capture";
 import {
@@ -151,10 +158,11 @@ const ZOOM_MIN = 0.2;
 const ZOOM_MAX = 3;
 const ZOOM_STEP = 0.2;
 
-// Per-slide verify→repair rounds in the post-generation Kimi review. Pass 1
-// fixes the initial fill's issues; pass 2 re-verifies the repaired slide and
-// fixes again if the repair itself introduced a new issue. A clean verify
-// short-circuits early, so clean slides still cost only one Kimi call.
+// Per-slide verify→repair rounds in the visual review (pipelined behind
+// generation — each slide is reviewed as soon as its slide_end arrives).
+// Pass 1 fixes the initial fill's issues; pass 2 re-verifies the repaired
+// slide and fixes again if the repair itself introduced a new issue. A clean
+// verify short-circuits early, so clean slides still cost only one call.
 const MAX_REVIEW_PASSES = 2;
 
 function clampZoom(value: number): number {
@@ -920,17 +928,45 @@ export default function EditorReactClient({
     // picks one; the DeckLayoutPicker seed hash is only the last-resort
     // fallback when the choice call fails or declines.
     const askedTheme = await resolveThemeFromPrompt(topic);
+    // A terse prompt ("ppt tentang kopi") starves the generator of material —
+    // expand it into a richer brief (audience, angle, structure, tone) BEFORE
+    // theme choice and generation. Theme-name detection above still runs on
+    // the RAW prompt so an explicit "pakai tema X" survives the rewrite, and
+    // the deck title keeps the user's own words.
+    let genTopic = topic;
+    if (topic.trim().split(/\s+/).length < 12) {
+      setGenerationStatus("Enriching your prompt…");
+      try {
+        const enhanceRes = await fetch("/api/ai/enhance-prompt", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ topic, language }),
+        });
+        const enhanceBody = (await enhanceRes.json().catch(() => null)) as {
+          enhanced?: unknown;
+        } | null;
+        if (
+          enhanceRes.ok &&
+          typeof enhanceBody?.enhanced === "string" &&
+          enhanceBody.enhanced.trim()
+        ) {
+          genTopic = enhanceBody.enhanced.trim();
+        }
+      } catch {
+        // Enhancement is a bonus — the raw prompt still works.
+      }
+    }
     let preferredTheme = askedTheme;
     let themeChoiceReason: string | null = null;
     if (!preferredTheme) {
       setGenerationStatus("Choosing a theme…");
-      const choice = await chooseThemeForTopic(topic, language);
+      const choice = await chooseThemeForTopic(genTopic, language);
       if (choice) {
         preferredTheme = choice.themeId;
         themeChoiceReason = choice.reason;
       }
     }
-    const layoutPicker = new DeckLayoutPicker(topic, preferredTheme);
+    const layoutPicker = new DeckLayoutPicker(genTopic, preferredTheme);
     await layoutPicker.ensureLoaded();
     const themeId = layoutPicker.getThemeId();
     const manifest = themeId ? await fetchThemeManifest(themeId) : null;
@@ -946,7 +982,7 @@ export default function EditorReactClient({
       );
     }
 
-    const res = await streamAipptDeck(token, { content: topic, language, model, manifest: manifest ?? undefined });
+    const res = await streamAipptDeck(token, { content: genTopic, language, model, manifest: manifest ?? undefined });
     if (!(res instanceof Response) || !res.body) {
       const message =
         res && typeof res === "object" && "message" in res
@@ -978,7 +1014,7 @@ export default function EditorReactClient({
     const slideSubject = (slide: AIPPTSlide): string => {
       if (slide.type === "cover" || slide.type === "transition") return slide.data.title;
       if (slide.type === "content") return slide.data.title;
-      return topic;
+      return genTopic;
     };
 
     // Hero photo generated per slide, kept in one consistent style so a
@@ -993,13 +1029,21 @@ export default function EditorReactClient({
     // that whole path is gone, so a generated deck looks exactly like the
     // theme the user picked.
 
+    /** Latest store ui for a slide. Async patches (photos, streamed fills,
+     *  finalize, repairs) must always start from THIS — never from a ui
+     *  captured when the slide was added — or whichever update lands last
+     *  silently wipes the others. */
+    const slideUiAt = (index: number): Record<string, unknown> | undefined =>
+      reduxStore.getState().presentationGeneration.presentationData?.slides[index]
+        ?.ui as Record<string, unknown> | undefined;
+
     // Generates a photo for ONE slot on an already-added slide and patches it
-    // in once ready. `currentUi` accumulates across every slot on this same
-    // slide (hero + every secondary photo) — each patch starts from the
-    // LATEST known ui for this slide, not the original, so multiple async
-    // photos resolving in any order never clobber each other (JS's single
-    // -threaded event loop makes the read-modify-write here safe as long as
-    // it isn't split across an await).
+    // in once ready. The patch re-reads the slide's LATEST store ui at
+    // resolution time (slideUiAt) because streamed text fills and the
+    // slide_end finalize keep mutating that slide while the photo job runs;
+    // the getUi/setUi closure is only the fallback for a slide that somehow
+    // isn't in the store anymore (JS's single-threaded event loop makes the
+    // read-modify-write here safe as long as it isn't split across an await).
     const requestPhotoForSlot = (
       index: number,
       getUi: () => Record<string, unknown>,
@@ -1013,12 +1057,12 @@ export default function EditorReactClient({
       const hint = findPhotoSlotHint(getUi(), marker);
       const prompt = hint
         ? `${hint}. ${heroStyle}`
-        : `${subject} — related to ${topic}. ${heroStyle}`;
+        : `${subject} — related to ${genTopic}. ${heroStyle}`;
 
       const applyAiGenerated = () => {
         void generateImage(currentToken, prompt).then((dataUrl) => {
           if (!dataUrl) return;
-          const patched = patchHeroImage(getUi(), marker, dataUrl) as Record<string, unknown>;
+          const patched = patchHeroImage(slideUiAt(index) ?? getUi(), marker, dataUrl) as Record<string, unknown>;
           setUi(patched);
           dispatch(updateSlideUi({ index, ui: patched }));
         });
@@ -1043,7 +1087,7 @@ export default function EditorReactClient({
           return;
         }
         usedStockPhotoIdsRef.current.add(result.id);
-        const patched = patchHeroImage(getUi(), marker, result.url, {
+        const patched = patchHeroImage(slideUiAt(index) ?? getUi(), marker, result.url, {
           credit: result.credit,
           credit_url: result.creditUrl ?? null,
           source_url: result.sourceUrl,
@@ -1094,10 +1138,10 @@ export default function EditorReactClient({
         const manifestLine = parseManifestSlideLine(line);
         if (manifestLine) {
           const layout = layoutPicker.getLayoutById(manifestLine.layout_id);
-          const filled = await fillManifestSlide(layout, manifestLine, { topic, pageNumber });
+          const filled = await fillManifestSlide(layout, manifestLine, { topic: genTopic, pageNumber });
           if (!filled) return null;
           const subject =
-            manifestLine.fills.find((f) => /title|headline|heading/i.test(f.name))?.text || topic;
+            manifestLine.fills.find((f) => /title|headline|heading/i.test(f.name))?.text || genTopic;
           return {
             ui: filled.ui,
             heroImage: filled.heroImage,
@@ -1156,20 +1200,196 @@ export default function EditorReactClient({
         ),
       ]);
 
+    /** The slide currently streaming — set at slide_start, null after
+     *  slide_end. `fills` accumulates for the review pass and the finalize
+     *  safety-net. */
+    let pendingStream: { index: number; layoutId: string; fills: SlotFill[] } | null = null;
+
+    // Pipelined visual review: each slide is verified→repaired as soon as its
+    // slide_end arrives, WHILE later slides are still streaming in — the old
+    // flow only started reviewing slide 1 after slide N was generated, which
+    // was the long tail of dead waiting at the end. Serialized via promise
+    // chaining (one capture/verify call at a time). Failures are silent — a
+    // reviewed deck is a bonus, never a blocker.
+    let reviewChain: Promise<void> = Promise.resolve();
+    const reviewSlide = async (slideIndex: number) => {
+      const manifestLine = slideManifestLines.get(slideIndex);
+      if (!manifestLine) return;
+      try {
+        const layout = layoutPicker.getLayoutById(manifestLine.layout_id);
+        const textFills = manifestLine.fills
+          .filter((f) => f.text)
+          .map((f) => ({ name: f.name, text: f.text }));
+
+        // Each slide gets up to MAX_REVIEW_PASSES verify→repair rounds. Pass
+        // 1 catches the issues the initial fill left; pass 2 re-verifies the
+        // repaired slide and repairs again if the fix introduced a new issue
+        // (e.g. a shortened string that now wraps differently). A clean
+        // verify short-circuits the loop early.
+        for (let pass = 1; pass <= MAX_REVIEW_PASSES; pass++) {
+          setGenerationStatus(
+            pass > 1
+              ? `Re-verifying slide ${slideIndex + 1}…`
+              : `Reviewing slide ${slideIndex + 1}…`,
+          );
+          const freshUi = slideUiAt(slideIndex);
+          if (!freshUi) break;
+          const image = await captureSlidePng(freshUi);
+          if (!image) break;
+
+          const verifyRes = await fetch("/api/ai/visual-review", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              mode: "verify",
+              image,
+              topic: genTopic,
+              language: language ?? "Bahasa Indonesia",
+              slots: layout ? describeLayoutSlots(layout) : [],
+              fills: textFills,
+              provider: providers?.verify ?? null,
+            }),
+          });
+          const verifyBody = await verifyRes.json().catch(() => null);
+          const issues = Array.isArray(verifyBody?.issues) ? verifyBody.issues : [];
+          if (issues.length === 0) break; // slide passed, no more passes needed
+
+          setGenerationStatus(`Fixing slide ${slideIndex + 1}…`);
+          const repairRes = await fetch("/api/ai/visual-review", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              mode: "repair",
+              language: language ?? "Bahasa Indonesia",
+              slots: layout ? describeLayoutSlots(layout) : [],
+              fills: textFills,
+              issues,
+              provider: providers?.repair ?? null,
+            }),
+          });
+          const repairBody = await repairRes.json().catch(() => null);
+          const repaired = Array.isArray(repairBody?.fills) ? repairBody.fills : [];
+          if (repaired.length === 0) break; // nothing to apply, stop
+          dispatch(updateSlideUi({ index: slideIndex, ui: applyFillsToUi(freshUi, repaired) }));
+          // loop continues to re-verify (unless this was the last pass)
+        }
+      } catch {
+        // one slide's review failing must never abort the rest
+      }
+    };
+    const enqueueReview = (slideIndex: number) => {
+      if (!withReview) return;
+      reviewChain = reviewChain.then(() => reviewSlide(slideIndex));
+    };
+
+    // slide_end (explicit, or implicit when a new slide_start / the stream
+    // end arrives first): finalize the streamed slide — safety-net
+    // fallbacks/pruning for slots that never got a fill, then placeholder
+    // icons (they need the FINAL text for relevance, so they run here, not at
+    // slide_start) — and hand the slide to the review pipeline.
+    const closePendingStream = async () => {
+      const pending = pendingStream;
+      if (!pending) return;
+      pendingStream = null;
+      const manifestLine: ManifestSlideLine = {
+        type: "slide",
+        layout_id: pending.layoutId,
+        fills: pending.fills,
+      };
+      slideManifestLines.set(pending.index, manifestLine);
+
+      // The icon pass awaits network calls and a photo patch can land in that
+      // window, so read → build → dispatch runs in a short re-base loop: if
+      // the store moved while we awaited, rebuild from the newest ui instead
+      // of clobbering the patch that just landed.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const base = slideUiAt(pending.index);
+        if (!base) break;
+        let ui = finalizeStreamedSlide(base, manifestLine, {
+          topic: genTopic,
+          pageNumber: pending.index + 1,
+        });
+        try {
+          ui = await fillPlaceholderIcons(ui, genTopic);
+        } catch {
+          // icons are decorative — a failed pick never blocks the slide
+        }
+        if (slideUiAt(pending.index) === base) {
+          dispatch(updateSlideUi({ index: pending.index, ui }));
+          break;
+        }
+      }
+      enqueueReview(pending.index);
+    };
+
+    // One streamed line, in any of the accepted forms:
+    //   {"type":"slide_start",...} / {"type":"fill",...} / {"type":"slide_end"}
+    //     — the current manifest contract, rendered element by element
+    //   {"type":"slide",...} — the old one-line manifest slide (older worker)
+    //   legacy AIPPTSlide union — the no-manifest fallback contract
+    const handleStreamLine = async (t: string) => {
+      if (!t || t.startsWith("```") || tryApplyThemeLine(t)) return;
+      throwIfErrorLine(t);
+
+      const start = parseSlideStartLine(t);
+      if (start) {
+        await closePendingStream(); // model skipped a slide_end — close it
+        const layout = layoutPicker.getLayoutById(start.layout_id);
+        if (!layout) return; // hallucinated layout id — drop the sequence
+        const index = count;
+        // Mount the EMPTY layout immediately — the user watches the template
+        // appear first, then each text element land as its fill streams in.
+        const empty = buildEmptySlideUi(layout, index + 1);
+        dispatch(addSlide({ ui: empty.ui }));
+        count++;
+        setActiveIndex(0);
+        setGenerationStatus(`Building slide ${index + 1}…`);
+        pendingStream = { index, layoutId: start.layout_id, fills: [] };
+        // Photos start NOW — image generation is the slowest piece, and the
+        // slot markers don't move with text fills, so there's no reason to
+        // wait for the copy.
+        requestSlidePhotos(index, empty.ui, empty.heroImage, empty.secondaryImages, genTopic);
+        return;
+      }
+
+      const fill = parseStreamFillLine(t);
+      if (fill) {
+        if (!pendingStream) return; // a fill outside any slide — ignore
+        pendingStream.fills.push(fill);
+        const latest = slideUiAt(pendingStream.index);
+        if (latest) {
+          dispatch(updateSlideUi({
+            index: pendingStream.index,
+            ui: applyFillsToUi(latest, [fill]),
+          }));
+        }
+        return;
+      }
+
+      if (isSlideEndLine(t)) {
+        await closePendingStream();
+        return;
+      }
+
+      const filled = await mapLine(t, count + 1);
+      if (filled) {
+        const index = count;
+        dispatch(addSlide({ ui: filled.ui }));
+        if (filled.manifestLine) {
+          slideManifestLines.set(index, filled.manifestLine);
+          enqueueReview(index);
+        }
+        count++;
+        setActiveIndex(0);
+        requestSlidePhotos(index, filled.ui, filled.heroImage, filled.secondaryImages, filled.subject);
+      }
+    };
+
     for (;;) {
       const { done, value } = await readWithTimeout();
       if (done) {
-        if (buf.trim() && !tryApplyThemeLine(buf.trim())) {
-          throwIfErrorLine(buf.trim());
-          const filled = await mapLine(buf.trim(), count + 1);
-          if (filled) {
-            const index = count;
-            dispatch(addSlide({ ui: filled.ui }));
-            if (filled.manifestLine) slideManifestLines.set(index, filled.manifestLine);
-            count++;
-            requestSlidePhotos(index, filled.ui, filled.heroImage, filled.secondaryImages, filled.subject);
-          }
-        }
+        const t = buf.trim();
+        if (t) await handleStreamLine(t);
         break;
       }
       buf += decoder.decode(value, { stream: true });
@@ -1177,102 +1397,26 @@ export default function EditorReactClient({
       buf = lines.pop() || "";
       for (const line of lines) {
         const t = line.trim();
-        if (!t || t.startsWith("```") || tryApplyThemeLine(t)) continue;
-        throwIfErrorLine(t);
-        const filled = await mapLine(t, count + 1);
-        if (filled) {
-          const index = count;
-          dispatch(addSlide({ ui: filled.ui }));
-          if (filled.manifestLine) slideManifestLines.set(index, filled.manifestLine);
-          count++;
-          setActiveIndex(0);
-          requestSlidePhotos(index, filled.ui, filled.heroImage, filled.secondaryImages, filled.subject);
-        }
+        if (t) await handleStreamLine(t);
       }
     }
 
-    // Post-generation visual review: each slide is rendered and shown to Kimi
-    // vision; fixable issues (overflow, placeholder leftovers, wrong length
-    // for the box, ...) go back for up to MAX_REVIEW_PASSES targeted
-    // verify→repair rounds. Only the manifest contract carries per-slot fills,
-    // so legacy-mode decks skip this — and the homepage toggle (?review=off)
-    // skips it entirely for a faster, cheaper run. Failures are silent — a
-    // reviewed deck is a bonus, never a blocker.
-    if (withReview && slideManifestLines.size > 0) {
-      let reviewed = 0;
-      for (const [slideIndex, manifestLine] of slideManifestLines) {
-        reviewed += 1;
-        setGenerationStatus(`Reviewing slide ${reviewed} of ${slideManifestLines.size}…`);
-        try {
-          const layout = layoutPicker.getLayoutById(manifestLine.layout_id);
-          const textFills = manifestLine.fills
-            .filter((f) => f.text)
-            .map((f) => ({ name: f.name, text: f.text }));
+    // The stream cut mid-slide (or the model forgot the final slide_end) —
+    // close whatever was streaming so it still finalizes + gets reviewed.
+    await closePendingStream();
 
-          // Each slide gets up to MAX_REVIEW_PASSES verify→repair rounds. Pass
-          // 1 catches the issues the initial fill left; pass 2 re-verifies the
-          // repaired slide and repairs again if the fix introduced a new issue
-          // (e.g. a shortened string that now wraps differently). A clean
-          // verify short-circuits the loop early.
-          for (let pass = 1; pass <= MAX_REVIEW_PASSES; pass++) {
-            if (pass > 1) {
-              setGenerationStatus(`Re-verifying slide ${reviewed} of ${slideManifestLines.size}…`);
-            }
-            const freshUi = reduxStore.getState().presentationGeneration.presentationData
-              ?.slides[slideIndex]?.ui;
-            if (!freshUi) break;
-            const image = await captureSlidePng(freshUi);
-            if (!image) break;
-
-            const verifyRes = await fetch("/api/ai/visual-review", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                mode: "verify",
-                image,
-                topic,
-                language: language ?? "Bahasa Indonesia",
-                slots: layout ? describeLayoutSlots(layout) : [],
-                fills: textFills,
-                provider: providers?.verify ?? null,
-              }),
-            });
-            const verifyBody = await verifyRes.json().catch(() => null);
-            const issues = Array.isArray(verifyBody?.issues) ? verifyBody.issues : [];
-            if (issues.length === 0) break; // slide passed, no more passes needed
-
-            setGenerationStatus(`Fixing slide ${reviewed} of ${slideManifestLines.size}…`);
-            const repairRes = await fetch("/api/ai/visual-review", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                mode: "repair",
-                language: language ?? "Bahasa Indonesia",
-                slots: layout ? describeLayoutSlots(layout) : [],
-                fills: textFills,
-                issues,
-                provider: providers?.repair ?? null,
-              }),
-            });
-            const repairBody = await repairRes.json().catch(() => null);
-            const repaired = Array.isArray(repairBody?.fills) ? repairBody.fills : [];
-            if (repaired.length === 0) break; // nothing to apply, stop
-            dispatch(updateSlideUi({ index: slideIndex, ui: applyFillsToUi(freshUi, repaired) }));
-            // loop continues to re-verify (unless this was the last pass)
-          }
-        } catch {
-          // one slide's review failing must never abort the rest
-        }
-      }
-      setGenerationStatus(null);
-    }
+    // Reviews pipeline behind generation — only the tail slides are still in
+    // flight here; the earlier ones were reviewed WHILE later slides streamed.
+    await reviewChain;
+    setGenerationStatus(null);
     return count;
   };
 
   // Auto-generate once when opened with ?prompt= (homepage "Generate" flow
   // creates an empty deck, then routes here with the prompt in the query
   // string — cross-origin-safe, survives a reload). ?review=off comes from
-  // the homepage toggle and skips the post-generation Kimi visual review.
+  // the homepage toggle and skips the pipelined visual review that otherwise
+  // verifies/fixes each slide as it finishes streaming.
   // ?gen= / ?verify= / ?repair= carry the per-section provider choices from
   // the homepage dropdowns; absent = the server applies its default.
   // ?images=stock switches photo slots from AI generation to stock-photo

@@ -5,12 +5,19 @@ Two contracts, chosen by whether the request carries a theme `manifest`:
 1. MANIFEST-DRIVEN (current). Params include `manifest`: {theme, layouts[]}
    where each layout has id/slide_role/description/items/notes and `slots`
    (name, role, hint, fill_condition, max_words, max_lines). The model picks
-   layout ids and writes copy per NAMED slot:
+   layout ids and writes copy per NAMED slot, STREAMED PER ELEMENT so the
+   client can mount the empty layout the instant it's chosen and fill each
+   slot live as the tokens arrive:
 
-     {"type":"slide","layout_id":"...","fills":[{"name":"...","text":"..."}]}
+     {"type":"slide_start","layout_id":"..."}
+     {"type":"fill","name":"...","text":"..."}
+     {"type":"fill","name":"...","chart":{...}}
+     {"type":"slide_end"}
 
    FE-codebase/components/editor-react/ai-slot-fill.ts applies the fills by
    slot name and enforces the authored budgets/fill conditions client-side.
+   The client still accepts the old one-line-per-slide form
+   ({"type":"slide","layout_id":"...","fills":[...]}) for backwards compat.
 
 2. LEGACY (fallback, no manifest). The old fixed 5-type AIPPTSlide union,
    mapped mechanically by editor-react/ai-layout-fill.ts.
@@ -54,26 +61,31 @@ theme_description / theme_tone describing the theme's identity. Each layout has:
 - slots: named text fields. Each has role, optional hint, fill_condition, and
   hard budgets max_words / max_lines.
 
-Output: JSONL — exactly ONE slide per line, in deck order:
-{"type":"slide","layout_id":"<layout id from the manifest>","fills":[{"name":"<slot name>","text":"<your copy>"}, ...]}
+Output: JSONL — one JSON object per line. A slide is emitted as a SEQUENCE of lines, in deck order:
+{"type":"slide_start","layout_id":"<layout id from the manifest>"}
+{"type":"fill","name":"<slot name>","text":"<your copy>"}
+... one fill line per slot ...
+{"type":"slide_end"}
+
+The client renders each line the moment it arrives: slide_start mounts the empty layout, every fill line types one element in live. So emit the lines of a slide in reading order (headline first, body after) and never buffer a whole slide — stream it element by element.
 
 RULES — violations break the deck:
 1. STRUCTURE: first slide uses a "cover" layout; then an "agenda" layout if one exists; a "section" layout before each chapter; 3-8 "content" (or comparison/timeline/process/team/gallery) slides; last slide uses a "closing" layout. Never reuse the same layout id for two slides in a row.
-2. SLOTS: fill ONLY slots that exist in the chosen layout, addressed by their EXACT name. If a name appears multiple times in that layout, provide one fill per occurrence, in order.
+2. SLOTS: fill ONLY slots that exist in the chosen layout, addressed by their EXACT name. If a name appears multiple times in that layout, provide one fill line per occurrence, in order.
 3. BUDGETS: max_words is a HARD ceiling per slot — count your words and never exceed it. But don't just stay under the max: when a slot states ideal_words, AIM for it. A body box authored for a long paragraph looks broken when it gets three words; a headline box looks broken when it gets twenty. Land within a few words of the ideal whenever the material allows.
 4. FILL CONDITIONS:
    - "always" — you MUST provide a fill for this slot.
-   - any other condition ("optional", "if-quote-available", "if-numeric-data", "if-person-known", "if-date-known", "if-source-known", ...) — provide a fill ONLY when the condition is genuinely met by the topic. NEVER invent quotes, people, dates, statistics, or sources. When the condition isn't met, OMIT the entry entirely.
-5. ITEM COUNTS: for layouts with items {min,max}, fill exactly that many repeated card/bullet slots (the slot names repeat per card — provide one fill per card, e.g. 3 fills named "card_title" for a 3-card layout).
-6. CHARTS: slots with "kind":"chart" are filled with DATA, not prose. Instead of "text", give the fill a "chart" object:
-   {"name":"<slot name>","chart":{"title":"<chart title>","categories":["<label>",...],"series":[{"name":"<series name>","values":[<number>,...]}],"x_axis_title":"...","y_axis_title":"...","source":"..."}}
+   - any other condition ("optional", "if-quote-available", "if-numeric-data", "if-person-known", "if-date-known", "if-source-known", ...) — provide a fill ONLY when the condition is genuinely met by the topic. NEVER invent quotes, people, dates, statistics, or sources. When the condition isn't met, OMIT the fill line entirely.
+5. ITEM COUNTS: for layouts with items {min,max}, fill exactly that many repeated card/bullet slots (the slot names repeat per card — provide one fill line per card, e.g. 3 fill lines named "card_title" for a 3-card layout).
+6. CHARTS: slots with "kind":"chart" are filled with DATA, not prose. Instead of "text", give the fill line a "chart" object:
+   {"type":"fill","name":"<slot name>","chart":{"title":"<chart title>","categories":["<label>",...],"series":[{"name":"<series name>","values":[<number>,...]}],"x_axis_title":"...","y_axis_title":"...","source":"..."}}
    - categories and every series' values array MUST have equal length, and match the slot's stated chart shape (chart.categories / chart.series) when given.
    - 4-8 categories is the readable range; 1-3 series.
    - Use REAL figures when the topic supplies them; otherwise plausible, clearly reasonable estimates — never absurd precision (write 42, not 41.8673).
    - "source" is optional — only when a real source is known.
 7. VOICE: write in the requested language. Each slot's role and hint tells you the register (a "label" is 1-3 words, a "cta" is an action, a "stat-value" is a bare figure). When the manifest states a theme_tone, write the whole deck in that register.
 8. QUOTES: never put a raw double-quote character (") inside your copy — it breaks the JSON. Use “ ” or ' instead.
-9. FORMAT: raw JSONL, one object per line, no markdown fences, no commentary."""
+9. FORMAT: raw JSONL, one object per line, no markdown fences, no commentary. Every slide MUST be closed with {"type":"slide_end"} before the next slide_start."""
 
 
 def _compact_manifest(manifest: dict) -> dict:

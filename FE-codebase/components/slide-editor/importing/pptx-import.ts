@@ -135,6 +135,8 @@ type DeckContext = {
   geo: GeoContext;
   themeCache: Map<string, ThemeContext>;
   mediaCache: Map<string, string | null>;
+  /** Layouts and masters, which every slide using them re-reads otherwise. */
+  partCache: Map<string, { doc: Rec; rels: Rels; order: Map<string, number> } | null>;
 };
 
 /** Per-part context: the rels of the XML part a shape came from (a slide, or
@@ -166,7 +168,13 @@ export async function importPptxFile(file: File): Promise<PptxImportResult> {
     offsetPxY: (EDITOR_STAGE_HEIGHT - srcHeightEmu * scale) / 2,
   };
 
-  const deck: DeckContext = { zip, geo, themeCache: new Map(), mediaCache: new Map() };
+  const deck: DeckContext = {
+    zip,
+    geo,
+    themeCache: new Map(),
+    mediaCache: new Map(),
+    partCache: new Map(),
+  };
 
   const presRels = await readRels(zip, "ppt/presentation.xml");
   const sldIdList = asArray(asRecord(presRoot?.["p:sldIdLst"])?.["p:sldId"]);
@@ -390,39 +398,149 @@ async function importOneSlide(
   const background = await slideBackground(ctx, cSld, layoutPath, index);
   components.push(background);
 
+  const counter = { value: 0 };
+
+  // Everything the slide inherits from its layout and master paints first,
+  // underneath the slide's own shapes — which is both PowerPoint's z-order and
+  // the reason it has to happen at all: a deck that keeps its artwork on the
+  // layout (Slidesgo's do) used to import as a near-empty slide.
+  const inherited = await inheritedShapes(deck, layoutPath, theme, index, counter);
+  components.push(...inherited.components);
+  skipped += inherited.skipped;
+
   const spTree = asRecord(cSld?.["p:spTree"]);
   if (spTree) {
-    let counter = 0;
-    for (const { key, node } of childShapes(spTree, ctx.order)) {
-      const built = await buildShapesFromNode(key, node, ctx, IDENTITY_TRANSFORM, true);
-      for (const element of built.elements) {
-        counter++;
-        // Rotation belongs on the component (the outer Group the selection
-        // transformer tracks) rather than the element — leaving it on the
-        // element still renders the shape rotated, but around a Konva node
-        // the transformer never sees, so the selection outline stays square
-        // while the content underneath visibly rotates.
-        const { rotation, ...elRest } = element.el as Rec & { rotation?: number };
-        components.push({
-          id: `imported_${index + 1}_${counter}`,
-          position: { x: element.box.x, y: element.box.y },
-          size: { width: element.box.width, height: element.box.height },
-          ...(typeof rotation === "number" ? { rotation } : {}),
-          elements: [
-            {
-              ...elRest,
-              position: { x: 0, y: 0 },
-              size: { width: element.box.width, height: element.box.height },
-              __presenton_manual_position: true,
-            },
-          ],
-        });
-      }
+    const own = await shapeComponents(spTree, ctx, index, counter);
+    components.push(...own.components);
+    skipped += own.skipped;
+  }
+
+  return { ui: { id: `imported_slide_${index + 1}`, components }, skipped };
+}
+
+/** One component per built element, numbered from a shared counter so shapes
+ * inherited from a layout and the slide's own shapes never collide on id. */
+async function shapeComponents(
+  spTree: Rec,
+  ctx: PartContext,
+  index: number,
+  counter: { value: number },
+  skipPlaceholders = false,
+): Promise<{ components: Rec[]; skipped: number }> {
+  const components: Rec[] = [];
+  let skipped = 0;
+  for (const { key, node } of childShapes(spTree, ctx.order)) {
+    if (skipPlaceholders && isPlaceholder(node)) continue;
+    const built = await buildShapesFromNode(key, node, ctx, IDENTITY_TRANSFORM, true);
+    for (const element of built.elements) {
+      counter.value += 1;
+      // Rotation belongs on the component (the outer Group the selection
+      // transformer tracks) rather than the element — leaving it on the
+      // element still renders the shape rotated, but around a Konva node
+      // the transformer never sees, so the selection outline stays square
+      // while the content underneath visibly rotates.
+      const { rotation, ...elRest } = element.el as Rec & { rotation?: number };
+      components.push({
+        id: `imported_${index + 1}_${counter.value}`,
+        position: { x: element.box.x, y: element.box.y },
+        size: { width: element.box.width, height: element.box.height },
+        ...(typeof rotation === "number" ? { rotation } : {}),
+        elements: [
+          {
+            ...elRest,
+            position: { x: 0, y: 0 },
+            size: { width: element.box.width, height: element.box.height },
+            __presenton_manual_position: true,
+          },
+        ],
+      });
+    }
+    skipped += built.skipped;
+  }
+  return { components, skipped };
+}
+
+/** A shape that fills a layout/master placeholder rather than standing on its
+ * own. Whatever it holds either comes from the slide (which supplies its own
+ * copy) or is prompt text like "Click to edit Master title style", so it must
+ * not be drawn from the inherited part. */
+function isPlaceholder(node: Rec): boolean {
+  for (const [key, value] of Object.entries(node)) {
+    if (!key.startsWith("p:nv")) continue;
+    if (asRecord(asRecord(value)?.["p:nvPr"])?.["p:ph"] !== undefined) return true;
+  }
+  return false;
+}
+
+/** The master's decoration, then the layout's. Only non-placeholder shapes:
+ * see isPlaceholder. A layout can opt out of the master's shapes entirely with
+ * showMasterSp="0", which is how a deck gives one section its own backdrop. */
+async function inheritedShapes(
+  deck: DeckContext,
+  layoutPath: string | null,
+  theme: ThemeContext | null,
+  index: number,
+  counter: { value: number },
+): Promise<{ components: Rec[]; skipped: number }> {
+  if (!layoutPath) return { components: [], skipped: 0 };
+
+  const layout = await readPart(deck, layoutPath);
+  if (!layout) return { components: [], skipped: 0 };
+  const layoutRoot = asRecord(layout.doc["p:sldLayout"]);
+  const showMaster = readAttrBoolean(layoutRoot, "@_showMasterSp") ?? true;
+
+  const components: Rec[] = [];
+  let skipped = 0;
+
+  if (showMaster) {
+    const masterPath = layout.rels.byType.get("slideMaster")?.[0] ?? null;
+    const master = masterPath ? await readPart(deck, masterPath) : null;
+    const masterTree = asRecord(asRecord(asRecord(master?.doc["p:sldMaster"])?.["p:cSld"])?.["p:spTree"]);
+    if (master && masterTree) {
+      const built = await shapeComponents(
+        masterTree,
+        { deck, rels: master.rels, theme, order: master.order },
+        index,
+        counter,
+        true,
+      );
+      components.push(...built.components);
       skipped += built.skipped;
     }
   }
 
-  return { ui: { id: `imported_slide_${index + 1}`, components }, skipped };
+  const layoutTree = asRecord(asRecord(layoutRoot?.["p:cSld"])?.["p:spTree"]);
+  if (layoutTree) {
+    const built = await shapeComponents(
+      layoutTree,
+      { deck, rels: layout.rels, theme, order: layout.order },
+      index,
+      counter,
+      true,
+    );
+    components.push(...built.components);
+    skipped += built.skipped;
+  }
+
+  return { components, skipped };
+}
+
+/** Parsed part + its rels + its shape order, cached: a layout is shared by
+ * every slide using it, and re-reading it per slide is the whole cost of
+ * inheritance on a long deck. */
+async function readPart(
+  deck: DeckContext,
+  path: string,
+): Promise<{ doc: Rec; rels: Rels; order: Map<string, number> } | null> {
+  const cached = deck.partCache.get(path);
+  if (cached !== undefined) return cached;
+
+  const xml = await readZipText(deck.zip, path);
+  const part = xml
+    ? { doc: parseXml(xml), rels: await readRels(deck.zip, path), order: shapeOrderIndex(xml) }
+    : null;
+  deck.partCache.set(path, part);
+  return part;
 }
 
 // ---------------------------------------------------------------- background

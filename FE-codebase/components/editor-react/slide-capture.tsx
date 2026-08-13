@@ -41,6 +41,23 @@ export function captureSlidePng(ui: Rec): Promise<string | null> {
 
 const STAGE_TIMEOUT_MS = 15000;
 
+// Both consumers send this straight to a vision model, and neither needs a
+// print-quality frame: the models downscale to roughly 1024px internally, so a
+// 2x PNG of a photo-heavy slide (measured at 4.7MB, 6.3MB once base64'd) buys
+// no accuracy and costs the whole request. That payload was enough on its own
+// to push auto-label past its provider timeout on every vision preset. At 1x
+// the stage is already 1280x720, comfortably above what the models use, and
+// JPEG takes it to double-digit KB. Slides always have an opaque background,
+// so losing PNG's alpha costs nothing here.
+//
+// This is NOT the PDF export path — that has its own pixel ratio in
+// PdfExportCapture.tsx and stays lossless.
+const CAPTURE_FORMAT = {
+  pixelRatio: 1,
+  mimeType: "image/jpeg",
+  quality: 0.85,
+} as const;
+
 export function SlideCaptureHost() {
   const [queue, setQueue] = useState<Job[]>([]);
   const stageRef = useRef<Konva.Stage | null>(null);
@@ -83,8 +100,7 @@ export function SlideCaptureHost() {
       // instead of killing the queue.
       let dataUrl: string | null = null;
       try {
-        dataUrl =
-          stageRef.current?.toDataURL({ pixelRatio: 2, mimeType: "image/png" }) ?? null;
+        dataUrl = stageRef.current?.toDataURL(CAPTURE_FORMAT) ?? null;
       } catch (error) {
         console.warn("[slide-capture] stage not exportable (tainted)", error);
       }

@@ -202,6 +202,13 @@ export interface ChatMessage {
 // non-responsive provider fails fast instead of wedging the pipeline.
 const PROVIDER_TIMEOUT_MS = 60000;
 
+// Vision calls need a much wider bound than text ones. Measured against
+// DeepInfra with the auto-label prompt and a small image: qwen-vl ~11s,
+// llama-vl ~35s — before the image itself is accounted for. A 60s ceiling
+// left the slowest preset one hiccup away from failing on every run, which is
+// exactly how auto-label behaved.
+const VISION_TIMEOUT_MS = 180000;
+
 /** One round trip to the provider's chat-completions endpoint. Throws on HTTP
  *  failure, a timeout, or an empty response — the route maps that to a 502
  *  the caller can show. Per-provider quirks (UA header, omitted temperature,
@@ -225,8 +232,9 @@ export async function callProvider(
   if (!cfg.omit_temperature) body.temperature = 1;
   if (cfg.disable_thinking) body.thinking = { type: "disabled" };
 
+  const timeoutMs = opts.vision ? VISION_TIMEOUT_MS : PROVIDER_TIMEOUT_MS;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   let res: Response;
   try {
     res = await fetch(`${cfg.base_url}/chat/completions`, {
@@ -237,7 +245,7 @@ export async function callProvider(
     });
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
-      throw new Error(`${cfg.id} timed out after ${PROVIDER_TIMEOUT_MS / 1000}s`);
+      throw new Error(`${cfg.id} timed out after ${timeoutMs / 1000}s`);
     }
     throw err;
   } finally {

@@ -2207,6 +2207,10 @@ export default function EditorReactClient({
               <TemplateV2KonvaSlide
                 key={safeActive}
                 layout={activeUi as never}
+                // The frame above is magnified with a CSS transform, so the
+                // canvas has to be told to redraw at that scale — otherwise
+                // zooming just enlarges the bitmap it already painted.
+                renderScale={zoom}
                 isEditMode={!slides[safeActive]?.isLocked}
                 slideId={null}
                 presentationId={deckId}

@@ -302,6 +302,26 @@ export type LineElement = ElementBase & {
   stroke: Stroke;
 };
 
+/** An arbitrary vector outline. Exists because a .pptx expresses most of its
+ *  artwork as freeform geometry (`a:custGeom`) or one of ~180 preset shapes,
+ *  none of which survive being approximated by a rectangle: a dashed bezier
+ *  connector imported that way becomes a dashed box the width of the slide.
+ *
+ *  `d` is SVG path data in the coordinate space named by `view_box`, which the
+ *  renderer scales onto the element box — so the shape reflows when resized
+ *  instead of being frozen at import size. Stroke width is NOT scaled with it;
+ *  a hairline outline stays a hairline however the box is stretched. */
+export type PathElement = ElementBase & {
+  type: "path";
+  d: string;
+  view_box?: Size | null;
+  fill?: Fill | null;
+  stroke?: Stroke | null;
+  /** DrawingML shapes overlap subpaths to punch holes (a donut is one path of
+   *  two circles), which only reads correctly under the even-odd rule. */
+  fill_rule?: "nonzero" | "evenodd" | null;
+};
+
 export type SvgElement = ElementBase & {
   type: "svg";
   svg: string;
@@ -406,6 +426,7 @@ export type SlideElement =
   | RectangleElement
   | EllipseElement
   | LineElement
+  | PathElement
   | SvgElement
   | FormulaElement
   | ChartElement

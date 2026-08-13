@@ -679,6 +679,8 @@ function adaptElement(value: unknown): SlideElement | null {
       return adaptRectangle(raw);
     case "ellipse":
       return adaptEllipse(raw);
+    case "path":
+      return adaptPath(raw);
     case "line":
       return adaptLine(raw);
     case "chart":
@@ -867,6 +869,31 @@ function adaptEllipse(raw: UnknownRecord): SlideElement | null {
     type: "ellipse",
     fill,
     stroke,
+  };
+}
+
+function adaptPath(raw: UnknownRecord): SlideElement | null {
+  const d = readString(raw.d)?.trim();
+  if (!d) return null;
+  const fill = adaptFill(readRecord(raw, "fill"));
+  const stroke = adaptStroke(readRecord(raw, "stroke"));
+  if (!hasVisiblePaint(fill, stroke, readNumber(raw, "opacity"))) return null;
+
+  const viewBox = readRecord(raw, "view_box");
+  const viewWidth = readNumber(viewBox ?? {}, "width");
+  const viewHeight = readNumber(viewBox ?? {}, "height");
+
+  return {
+    ...baseElement(raw),
+    type: "path",
+    d,
+    view_box:
+      viewWidth != null && viewHeight != null && viewWidth > 0 && viewHeight > 0
+        ? { width: viewWidth, height: viewHeight }
+        : null,
+    fill,
+    stroke,
+    fill_rule: readEnum(raw, ["nonzero", "evenodd"], "fill_rule"),
   };
 }
 

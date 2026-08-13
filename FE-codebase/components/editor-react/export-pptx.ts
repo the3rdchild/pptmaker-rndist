@@ -7,6 +7,7 @@ import {
   elementBox,
 } from "@/components/slide-editor/model/model";
 import type { RawElement, Box } from "@/components/slide-editor/model/core";
+import { pathElementToSvgDataUrl } from "@/components/slide-editor/model/path-element";
 
 // Presenton canvas is 1280x720 px. PptxGenJS 16:9 slide = 10x5.625 inches.
 const SLIDE_W_PX = 1280;
@@ -258,6 +259,21 @@ export function exportToPptx(
             s.addImage({
               data: src.startsWith("data:") ? src : undefined,
               path: src.startsWith("data:") ? undefined : src,
+              x: ex * PX_TO_IN_X,
+              y: ey * PX_TO_IN_Y,
+              w: ew * PX_TO_IN_X,
+              h: eh * PX_TO_IN_Y,
+            });
+          }
+        } else if (type === "path") {
+          // pptxgenjs cannot write custom geometry, so a freeform ships as an
+          // SVG picture rather than being dropped from the export or flattened
+          // to its bounding rectangle. PowerPoint 2016+, Keynote and Slides
+          // all render it as the vector it is.
+          const svg = pathElementToSvgDataUrl(el as RawElement, ew, eh);
+          if (svg) {
+            s.addImage({
+              data: svg,
               x: ex * PX_TO_IN_X,
               y: ey * PX_TO_IN_Y,
               w: ew * PX_TO_IN_X,

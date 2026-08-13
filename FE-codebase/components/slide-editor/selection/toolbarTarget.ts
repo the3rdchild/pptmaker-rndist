@@ -351,6 +351,10 @@ function isTemplateV2EditorToolbarElement(
     element?.type === "text-list" ||
     element?.type === "rectangle" ||
     element?.type === "ellipse" ||
+    // A path's outline is fixed, but its fill/stroke/opacity are ordinary
+    // shape properties — an imported freeform should be recolourable like any
+    // other shape rather than being inert on the canvas.
+    element?.type === "path" ||
     element?.type === "line"
   );
 }

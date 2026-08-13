@@ -16,9 +16,15 @@ import {
   Group,
   Image as KonvaImage,
   Line,
+  Path,
   Rect,
   Text,
 } from "react-konva";
+import {
+  readPathData,
+  readPathFillRule,
+  readPathViewBox,
+} from "@/components/slide-editor/model/path-element";
 import { effectiveLineHeight } from "@/components/slide-editor/text/text-line-height";
 import { textRunsContent } from "@/components/slide-editor/text/text-runs";
 import {
@@ -968,6 +974,37 @@ function RawElementVisual({
           strokeOpacity(element.stroke),
         )}
         strokeWidth={strokeWidth(element.stroke)}
+        dash={strokeDash(element.stroke)}
+        {...shadowProps(element)}
+        listening={interactive}
+      />
+    );
+  }
+  if (type === "path") {
+    const data = readPathData(element);
+    if (!data) return null;
+    const fill = colorWithOpacity(fillColor(element.fill), fillOpacity(element.fill));
+    const stroke = colorWithOpacity(
+      strokeColor(element.stroke),
+      strokeOpacity(element.stroke),
+    );
+    const lineWidth = strokeWidth(element.stroke);
+    if (!fill && !(stroke && lineWidth > 0)) return null;
+    const view = readPathViewBox(element, width, height);
+    return (
+      <Path
+        data={data}
+        // The path is authored in its own space and scaled onto the box, so a
+        // resized element reshapes rather than being frozen at import size.
+        // strokeScaleEnabled=false keeps the outline the stated width instead
+        // of being stretched with it.
+        scaleX={width / view.width}
+        scaleY={height / view.height}
+        fill={fill}
+        fillRule={readPathFillRule(element)}
+        stroke={stroke && lineWidth > 0 ? stroke : undefined}
+        strokeWidth={lineWidth}
+        strokeScaleEnabled={false}
         dash={strokeDash(element.stroke)}
         {...shadowProps(element)}
         listening={interactive}

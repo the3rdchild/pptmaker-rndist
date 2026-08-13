@@ -1327,9 +1327,18 @@ function RawImageElement({
 
   const clippedImageNode = clipPath ? (
     <Group
-      clipFunc={(context) =>
-        drawImageClipPath(context, clipPath, width, height)
-      }
+      clipFunc={(context) => {
+        // The mirror has to reach the OUTLINE too, not just the picture
+        // inside it. A .pptx flip mirrors the whole shape, geometry included;
+        // flipping only the image (which is where flip_h/flip_v are applied,
+        // on the node below) would cut a mirrored picture with an unmirrored
+        // clip. Imported picture-filled freeforms very often carry flips.
+        if (flipH || flipV) {
+          context.translate(flipH ? width : 0, flipV ? height : 0);
+          context.scale(flipH ? -1 : 1, flipV ? -1 : 1);
+        }
+        drawImageClipPath(context, clipPath, width, height);
+      }}
       listening={interactive}
     >
       {imageNode}

@@ -26,7 +26,11 @@
 
 import { XMLParser } from "fast-xml-parser";
 import JSZip from "jszip";
-import { custGeomToPath, type PathGeometry } from "@/components/slide-editor/importing/pptx-geometry";
+import {
+  custGeomToPath,
+  presetToPath,
+  type PathGeometry,
+} from "@/components/slide-editor/importing/pptx-geometry";
 import { EDITOR_STAGE_WIDTH, EDITOR_STAGE_HEIGHT } from "@/components/slide-editor/types";
 import { childArrayInfo, readString } from "@/components/slide-editor/model/model";
 import {
@@ -810,7 +814,13 @@ async function buildShape(
  * freeform or a preset with actual shape to it, otherwise the native rectangle
  * and ellipse elements — which stay directly editable and export as first-class
  * pptx shapes, so there is no reason to path them. */
-type ShapeGeometry = { kind: "rectangle" | "ellipse" | "path"; path: PathGeometry | null; radius: number | null };
+type ShapeGeometry =
+  | { kind: "rectangle"; path: null; radii: Rec | null }
+  | { kind: "ellipse"; path: null; radii: null }
+  | { kind: "path"; path: PathGeometry; radii: null };
+
+const PLAIN_RECTANGLE: ShapeGeometry = { kind: "rectangle", path: null, radii: null };
+const PLAIN_ELLIPSE: ShapeGeometry = { kind: "ellipse", path: null, radii: null };
 
 function shapeGeometry(spPr: Rec | null, box: Box): ShapeGeometry {
   const custom = asRecord(spPr?.["a:custGeom"]);
@@ -826,14 +836,65 @@ function shapeGeometry(spPr: Rec | null, box: Box): ShapeGeometry {
             box.height,
           )
         : null;
-    return path ? { kind: "path", path, radius: null } : { kind: "rectangle", path: null, radius: null };
+    return path ? { kind: "path", path, radii: null } : PLAIN_RECTANGLE;
   }
 
   const prstGeom = asRecord(spPr?.["a:prstGeom"]);
   const prst = readAttrString(prstGeom, "@_prst");
-  if (!prst || prst === "rect") return { kind: "rectangle", path: null, radius: null };
-  if (prst === "ellipse" || prst === "circle") return { kind: "ellipse", path: null, radius: null };
+  if (!prst || prst === "rect") return PLAIN_RECTANGLE;
+  if (prst === "ellipse" || prst === "circle") return PLAIN_ELLIPSE;
   return presetGeometry(prst, prstGeom, box);
+}
+
+/** Adjust handles (`<a:avLst><a:gd name="adj1" fmla="val 25000"/>`), by name.
+ * Only `val` formulas are read — the computed forms (multiply-divide, `pin`,
+ * `sin`) are derived guides belonging to the preset's own definition rather
+ * than handles the author set. */
+function adjustValues(prstGeom: Rec | null): (name: string, fallback: number) => number {
+  const values = new Map<string, number>();
+  for (const entry of asArray(asRecord(prstGeom?.["a:avLst"])?.["a:gd"])) {
+    const rec = asRecord(entry);
+    const name = readAttrString(rec, "@_name");
+    const formula = readAttrString(rec, "@_fmla");
+    if (!name || !formula) continue;
+    const match = formula.match(/^val\s+(-?\d+)$/);
+    if (match) values.set(name, Number(match[1]));
+  }
+  return (name, fallback) => {
+    const direct = values.get(name);
+    if (direct != null) return direct;
+    // Single-handle presets are written either way ("adj" or "adj1").
+    const alias = name === "adj" ? "adj1" : name === "adj1" ? "adj" : null;
+    const aliased = alias ? values.get(alias) : undefined;
+    return aliased ?? fallback;
+  };
+}
+
+/** Corner radii for the rounded-rectangle family, in px. These stay native
+ * rectangles rather than becoming paths: `border_radius` expresses them
+ * exactly, and the result is still a resizable, roundable rectangle in the
+ * editor instead of frozen geometry. */
+function roundedRectRadii(
+  prst: string,
+  adj: (name: string, fallback: number) => number,
+  box: Box,
+): Rec | null {
+  const ss = Math.min(box.width, box.height);
+  const first = (Math.max(0, Math.min(50000, adj("adj1", 16667))) / 100000) * ss;
+  const second = (Math.max(0, Math.min(50000, adj("adj2", 0))) / 100000) * ss;
+  switch (prst) {
+    case "roundRect":
+    case "flowChartAlternateProcess":
+      return { tl: first, tr: first, bl: first, br: first };
+    case "round1Rect":
+      return { tl: 0, tr: first, bl: 0, br: 0 };
+    case "round2SameRect":
+      return { tl: first, tr: first, bl: second, br: second };
+    case "round2DiagRect":
+      return { tl: first, tr: second, bl: first, br: second };
+    default:
+      return null;
+  }
 }
 
 function shapeElementOf(
@@ -855,22 +916,22 @@ function shapeElementOf(
   }
   return {
     type: geometry.kind,
-    ...(geometry.radius != null ? { border_radius: uniformRadius(geometry.radius) } : {}),
+    ...(geometry.radii ? { border_radius: geometry.radii } : {}),
     ...paint,
   };
 }
 
-function uniformRadius(value: number): Rec {
-  return { tl: value, tr: value, bl: value, br: value };
-}
-
-/** Named preset geometry (chevron, star, arrow, …). Anything without a mapping
+/** Named preset geometry (chevron, star, arrow, …). Anything with no mapping
  * falls back to a rectangle, which is what every preset used to get. */
 function presetGeometry(prst: string, prstGeom: Rec | null, box: Box): ShapeGeometry {
-  void prst;
-  void prstGeom;
-  void box;
-  return { kind: "rectangle", path: null, radius: null };
+  const adj = adjustValues(prstGeom);
+
+  const radii = roundedRectRadii(prst, adj, box);
+  if (radii) return { kind: "rectangle", path: null, radii };
+  if (prst === "flowChartConnector") return PLAIN_ELLIPSE;
+
+  const path = presetToPath(prst, adj, box.width, box.height);
+  return path ? { kind: "path", path, radii: null } : PLAIN_RECTANGLE;
 }
 
 function buildLine(node: Rec, ctx: PartContext, transform: NodeTransform): BuiltElement | null {
@@ -880,7 +941,16 @@ function buildLine(node: Rec, ctx: PartContext, transform: NodeTransform): Built
   const stroke =
     strokeOf(asRecord(spPr?.["a:ln"]), ctx.theme, ctx.deck.geo) ??
     styleRefStroke(node, ctx.theme) ?? { color: "#111827", opacity: 1, width: 2 };
-  return { el: withRotation({ type: "line", stroke }, shapeRotation(spPr)), box };
+
+  // A connector is only a straight line in the simplest case: bent and curved
+  // connectors route around their endpoints, and the `line` element can draw
+  // neither those nor the flips that decide which way a connector points.
+  const geometry = shapeGeometry(spPr, box);
+  const el =
+    geometry.kind === "path"
+      ? { ...shapeElementOf(geometry, null, stroke), ...shapeFlip(spPr) }
+      : { type: "line", stroke };
+  return { el: withRotation(el, shapeRotation(spPr)), box };
 }
 
 async function buildPicture(

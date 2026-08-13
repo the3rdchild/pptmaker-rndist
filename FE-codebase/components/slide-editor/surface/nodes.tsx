@@ -991,6 +991,11 @@ function RawElementVisual({
     const lineWidth = strokeWidth(element.stroke);
     if (!fill && !(stroke && lineWidth > 0)) return null;
     const view = readPathViewBox(element, width, height);
+    // Mirroring is how a .pptx points a connector the other way, so it has to
+    // reach the geometry — same trick the image node uses: negate the scale
+    // and shift the origin to the far edge.
+    const mirrorH = readBoolean(element.flip_h) === true;
+    const mirrorV = readBoolean(element.flip_v) === true;
     return (
       <Path
         data={data}
@@ -998,8 +1003,10 @@ function RawElementVisual({
         // resized element reshapes rather than being frozen at import size.
         // strokeScaleEnabled=false keeps the outline the stated width instead
         // of being stretched with it.
-        scaleX={width / view.width}
-        scaleY={height / view.height}
+        x={mirrorH ? width : 0}
+        y={mirrorV ? height : 0}
+        scaleX={(width / view.width) * (mirrorH ? -1 : 1)}
+        scaleY={(height / view.height) * (mirrorV ? -1 : 1)}
         fill={fill}
         fillRule={readPathFillRule(element)}
         stroke={stroke && lineWidth > 0 ? stroke : undefined}

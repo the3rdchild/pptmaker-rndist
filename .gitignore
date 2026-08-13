@@ -51,6 +51,8 @@ editor-*.png
 
 # session handoff notes (local only, not for the repo)
 HANDOFF.md
+GLM_KICKOFF_STOCK_IMAGES.md
+GLM_KICKOFF_FONT_UPLOAD.md
 
 # theme sources pulled out of the bucket for bulk editing (theme-sync.mjs)
 .theme-work/

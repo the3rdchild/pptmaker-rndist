@@ -772,6 +772,15 @@ function adaptImage(raw: UnknownRecord): SlideElement {
     clippath: readString(raw.clippath ?? raw.clipPath ?? raw.clip_path),
     color: readString(raw.color),
     is_icon: readBoolean(raw, "is_icon"),
+    // Stock-photo attribution. Provider terms (Unsplash's especially) require
+    // it to travel with the image, and this whitelist was dropping all three
+    // on every template load — so a page saved after a stock fill came back
+    // with the photo and no credit. The regeneration hint goes the same way:
+    // losing it means a later refill has nothing to work from.
+    prompt: readString(raw.prompt),
+    credit: truncateString(readString(raw.credit) ?? "", 200) || null,
+    credit_url: readString(raw.credit_url),
+    source_url: readString(raw.source_url),
     // Dropping this lost the operator's decision every time a template was
     // reloaded: an image marked as a photo container fell back to being
     // inferred from its clip path, and one explicitly marked NOT a container
@@ -1323,13 +1332,20 @@ function adaptFill(value: UnknownRecord | null): Fill | null {
   });
 }
 
+const MAX_STROKE_WIDTH = 128;
+
 function adaptStroke(value: UnknownRecord | null): Stroke | null {
   const color = readColor(value?.color);
   if (!color) return null;
   return stripNullish({
     color,
     opacity: clamp(readNumber(value ?? {}, "opacity") ?? 1, 0, 1),
-    width: clamp(round(readNumber(value ?? {}, "width") ?? 1), 0, 8),
+    // 8px was too tight to be a garbage guard: a .pptx can carry a genuinely
+    // heavy border, and clamping silently thinned it when the page was saved
+    // as a template. The widest legitimate stroke across the 20 sample decks
+    // is 46px (9 strokes out of 14,051 exceed 8), so this keeps generous
+    // headroom while still rejecting nonsense.
+    width: clamp(round(readNumber(value ?? {}, "width") ?? 1), 0, MAX_STROKE_WIDTH),
     dash: readArray(value ?? {}, "dash")
       .map((item) => readRawNumber(item))
       .filter((item): item is number => item != null && item >= 0),

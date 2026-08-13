@@ -67,6 +67,11 @@ const xmlParser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "@_",
   textNodeName: "#text",
+  // Slide text is text, never a number. Left at its default (true) the parser
+  // "helpfully" coerces any numeric-looking <a:t>, so a step marker authored
+  // as "01" arrives as the number 1 and imports a step list numbered 1,2,3
+  // against a source that reads 01,02,03. Same for "1.50", "+62", "0x1F".
+  parseTagValue: false,
   isArray: (name) =>
     [
       "a:p",

@@ -26,6 +26,7 @@
 
 import { XMLParser } from "fast-xml-parser";
 import JSZip from "jszip";
+import { custGeomToPath, type PathGeometry } from "@/components/slide-editor/importing/pptx-geometry";
 import { EDITOR_STAGE_WIDTH, EDITOR_STAGE_HEIGHT } from "@/components/slide-editor/types";
 import { childArrayInfo, readString } from "@/components/slide-editor/model/model";
 import {
@@ -72,6 +73,10 @@ const xmlParser = new XMLParser({
   // as "01" arrives as the number 1 and imports a step list numbered 1,2,3
   // against a source that reads 01,02,03. Same for "1.50", "+62", "0x1F".
   parseTagValue: false,
+  // Freeform geometry is an ORDERED command list, and this parser groups
+  // siblings by tag name — moveTo → lnTo → cubicBezTo → lnTo would come back
+  // with the interleaving lost. Kept as raw XML for pptx-geometry to scan.
+  stopNodes: ["*.a:pathLst"],
   isArray: (name) =>
     [
       "a:p",
@@ -753,45 +758,119 @@ async function buildShape(
 
   const rotation = shapeRotation(spPr);
   const elements: BuiltElement[] = [];
+  const geometry = shapeGeometry(spPr, box);
 
   // A shape can carry a picture fill instead of a colour — Canva exports every
   // photo that way (as a custGeom with a:blipFill) and uses p:pic almost never,
   // so treating these as plain rectangles loses all the imagery in the deck.
   const picture = await imageFromBlipFill(asRecord(spPr?.["a:blipFill"]), ctx, box);
   if (picture) {
-    elements.push(placePicture(picture, { ...shapeFlip(spPr) }, box, rotation));
+    // The picture fills the shape's outline, not its bounding box. Clipping to
+    // the geometry is what stops a photo dropped into a circle or a speech
+    // bubble from importing as a rectangle covering its neighbours. Only when
+    // the fill still covers the whole box, though: a fillRect that shrank the
+    // element moved it out from under the path's coordinates.
+    const clip =
+      geometry.path && picture.box.width === box.width && picture.box.height === box.height
+        ? { clippath: `path("${geometry.path.d}")` }
+        : {};
+    elements.push(placePicture(picture, { ...shapeFlip(spPr), ...clip }, box, rotation));
   }
 
-  const text = textElement(node, ctx, box);
-  if (text) {
-    elements.push({ el: withRotation(text, rotation), box });
-    return { elements, skipped: 0 };
-  }
-  if (picture) return { elements, skipped: 0 };
-
-  // No text and no picture — a plain autoshape. Approximate every non-ellipse
-  // preset geometry (rounded rect, chevron, star, ...) as a rectangle rather
-  // than dropping it; a slightly-wrong shape reads better than a missing one.
   const fill = fillOf(spPr, ctx.theme) ?? styleRefFill(node, ctx.theme);
   const stroke = strokeOf(asRecord(spPr?.["a:ln"]), ctx.theme, ctx.deck.geo);
-  // Invisible by design (no fill, no outline): drawing a placeholder box would
-  // add clutter the source deck never showed, so drop it — and don't count it
-  // as skipped, since nothing visible was lost.
-  if (!fill && !stroke) return { elements, skipped: 0 };
 
-  const prst = readAttrString(asRecord(spPr?.["a:prstGeom"]), "@_prst");
-  elements.push({
-    el: withRotation(
-      {
-        type: prst === "ellipse" ? "ellipse" : "rectangle",
-        ...(fill ? { fill } : {}),
-        ...(stroke ? { stroke } : {}),
-      },
-      rotation,
-    ),
-    box,
-  });
+  // A shape both painted and lettered (a labelled chevron, a numbered badge)
+  // is two things: the outline, then the text on top of it. Folding the fill
+  // onto the text element instead — as this did — flattens every such shape
+  // into a rectangle behind its label.
+  if (!picture && (fill || stroke)) {
+    elements.push({
+      el: withRotation(
+        {
+          ...shapeElementOf(geometry, fill, stroke),
+          ...(geometry.kind === "path" ? shapeFlip(spPr) : {}),
+        },
+        rotation,
+      ),
+      box,
+    });
+  }
+
+  const text = textElement(node, ctx, box, elements.length > 0);
+  if (text) elements.push({ el: withRotation(text, rotation), box });
+
+  // Nothing visible at all (no fill, no outline, no text, no picture): drawing
+  // a placeholder box would add clutter the source deck never showed, so drop
+  // it — and don't count it as skipped, since nothing was lost.
   return { elements, skipped: 0 };
+}
+
+/** How a shape's outline should be drawn: a real path when the geometry is a
+ * freeform or a preset with actual shape to it, otherwise the native rectangle
+ * and ellipse elements — which stay directly editable and export as first-class
+ * pptx shapes, so there is no reason to path them. */
+type ShapeGeometry = { kind: "rectangle" | "ellipse" | "path"; path: PathGeometry | null; radius: number | null };
+
+function shapeGeometry(spPr: Rec | null, box: Box): ShapeGeometry {
+  const custom = asRecord(spPr?.["a:custGeom"]);
+  if (custom) {
+    const raw = custom["a:pathLst"];
+    const ext = asRecord(asRecord(spPr?.["a:xfrm"])?.["a:ext"]);
+    const path =
+      typeof raw === "string"
+        ? custGeomToPath(
+            raw,
+            { cx: readAttrNumber(ext, "@_cx") ?? 0, cy: readAttrNumber(ext, "@_cy") ?? 0 },
+            box.width,
+            box.height,
+          )
+        : null;
+    return path ? { kind: "path", path, radius: null } : { kind: "rectangle", path: null, radius: null };
+  }
+
+  const prstGeom = asRecord(spPr?.["a:prstGeom"]);
+  const prst = readAttrString(prstGeom, "@_prst");
+  if (!prst || prst === "rect") return { kind: "rectangle", path: null, radius: null };
+  if (prst === "ellipse" || prst === "circle") return { kind: "ellipse", path: null, radius: null };
+  return presetGeometry(prst, prstGeom, box);
+}
+
+function shapeElementOf(
+  geometry: ShapeGeometry,
+  fill: { color: string; opacity: number } | null,
+  stroke: { color: string; opacity: number; width: number; dash?: number[] } | null,
+): Rec {
+  const paint = { ...(fill ? { fill } : {}), ...(stroke ? { stroke } : {}) };
+  if (geometry.kind === "path" && geometry.path) {
+    return {
+      type: "path",
+      d: geometry.path.d,
+      view_box: { width: geometry.path.width, height: geometry.path.height },
+      // DrawingML shapes punch holes by overlapping subpaths (a donut is one
+      // path of two circles), which only reads right under the even-odd rule.
+      fill_rule: "evenodd",
+      ...paint,
+    };
+  }
+  return {
+    type: geometry.kind,
+    ...(geometry.radius != null ? { border_radius: uniformRadius(geometry.radius) } : {}),
+    ...paint,
+  };
+}
+
+function uniformRadius(value: number): Rec {
+  return { tl: value, tr: value, bl: value, br: value };
+}
+
+/** Named preset geometry (chevron, star, arrow, …). Anything without a mapping
+ * falls back to a rectangle, which is what every preset used to get. */
+function presetGeometry(prst: string, prstGeom: Rec | null, box: Box): ShapeGeometry {
+  void prst;
+  void prstGeom;
+  void box;
+  return { kind: "rectangle", path: null, radius: null };
 }
 
 function buildLine(node: Rec, ctx: PartContext, transform: NodeTransform): BuiltElement | null {
@@ -997,7 +1076,9 @@ function mimeTypeFor(path: string): string | null {
 
 // ---------------------------------------------------------------------- text
 
-function textElement(node: Rec, ctx: PartContext, box: Box): Rec | null {
+/** `hasBackdrop` is set when the shape's own outline was already emitted as a
+ * separate element underneath — the fill belongs to that, not to the text. */
+function textElement(node: Rec, ctx: PartContext, box: Box, hasBackdrop = false): Rec | null {
   const txBody = asRecord(node["p:txBody"]);
   if (!txBody) return null;
 
@@ -1063,7 +1144,7 @@ function textElement(node: Rec, ctx: PartContext, box: Box): Rec | null {
   if (horizontal) alignment.horizontal = horizontal;
   if (vertical) alignment.vertical = vertical;
 
-  const fill = fillOf(asRecord(node["p:spPr"]), ctx.theme);
+  const fill = hasBackdrop ? null : fillOf(asRecord(node["p:spPr"]), ctx.theme);
 
   return {
     type: "text",

@@ -9,7 +9,6 @@
 // + font color only), not a full theme system.
 
 import { mergeFont } from "@/components/slide-editor/model/element-model";
-import { DEFAULT_THEME_ID, loadTheme } from "@/lib/templates/themes";
 import type { SlideData } from "@/store/presentationGeneration";
 import { EDITOR_STAGE_WIDTH, EDITOR_STAGE_HEIGHT } from "@/components/slide-editor/types";
 import { appendInsertedContent } from "@/components/slide-editor/model/inserted-content";
@@ -146,40 +145,17 @@ export function applyThemeToAllSlides(
   });
 }
 
-// ── add_slide (clone a real template layout, replace its text content —
-// never hand-author a layout from scratch) ──
-
-let cachedGeneralLayout: AnyRecord | null = null;
-
-async function loadContentLayout(): Promise<AnyRecord> {
-  if (cachedGeneralLayout) return structuredClone(cachedGeneralLayout);
-  const theme = await loadTheme(DEFAULT_THEME_ID);
-  const layouts = (theme?.layouts ?? []) as AnyRecord[];
-  // split_content_layout: headline + body copy, the simplest content-only shape.
-  const layout = layouts.find((l) => typeof l.id === "string" && l.id.startsWith("split_content_layout")) ?? layouts[0];
-  cachedGeneralLayout = layout;
-  return structuredClone(layout);
-}
-
 function setRunsText(el: AnyRecord, text: string): AnyRecord {
   const baseFont = Array.isArray(el.runs) && isRecord(el.runs[0]) ? (el.runs[0] as AnyRecord).font : el.font;
   return { ...el, runs: [{ text, font: baseFont }] };
 }
 
-export async function buildAddSlideUi(
-  title: string,
-  items: { title: string; text: string }[],
-): Promise<AnyRecord> {
-  const ui = await loadContentLayout();
-  const bodyText = items.map((i) => (i.title ? `${i.title}: ${i.text}` : i.text)).join("\n");
-
-  return walkUi(ui, (el) => {
-    if (el.type !== "text") return el;
-    if (el.name === "headline_text") return setRunsText(el, title);
-    if (el.name === "body_copy") return setRunsText(el, bodyText);
-    return el;
-  });
-}
+// add_slide used to clone a fixed "general" theme layout here — replaced by
+// reusing mapAIPPTSlideToTemplateUi with the deck's own DeckLayoutPicker
+// (editor-react-client.tsx's add_slide case), so a slide added via the AI
+// assistant matches whatever template the deck was actually generated with,
+// the same way regenerate_slide already does — instead of always pulling
+// from one hardcoded theme regardless of which one the deck is using.
 
 // ── update_text (find title/content element by name, fall back to
 // position-based heuristics if no name match) ──

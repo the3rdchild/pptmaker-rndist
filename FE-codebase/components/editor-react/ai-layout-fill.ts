@@ -32,7 +32,6 @@ import {
 } from "@/components/slide-editor/model/model";
 import {
   DEFAULT_THEME_ID,
-  listThemeIds,
   loadAllThemes,
 } from "@/lib/templates/themes";
 import { isImageFrameElement } from "@/components/editor-react/image-frames";
@@ -62,12 +61,17 @@ interface TemplatePack {
 let packCache: Record<string, TemplatePack> | null = null;
 let packNamesCache: string[] | null = null;
 
-/** Every theme in the registry, keyed by id. Themes hand back layouts whose
- *  asset paths are already resolved against their own folder, so filling a
- *  layout from any theme is safe. */
+/** Every theme in the registry that actually has layouts to pick from, keyed
+ *  by id. Themes hand back layouts whose asset paths are already resolved
+ *  against their own folder, so filling a layout from any theme is safe.
+ *  A theme id can be listed in index.json (so the template engine's picker
+ *  still shows it for management) while holding zero layouts — never
+ *  populated, or mid-rebuild. Excluded here so it can never be the pack a
+ *  deck's seed hash lands on: an empty pack would leave that deck's
+ *  generation with no layouts at all. */
 async function loadAllPacks(): Promise<Record<string, TemplatePack>> {
   if (packCache) return packCache;
-  const themes = await loadAllThemes();
+  const themes = (await loadAllThemes()).filter((theme) => theme.layouts.length > 0);
   packCache = Object.fromEntries(
     themes.map((theme) => [
       theme.id,
@@ -78,10 +82,14 @@ async function loadAllPacks(): Promise<Record<string, TemplatePack>> {
   return packCache;
 }
 
+// Derived from loadAllPacks() (not a separate listThemeIds() call) so the
+// name pool a deck's seed hash picks from is always the SAME set that
+// actually has a pack behind it — no window where an empty theme is
+// choosable by name but resolves to nothing.
 async function loadPackNames(): Promise<string[]> {
   if (packNamesCache) return packNamesCache;
-  packNamesCache = await listThemeIds();
-  return packNamesCache;
+  await loadAllPacks();
+  return packNamesCache ?? [];
 }
 
 /** Lowercased, punctuation collapsed to single spaces, padded — so a key can be
@@ -298,7 +306,12 @@ export class DeckLayoutPicker {
     this.packName =
       this.packName ?? asked ?? names[hashSeed(this.seed) % Math.max(1, names.length)];
     const packs = await loadAllPacks();
-    const pack = packs[this.packName] ?? packs[DEFAULT_THEME_ID];
+    // this.packName (seed-hashed or explicitly asked for) and DEFAULT_THEME_ID
+    // both name IDS, not guaranteed entries in `packs` — loadAllPacks already
+    // dropped any theme with zero layouts, so either can be missing here.
+    // Object.values(packs)[0] is the last resort: any real pack beats none.
+    const pack = packs[this.packName] ?? packs[DEFAULT_THEME_ID] ?? Object.values(packs)[0];
+    if (!pack) throw new Error("No template layouts are available in any theme.");
     this.layouts = pack.layouts;
     this.buckets = bucketLayouts(pack.layouts);
     this.packFonts = (pack.fonts ?? null) as Record<string, string> | null;

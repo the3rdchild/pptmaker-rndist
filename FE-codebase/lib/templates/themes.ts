@@ -162,6 +162,25 @@ export async function loadAllThemes(): Promise<TemplateTheme[]> {
   return themes.filter((theme): theme is TemplateTheme => Boolean(theme));
 }
 
+/** A guaranteed-usable theme for callers that need actual layout content and
+ *  have no preference of their own (a blank deck, the AI assistant's
+ *  "add slide" tool) — DEFAULT_THEME_ID when it actually has layouts,
+ *  otherwise the first theme in the registry that does.
+ *
+ *  DEFAULT_THEME_ID is a stable id, not a guarantee: an id can be listed in
+ *  index.json (so it's visible for management in the template engine) while
+ *  holding zero layouts — never populated, or mid-rebuild. loadTheme(id)
+ *  alone doesn't protect against that; this does, so a caller that hands the
+ *  result straight to something like walkUi() never gets an empty/undefined
+ *  layout back. Returns null only if literally no theme anywhere has any
+ *  layouts, which should never happen outside a fully empty bucket. */
+export async function loadDefaultTheme(): Promise<TemplateTheme | null> {
+  const preferred = await loadTheme(DEFAULT_THEME_ID);
+  if (preferred && preferred.layouts.length > 0) return preferred;
+  const all = await loadAllThemes();
+  return all.find((theme) => theme.layouts.length > 0) ?? null;
+}
+
 /** Recovers the theme a layout came from. Layouts loaded through this module
  *  carry the tag; anything older falls back to the first shipped theme. */
 export function themeIdOfLayout(layout: unknown): string {

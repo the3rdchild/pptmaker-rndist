@@ -60,7 +60,7 @@ import {
   DEFAULT_THEME_ID,
   invalidateThemeCache,
   loadAllThemes,
-  loadTheme,
+  loadDefaultTheme,
   type TemplateTheme,
 } from "@/lib/templates/themes";
 import { TemplateEnginePanel } from "@/components/template-engine/template-engine-panel";
@@ -122,7 +122,6 @@ import { captureSlidePng } from "@/components/editor-react/slide-capture";
 import {
   applyFontToAllSlides,
   applyThemeToAllSlides,
-  buildAddSlideUi,
   updateSlideText,
   insertFormulaIntoSlide,
   insertShapeIntoSlide,
@@ -150,7 +149,10 @@ const TemplateV2KonvaSlide = dynamic(
 );
 
 async function loadDefaultLayout(): Promise<Record<string, unknown>> {
-  const theme = await loadTheme(DEFAULT_THEME_ID);
+  // loadDefaultTheme, not loadTheme(DEFAULT_THEME_ID) — the default theme id
+  // can point at an entry with zero layouts, and a blank deck needs an
+  // actually-populated theme to start from, not {}.
+  const theme = await loadDefaultTheme();
   return theme?.layouts[0] ?? {};
 }
 
@@ -289,6 +291,17 @@ export default function EditorReactClient({
    *  adds to the same set so a regenerated slide doesn't reintroduce a photo
    *  already sitting on another slide. */
   const usedStockPhotoIdsRef = useRef<Set<string>>(new Set());
+  /** The theme id generation actually resolved to (explicit ask, or
+   *  chooseThemeForTopic's pick). add_slide and regenerate_slide read this so
+   *  a slide added/redone via chat matches the deck's REAL current template,
+   *  instead of re-deriving a theme from a DeckLayoutPicker(deckId) seed hash
+   *  that has no relationship to how the deck's theme was actually chosen at
+   *  generation time. Set on generation, AND restored from the deck's saved
+   *  payload.deckThemeId on load (the save effect below writes it back) — so
+   *  a reopened deck still knows its own theme, not just one generated fresh
+   *  this session. A deck saved before this field existed has none stored;
+   *  falls back to the seed hash same as before until it's saved once. */
+  const currentThemeIdRef = useRef<string | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -523,10 +536,17 @@ export default function EditorReactClient({
           getDeck(token, deckId),
           getGlobalFonts(),
         ]);
-        const adapted = adaptDeckToPresentation(
-          deckId,
-          deck.payload as Record<string, unknown> | null
-        );
+        const rawPayload = deck.payload as Record<string, unknown> | null;
+        // Survives reload: a deck saved after this session's autosave carries
+        // the theme id it was generated with (see the save effect below), so
+        // add_slide/regenerate_slide can pin to it immediately on reopen
+        // instead of falling back to a DeckLayoutPicker seed hash that has no
+        // relationship to which theme the deck actually uses. Decks saved
+        // before this existed just have no field here — same fallback as
+        // before.
+        currentThemeIdRef.current =
+          rawPayload && typeof rawPayload.deckThemeId === "string" ? rawPayload.deckThemeId : null;
+        const adapted = adaptDeckToPresentation(deckId, rawPayload);
         if (cancelled) return;
         if (adapted && adapted.slides.length > 0) {
           // The global font library rides along under the deck's own saved
@@ -596,6 +616,13 @@ export default function EditorReactClient({
             // payload.fonts back; the write side was the missing half.
             ...(presentationData.fonts
               ? { fonts: presentationData.fonts }
+              : {}),
+            // Same idea for the theme id generation resolved to — read back
+            // on load (above) so add_slide/regenerate_slide can pin to the
+            // deck's real template across reloads, not just within the
+            // session that generated it.
+            ...(currentThemeIdRef.current
+              ? { deckThemeId: currentThemeIdRef.current }
               : {}),
           },
         } as unknown as Parameters<typeof saveDeck>[2]);
@@ -969,6 +996,7 @@ export default function EditorReactClient({
     const layoutPicker = new DeckLayoutPicker(genTopic, preferredTheme);
     await layoutPicker.ensureLoaded();
     const themeId = layoutPicker.getThemeId();
+    currentThemeIdRef.current = themeId;
     const manifest = themeId ? await fetchThemeManifest(themeId) : null;
     const chosenThemeName =
       manifest && typeof (manifest as { name?: unknown }).name === "string"
@@ -1513,10 +1541,59 @@ export default function EditorReactClient({
         const title = String(action.args.title || "");
         const items = Array.isArray(action.args.items) ? (action.args.items as { title: string; text: string }[]) : [];
         if (!title || !items.length) return "Missing slide content.";
-        const ui = await buildAddSlideUi(title, items);
-        dispatch(addSlide({ ui, atIndex: safeActive + 1 }));
-        setActiveIndex(safeActive + 1);
-        return `Added a new slide: "${title}".`;
+
+        // currentThemeIdRef pins the pack to the theme generation actually
+        // resolved to (explicit ask or chooseThemeForTopic) — deckId alone is
+        // just the RNG seed for decks with no preference at all, and reusing
+        // it here would pick an essentially unrelated theme most of the time.
+        const picker = new DeckLayoutPicker(deckId, currentThemeIdRef.current);
+        const filled = await mapAIPPTSlideToTemplateUi({ type: "content", data: { title, items } }, picker);
+        if (!filled) return "Couldn't find a layout to use.";
+
+        const index = safeActive + 1;
+        dispatch(addSlide({ ui: filled.ui, atIndex: index }));
+        setActiveIndex(index);
+
+        if (filled.heroImage && token) {
+          const marker = filled.heroImage;
+          const baseUi = filled.ui;
+          const imagePrompt = String(action.args.image_prompt || title);
+
+          const applyAiGenerated = () => {
+            const prompt = `${imagePrompt}. editorial photograph, cinematic natural lighting, cohesive color grading, no text, no watermark, no logo`;
+            void generateImage(token, prompt).then((dataUrl) => {
+              if (!dataUrl) return;
+              dispatch(updateSlideUi({ index, ui: patchHeroImage(baseUi, marker, dataUrl) }));
+            });
+          };
+
+          // Honours the same homepage image-source toggle used at
+          // generation time (imageSourceRef, set once per deck generation);
+          // falls back to AI generation if the stock search comes up empty.
+          if (imageSourceRef.current === "stock") {
+            void fetchStockPhotosForHint(imagePrompt).then((results) => {
+              const result = pickUnusedStockPhoto(results, usedStockPhotoIdsRef.current);
+              if (!result) {
+                applyAiGenerated();
+                return;
+              }
+              usedStockPhotoIdsRef.current.add(result.id);
+              dispatch(updateSlideUi({
+                index,
+                ui: patchHeroImage(baseUi, marker, result.url, {
+                  credit: result.credit,
+                  credit_url: result.creditUrl ?? null,
+                  source_url: result.sourceUrl,
+                }),
+              }));
+              trackStockPhotoDownload(result);
+            });
+          } else {
+            applyAiGenerated();
+          }
+        }
+
+        return `Added a new slide: "${title}"${filled.heroImage ? " (generating a new hero image…)" : ""}.`;
       }
       case "update_text": {
         const slideIndex = Number(action.args.slide_index);
@@ -1569,9 +1646,10 @@ export default function EditorReactClient({
         if (!title || !items.length) return "Missing slide content.";
         if (!token) return "Session not ready — try again in a moment.";
 
-        // Same pack every time for this deck (seeded by deckId) so a
-        // regenerated slide stays visually consistent with the rest.
-        const picker = new DeckLayoutPicker(deckId);
+        // currentThemeIdRef pins this to the theme generation actually
+        // resolved to, same reasoning as add_slide above — deckId alone as a
+        // seed has no relationship to which theme the deck was generated with.
+        const picker = new DeckLayoutPicker(deckId, currentThemeIdRef.current);
         const filled = await mapAIPPTSlideToTemplateUi({ type: "content", data: { title, items } }, picker);
         if (!filled) return "Couldn't find a layout to use.";
 

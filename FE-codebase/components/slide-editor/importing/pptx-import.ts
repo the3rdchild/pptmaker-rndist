@@ -1295,17 +1295,46 @@ function resolvePictureFill(
   };
 }
 
+/** The vector original behind a picture, when the file carries one.
+ *
+ * `a:blip/@r:embed` is only the RASTER FALLBACK. A deck exported from Canva
+ * (or PowerPoint 2016+ itself) writes every piece of vector artwork twice: a
+ * flattened PNG for old readers, and the real SVG hung off the blip in an
+ * extension list. PowerPoint draws the SVG, which is why the same icon looks
+ * crisp there and soft here — the fallback PNGs are tiny. In the deck this was
+ * traced on, the road is a 500x208 PNG stretched across 770px and the step
+ * icons are 24x24 PNGs, against 79 SVGs sitting unused in the same file. */
+function svgBlipId(blip: Rec | null): string | null {
+  for (const ext of asArray(asRecord(blip?.["a:extLst"])?.["a:ext"])) {
+    const id = readAttrString(asRecord(asRecord(ext)?.["asvg:svgBlip"]), "@_r:embed");
+    if (id) return id;
+  }
+  return null;
+}
+
+/** Media for a blip, preferring its vector original and falling back to the
+ * raster copy — including when the SVG is referenced but missing from the zip. */
+async function blipDataUrl(blip: Rec | null, ctx: PartContext): Promise<string | null> {
+  const svgId = svgBlipId(blip);
+  const svgTarget = svgId ? ctx.rels.byId.get(svgId) : null;
+  if (svgTarget) {
+    const vector = await mediaDataUrl(ctx.deck, svgTarget);
+    if (vector) return vector;
+  }
+  const rid = readAttrString(blip, "@_r:embed");
+  const target = rid ? ctx.rels.byId.get(rid) : null;
+  return target ? mediaDataUrl(ctx.deck, target) : null;
+}
+
 async function imageFromBlipFill(
   blipFill: Rec | null,
   ctx: PartContext,
   box: Box,
 ): Promise<{ el: Rec; box: Box } | null> {
   const blip = asRecord(blipFill?.["a:blip"]);
-  const rid = readAttrString(blip, "@_r:embed");
-  const target = rid ? ctx.rels.byId.get(rid) : null;
-  if (!target || !blipFill) return null;
+  if (!blip || !blipFill) return null;
 
-  const dataUrl = await mediaDataUrl(ctx.deck, target);
+  const dataUrl = await blipDataUrl(blip, ctx);
   if (!dataUrl) return null; // unsupported/vector media (.wmf/.emf) — skip rather than embed garbage
 
   const resolved = resolvePictureFill(blipFill, box);

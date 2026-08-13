@@ -1125,16 +1125,55 @@ function strokeOf(
   ln: Rec | null,
   theme: ThemeContext | null,
   geo: GeoContext,
-): { color: string; opacity: number; width: number } | null {
+): { color: string; opacity: number; width: number; dash?: number[] } | null {
   if (!ln) return null;
   if (ln["a:noFill"] !== undefined) return null;
   const color = colorOf(asRecord(ln["a:solidFill"]), theme);
   if (!color) return null;
   const widthEmu = readAttrNumber(ln, "@_w");
-  return {
-    ...color,
-    width: widthEmu ? Math.max(1, Math.round(widthEmu * geo.scale)) : 1,
-  };
+  const width = widthEmu ? Math.max(1, Math.round(widthEmu * geo.scale)) : 1;
+  const dash = dashOf(ln, width);
+  return { ...color, width, ...(dash ? { dash } : {}) };
+}
+
+/** ECMA-376 preset dash patterns, as multiples of the line width — which is
+ * how PowerPoint defines them, so a thick dashed line gets proportionally
+ * longer dashes rather than the same dashes as a hairline. */
+const PRESET_DASH: Record<string, number[]> = {
+  dot: [1, 3],
+  dash: [4, 3],
+  lgDash: [8, 3],
+  dashDot: [4, 3, 1, 3],
+  lgDashDot: [8, 3, 1, 3],
+  lgDashDotDot: [8, 3, 1, 3, 1, 3],
+  sysDash: [3, 1],
+  sysDot: [1, 1],
+  sysDashDot: [3, 1, 1, 1],
+  sysDashDotDot: [3, 1, 1, 1, 1, 1],
+};
+
+/** Dash pattern in canvas px, or null for a solid line. Both the preset
+ * (`a:prstDash`) and custom (`a:custDash`) forms are expressed relative to the
+ * line width, so the px pattern is only known once the width is scaled. */
+function dashOf(ln: Rec, width: number): number[] | null {
+  const preset = readAttrString(asRecord(ln["a:prstDash"]), "@_val");
+  if (preset && preset !== "solid") {
+    const pattern = PRESET_DASH[preset];
+    if (pattern) return pattern.map((n) => round2(n * width));
+  }
+
+  // <a:custDash><a:ds d="400000" sp="300000"/>… — d/sp are 1000ths of a
+  // percent of the line width, alternating dash then gap.
+  const stops = asArray(asRecord(ln["a:custDash"])?.["a:ds"]);
+  const custom: number[] = [];
+  for (const stop of stops) {
+    const rec = asRecord(stop);
+    const d = readAttrNumber(rec, "@_d");
+    const sp = readAttrNumber(rec, "@_sp");
+    if (d == null || sp == null) continue;
+    custom.push(round2((d / 100000) * width), round2((sp / 100000) * width));
+  }
+  return custom.length ? custom : null;
 }
 
 /** PowerPoint shapes very often carry no explicit fill and get their colour

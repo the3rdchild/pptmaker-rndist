@@ -37,6 +37,19 @@ export function strokeOpacity(stroke: unknown) {
   return readNumber(value?.opacity) ?? 1;
 }
 
+/** Konva `dash` array in px, or undefined for a solid stroke. Shared by every
+ *  stroked shape so a dashed outline imported from a .pptx renders dashed
+ *  whatever geometry carries it, not just on `line`. */
+export function strokeDash(stroke: unknown): number[] | undefined {
+  const value = asRecord(stroke);
+  if (!Array.isArray(value?.dash)) return undefined;
+  const dash = value.dash
+    .map(readNumber)
+    .filter((entry): entry is number => entry != null && entry >= 0);
+  // An all-zero pattern draws nothing in Canvas; treat it as solid.
+  return dash.length && dash.some((entry) => entry > 0) ? dash : undefined;
+}
+
 export function colorWithOpacity(color: string | undefined, opacity: number) {
   if (!color) return undefined;
   const alpha = clamp(opacity, 0, 1);

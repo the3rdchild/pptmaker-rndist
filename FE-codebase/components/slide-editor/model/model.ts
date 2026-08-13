@@ -143,6 +143,7 @@ export {
   fillOpacity,
   shadowProps,
   strokeColor,
+  strokeDash,
   strokeOpacity,
   strokeWidth,
 } from "@/components/slide-editor/model/render-style";

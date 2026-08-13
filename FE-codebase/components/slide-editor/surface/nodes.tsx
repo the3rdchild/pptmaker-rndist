@@ -83,6 +83,7 @@ import {
   shouldClipElementChildren,
   shouldUseCenterOrigin,
   strokeColor,
+  strokeDash,
   strokeOpacity,
   strokeWidth,
   valueProgress,
@@ -944,6 +945,7 @@ function RawElementVisual({
         fill={fill}
         stroke={stroke}
         strokeWidth={strokeWidth(element.stroke)}
+        dash={strokeDash(element.stroke)}
         cornerRadius={borderRadius(element)}
         {...shadowProps(element)}
         listening={interactive}
@@ -966,6 +968,7 @@ function RawElementVisual({
           strokeOpacity(element.stroke),
         )}
         strokeWidth={strokeWidth(element.stroke)}
+        dash={strokeDash(element.stroke)}
         {...shadowProps(element)}
         listening={interactive}
       />
@@ -977,16 +980,14 @@ function RawElementVisual({
       strokeOpacity(element.stroke),
     );
     const lineWidth = strokeWidth(element.stroke);
-    const lineDash = readArray(asRecord(element.stroke)?.dash)
-      .map(readNumber)
-      .filter((value): value is number => value != null && value >= 0);
+    const lineDash = strokeDash(element.stroke);
     if (!stroke || lineWidth <= 0) return null;
     return (
       <Line
         points={linePoints(width, height, lineWidth)}
         stroke={stroke}
         strokeWidth={lineWidth}
-        dash={lineDash.length ? lineDash : undefined}
+        dash={lineDash}
         hitStrokeWidth={Math.max(20, lineWidth)}
         {...shadowProps(element)}
         listening={interactive}

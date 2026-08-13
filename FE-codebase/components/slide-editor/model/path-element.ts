@@ -76,7 +76,21 @@ export function pathElementToSvgDataUrl(
 ): string | null {
   const svg = pathElementToSvg(element, width, height);
   if (!svg) return null;
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  // MUST be base64, not percent-encoded: pptxgenjs rejects any `data:` image
+  // whose string doesn't contain "base64," — it logs and returns null, which
+  // silently drops the shape from the exported deck. Given a base64 SVG it
+  // handles the rest itself (svg extension, the PNG fallback rel, and the
+  // asvg:svgBlip that makes PowerPoint render the vector).
+  return `data:image/svg+xml;base64,${encodeBase64(svg)}`;
+}
+
+/** btoa over UTF-8. btoa alone throws on any non-Latin-1 character, which a
+ *  path element can carry through a colour name or an author's text. */
+function encodeBase64(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
 }
 
 function escapeXmlAttribute(value: string): string {

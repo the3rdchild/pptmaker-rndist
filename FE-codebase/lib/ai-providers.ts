@@ -193,10 +193,19 @@ export interface ChatMessage {
   content: unknown;
 }
 
+// Some providers (Kimi's coding endpoint in particular, under subscription
+// rate limiting) can go quiet mid-request instead of erroring. A plain fetch
+// with no timeout then hangs forever — and since every caller (visual review
+// verify/repair) is awaited up the chain into the generation pipeline, one
+// stuck request freezes the whole "Reviewing slide N…" step with no error,
+// no log, nothing to point at. This bounds every provider call so a
+// non-responsive provider fails fast instead of wedging the pipeline.
+const PROVIDER_TIMEOUT_MS = 60000;
+
 /** One round trip to the provider's chat-completions endpoint. Throws on HTTP
- *  failure or an empty response — the route maps that to a 502 the caller can
- *  show. Per-provider quirks (UA header, omitted temperature, disabled
- *  thinking) are applied from the resolved config. */
+ *  failure, a timeout, or an empty response — the route maps that to a 502
+ *  the caller can show. Per-provider quirks (UA header, omitted temperature,
+ *  disabled thinking) are applied from the resolved config. */
 export async function callProvider(
   providerId: string | null | undefined,
   messages: ChatMessage[],
@@ -216,11 +225,24 @@ export async function callProvider(
   if (!cfg.omit_temperature) body.temperature = 1;
   if (cfg.disable_thinking) body.thinking = { type: "disabled" };
 
-  const res = await fetch(`${cfg.base_url}/chat/completions`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${cfg.base_url}/chat/completions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(`${cfg.id} timed out after ${PROVIDER_TIMEOUT_MS / 1000}s`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`${cfg.id} API ${res.status}: ${text.slice(0, 200)}`);

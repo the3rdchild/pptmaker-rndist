@@ -1224,7 +1224,18 @@ function RawImageElement({
     }
     | undefined;
 
-  if (fit === "cover") {
+  const sourceRect = imageSourceRect(element);
+  if (sourceRect) {
+    // An explicit source rect is a mapping the file already stated (a .pptx
+    // picture fill's srcRect/fillRect), so it wins over any fit heuristic:
+    // exactly this slice, stretched across the box.
+    crop = {
+      x: sourceRect.x * loaded.width,
+      y: sourceRect.y * loaded.height,
+      width: sourceRect.width * loaded.width,
+      height: sourceRect.height * loaded.height,
+    };
+  } else if (fit === "cover") {
     if (naturalRatio > boxRatio) {
       const baseCropWidth = loaded.height * boxRatio;
       const cropWidth = Math.min(loaded.width, baseCropWidth / cropScale);
@@ -1309,6 +1320,29 @@ type ParsedImageClipPath =
   | { kind: "rect"; x: number; y: number; width: number; height: number; radius: number }
   | { kind: "circle"; x: number; y: number; radius: number }
   | { kind: "ellipse"; x: number; y: number; radiusX: number; radiusY: number };
+
+/** `crop` as fractions of the natural image, or null when the element has no
+ *  explicit source rect. Guards against a degenerate/out-of-range rect so a
+ *  malformed value falls back to the fit heuristics instead of blanking the
+ *  image. */
+function imageSourceRect(
+  element: RawElement,
+): { x: number; y: number; width: number; height: number } | null {
+  const crop = asRecord(element.crop);
+  if (!crop) return null;
+  const x = readNumber(crop.x);
+  const y = readNumber(crop.y);
+  const width = readNumber(crop.width);
+  const height = readNumber(crop.height);
+  if (x == null || y == null || width == null || height == null) return null;
+  if (!(width > 0) || !(height > 0)) return null;
+  return {
+    x: clamp(x, 0, 1),
+    y: clamp(y, 0, 1),
+    width: clamp(width, 0, 1 - clamp(x, 0, 1)) || width,
+    height: clamp(height, 0, 1 - clamp(y, 0, 1)) || height,
+  };
+}
 
 function imageClipPath(element: RawElement): string | null {
   const raw = readString(element.clippath ?? element.clipPath ?? element.clip_path);

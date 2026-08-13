@@ -199,12 +199,26 @@ export type ContainerElement = ElementBase & {
   child?: SlideElement | null;
 };
 
+/** A sub-rectangle of the source image, as fractions (0–1) of its natural
+ *  size. Set by the .pptx importer to reproduce a picture fill's `a:srcRect` /
+ *  `a:stretch/a:fillRect`, where the shape is a window onto a larger image
+ *  (a sprite sheet) rather than a frame the whole image scales into. When
+ *  present it replaces `fit` entirely: this exact slice is stretched across
+ *  the element box, because the source file already stated the mapping. */
+export type ImageCrop = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 export type ImageElement = ElementBase & {
   type: "image";
   flip_h?: boolean | null;
   flip_v?: boolean | null;
   data?: string | null;
   fit?: ImageFit | null;
+  crop?: ImageCrop | null;
   focus_x?: number | null;
   focus_y?: number | null;
   crop_scale?: number | null;

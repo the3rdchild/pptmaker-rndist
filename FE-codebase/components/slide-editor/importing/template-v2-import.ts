@@ -17,6 +17,7 @@ import {
   type Fill,
   type Font,
   type GroupElement,
+  type ImageCrop,
   type LayoutAlignment,
   type LayoutItem,
   type Padding,
@@ -761,6 +762,7 @@ function adaptImage(raw: UnknownRecord): SlideElement {
     data: data ? resolveBackendAssetUrl(data) : null,
     name: truncateString(readString(raw.name) ?? "", 120) || null,
     fit: readEnum(raw, ["contain", "cover", "fill"], "fit"),
+    crop: adaptImageCrop(readRecord(raw, "crop")),
     focus_x: readNumber(raw, "focus_x"),
     focus_y: readNumber(raw, "focus_y"),
     crop_scale: readNumber(raw, "crop_scale"),
@@ -768,6 +770,24 @@ function adaptImage(raw: UnknownRecord): SlideElement {
     clippath: readString(raw.clippath ?? raw.clipPath ?? raw.clip_path),
     color: readString(raw.color),
     is_icon: readBoolean(raw, "is_icon"),
+  };
+}
+
+/** Source rect for a picture fill imported from a .pptx, in natural-image
+ *  fractions. A zero-area rect would render nothing, so it is dropped and the
+ *  element falls back to its `fit`. */
+function adaptImageCrop(raw: UnknownRecord | null): ImageCrop | null {
+  if (!raw) return null;
+  const x = readNumber(raw, "x");
+  const y = readNumber(raw, "y");
+  const width = readNumber(raw, "width");
+  const height = readNumber(raw, "height");
+  if (width == null || height == null || width <= 0 || height <= 0) return null;
+  return {
+    x: clamp(x ?? 0, 0, 1),
+    y: clamp(y ?? 0, 0, 1),
+    width: clamp(width, 0, 1),
+    height: clamp(height, 0, 1),
   };
 }
 

@@ -451,7 +451,13 @@ async function slideBackground(
     const bgPr = asRecord(step.bg["p:bgPr"]);
     if (bgPr) {
       const picture = await imageFromBlipFill(asRecord(bgPr["a:blipFill"]), step.ctx, full);
-      if (picture) return backgroundComponent(index, { ...picture, name: "background", decorative: true });
+      if (picture) {
+        return backgroundComponent(
+          index,
+          { ...picture.el, name: "background", decorative: true },
+          picture.box,
+        );
+      }
       const fill = fillOf(bgPr, step.ctx.theme);
       if (fill) return backgroundComponent(index, backgroundRect(fill));
     }
@@ -475,16 +481,19 @@ function backgroundRect(fill: { color: string; opacity: number }): Rec {
   };
 }
 
-function backgroundComponent(index: number, element: Rec): Rec {
+/** `box` covers the whole stage unless a background picture fill's own
+ * fillRect asked for less than that. */
+function backgroundComponent(index: number, element: Rec, box?: Box): Rec {
+  const area = box ?? { x: 0, y: 0, width: EDITOR_STAGE_WIDTH, height: EDITOR_STAGE_HEIGHT };
   return {
     id: `imported_bg_${index + 1}`,
-    position: { x: 0, y: 0 },
-    size: { width: EDITOR_STAGE_WIDTH, height: EDITOR_STAGE_HEIGHT },
+    position: { x: area.x, y: area.y },
+    size: { width: area.width, height: area.height },
     elements: [
       {
         ...element,
         position: { x: 0, y: 0 },
-        size: { width: EDITOR_STAGE_WIDTH, height: EDITOR_STAGE_HEIGHT },
+        size: { width: area.width, height: area.height },
       },
     ],
   };
@@ -750,7 +759,7 @@ async function buildShape(
   // so treating these as plain rectangles loses all the imagery in the deck.
   const picture = await imageFromBlipFill(asRecord(spPr?.["a:blipFill"]), ctx, box);
   if (picture) {
-    elements.push({ el: withRotation({ ...picture, ...shapeFlip(spPr) }, rotation), box });
+    elements.push(placePicture(picture, { ...shapeFlip(spPr) }, box, rotation));
   }
 
   const text = textElement(node, ctx, box);
@@ -805,25 +814,138 @@ async function buildPicture(
   if (!box) return null;
   const picture = await imageFromBlipFill(asRecord(node["p:blipFill"]), ctx, box);
   if (!picture) return null;
-  return { el: withRotation({ ...picture, ...shapeFlip(spPr) }, shapeRotation(spPr)), box };
+  return placePicture(picture, { ...shapeFlip(spPr) }, box, shapeRotation(spPr));
+}
+
+/** Places a resolved picture fill inside the shape it belongs to. A fill whose
+ * `fillRect` insets are positive paints only part of the shape, so the element
+ * shrinks onto that part — and PowerPoint rotates around the SHAPE's centre,
+ * not the painted sub-rectangle's, so the shrunken box is swung around the
+ * shape centre rather than just handed the angle. Identical boxes (every fill
+ * that covers or overflows its shape) fall out as a plain rotation. */
+function placePicture(
+  picture: { el: Rec; box: Box },
+  extra: Rec,
+  shape: Box,
+  rotation: number | null,
+): BuiltElement {
+  const built: BuiltElement = { el: { ...picture.el, ...extra }, box: picture.box };
+  if (rotation != null) {
+    rotateBuiltElement(built, shape.x + shape.width / 2, shape.y + shape.height / 2, rotation);
+  }
+  return built;
 }
 
 function withRotation(el: Rec, rotation: number | null): Rec {
   return rotation == null ? el : { ...el, rotation };
 }
 
+/** DrawingML inset rectangle (`a:srcRect`, `a:fillRect`): four edge insets in
+ * 1000ths of a percent, each defaulting to 0. Insets may be NEGATIVE, which is
+ * how "the picture is bigger than the shape and the shape is a window onto it"
+ * is expressed. */
+type Insets = { l: number; t: number; r: number; b: number };
+
+function insetsOf(rect: Rec | null): Insets | null {
+  if (!rect) return null;
+  const read = (attr: string) => (readAttrNumber(rect, attr) ?? 0) / 100000;
+  return { l: read("@_l"), t: read("@_t"), r: read("@_r"), b: read("@_b") };
+}
+
+function isZeroInsets(insets: Insets | null): boolean {
+  return !insets || (insets.l === 0 && insets.t === 0 && insets.r === 0 && insets.b === 0);
+}
+
+/** A sub-rectangle of the source image, as fractions of its natural size. */
+type CropRect = { x: number; y: number; width: number; height: number };
+
+/** Resolves a picture fill's two nested rectangles into what the shape
+ * actually shows.
+ *
+ * `a:srcRect` crops the source image first; the surviving window is then
+ * stretched into `a:stretch/a:fillRect`, a rect expressed relative to the
+ * SHAPE, which may reach outside it. Canva leans on that hard: it exports one
+ * sprite sheet and gives each shape a fillRect like `l=0 r=-343885`, meaning
+ * "draw this image 4.4x the width of my box, anchored left" — so the box shows
+ * only the leftmost 22% of the sprite. Dropping fillRect (as this importer
+ * did) squeezes the whole sprite into the box instead, which is why one road
+ * segment imported as six tiny roads and a pentagon label imported as a
+ * square, a circle and a triangle side by side.
+ *
+ * Returns the visible part as a crop into the source plus the sub-rectangle of
+ * the shape box it lands in, or null when the fill covers the box untouched
+ * (the common case, no crop needed). */
+function resolvePictureFill(
+  blipFill: Rec,
+  box: Box,
+): { crop: CropRect | null; box: Box } | null {
+  const src = insetsOf(asRecord(blipFill["a:srcRect"]));
+  const stretch = asRecord(blipFill["a:stretch"]);
+  const fill = insetsOf(asRecord(stretch?.["a:fillRect"]));
+  if (isZeroInsets(src) && isZeroInsets(fill)) return { crop: null, box };
+
+  // Source window left by srcRect, in natural-image fractions.
+  const win = {
+    x: src?.l ?? 0,
+    y: src?.t ?? 0,
+    width: 1 - (src?.l ?? 0) - (src?.r ?? 0),
+    height: 1 - (src?.t ?? 0) - (src?.b ?? 0),
+  };
+  if (win.width <= 0 || win.height <= 0) return null;
+
+  // Where that window is drawn, in fractions of the shape box.
+  const dest = { x0: fill?.l ?? 0, y0: fill?.t ?? 0, x1: 1 - (fill?.r ?? 0), y1: 1 - (fill?.b ?? 0) };
+  const destWidth = dest.x1 - dest.x0;
+  const destHeight = dest.y1 - dest.y0;
+  if (destWidth <= 0 || destHeight <= 0) return null;
+
+  // The shape clips whatever falls outside it.
+  const visible = {
+    x0: Math.max(0, dest.x0),
+    y0: Math.max(0, dest.y0),
+    x1: Math.min(1, dest.x1),
+    y1: Math.min(1, dest.y1),
+  };
+  if (visible.x1 <= visible.x0 || visible.y1 <= visible.y0) return null;
+
+  const fx0 = (visible.x0 - dest.x0) / destWidth;
+  const fx1 = (visible.x1 - dest.x0) / destWidth;
+  const fy0 = (visible.y0 - dest.y0) / destHeight;
+  const fy1 = (visible.y1 - dest.y0) / destHeight;
+
+  return {
+    crop: {
+      x: round4(win.x + fx0 * win.width),
+      y: round4(win.y + fy0 * win.height),
+      width: round4((fx1 - fx0) * win.width),
+      height: round4((fy1 - fy0) * win.height),
+    },
+    // Only the visible slice of the box is painted; the rest of the shape held
+    // nothing, so the element shrinks onto it rather than scaling to fit.
+    box: {
+      x: box.x + visible.x0 * box.width,
+      y: box.y + visible.y0 * box.height,
+      width: Math.max(1, (visible.x1 - visible.x0) * box.width),
+      height: Math.max(1, (visible.y1 - visible.y0) * box.height),
+    },
+  };
+}
+
 async function imageFromBlipFill(
   blipFill: Rec | null,
   ctx: PartContext,
   box: Box,
-): Promise<Rec | null> {
+): Promise<{ el: Rec; box: Box } | null> {
   const blip = asRecord(blipFill?.["a:blip"]);
   const rid = readAttrString(blip, "@_r:embed");
   const target = rid ? ctx.rels.byId.get(rid) : null;
-  if (!target) return null;
+  if (!target || !blipFill) return null;
 
   const dataUrl = await mediaDataUrl(ctx.deck, target);
   if (!dataUrl) return null; // unsupported/vector media (.wmf/.emf) — skip rather than embed garbage
+
+  const resolved = resolvePictureFill(blipFill, box);
+  if (!resolved) return null; // the fill maps to nothing visible
 
   // `alphaModFix` is how a translucent picture fill is stored (Canva uses it
   // for the faint tiled patterns behind a slide); ignoring it renders those at
@@ -832,14 +954,19 @@ async function imageFromBlipFill(
   const opacity = alpha == null ? null : clamp01(alpha / 100000);
 
   return {
-    type: "image",
-    data: dataUrl,
-    // Default to cover ("Fill" in the toolbar) — imported frames used to get
-    // "fill" ("Stretch"), which distorts any photo whose aspect ratio doesn't
-    // exactly match its frame. Cropping beats warping.
-    fit: "cover",
-    size: { width: box.width, height: box.height },
-    ...(opacity != null && opacity < 1 ? { opacity } : {}),
+    el: {
+      type: "image",
+      data: dataUrl,
+      // `a:stretch` means exactly that: map the source onto the destination
+      // rect, warping if the aspect ratios differ. Falling back to "cover"
+      // (as this importer did unconditionally) re-crops on top of a mapping
+      // the file already stated, which moves the picture's content.
+      fit: blipFill["a:stretch"] !== undefined ? "fill" : "cover",
+      ...(resolved.crop ? { crop: resolved.crop } : {}),
+      size: { width: resolved.box.width, height: resolved.box.height },
+      ...(opacity != null && opacity < 1 ? { opacity } : {}),
+    },
+    box: resolved.box,
   };
 }
 
@@ -1407,4 +1534,10 @@ function clampByte(value: number): number {
 
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+/** Crop fractions need more precision than layout px: at 4 decimals one unit
+ * is ~0.5px on a 4000px-wide sprite, below anything visible. */
+function round4(value: number): number {
+  return Math.round(value * 10000) / 10000;
 }

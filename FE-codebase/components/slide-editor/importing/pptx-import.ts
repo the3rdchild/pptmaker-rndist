@@ -1350,6 +1350,12 @@ async function imageFromBlipFill(
     el: {
       type: "image",
       data: dataUrl,
+      // Imported artwork is content, not an empty photo slot. Without this an
+      // icon clipped to its hexagon reads as an image container to the frame
+      // detector (a clip used to mean exactly that), and the generator would
+      // paint a stock photo over every icon on the page. The operator marks
+      // the real photo slots in the template panel.
+      is_frame: false,
       // `a:stretch` means exactly that: map the source onto the destination
       // rect, warping if the aspect ratios differ. Falling back to "cover"
       // (as this importer did unconditionally) re-crops on top of a mapping

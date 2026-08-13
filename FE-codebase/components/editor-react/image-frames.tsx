@@ -36,6 +36,15 @@ export function isImageFrameElement(element: unknown): boolean {
   const el = element as Record<string, unknown>;
   if (el.type !== "image") return false;
   if (el.is_frame === true) return true;
+  // Explicit opt-OUT, which the clip-path inference below must not override.
+  // A clip used to be proof of a photo container, because only the Elements
+  // tab produced one. The .pptx importer now also clips a picture to the
+  // shape's real outline (a photo in a circle, an icon in a hexagon) purely
+  // for geometry — that is a drawing instruction, not a declaration that the
+  // generator should overwrite the artwork with a stock photo. Imported
+  // pictures therefore arrive as `is_frame: false` and the operator promotes
+  // the ones that really are photo slots.
+  if (el.is_frame === false) return false;
   const raw = el.clippath ?? el.clipPath ?? el.clip_path;
   if (typeof raw !== "string") return false;
   const trimmed = raw.trim();

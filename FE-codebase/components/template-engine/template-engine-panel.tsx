@@ -1994,10 +1994,22 @@ function SlotSection({ selection }: { selection: TemplateSelectionPayload | null
         />
       </Field>
 
+      {type === "image" && (
+        <label className="flex items-center gap-2 py-1 text-[11px] text-[var(--text-secondary)]">
+          <input
+            type="checkbox"
+            checked={isFrame}
+            onChange={(event) => patchElement({ is_frame: event.target.checked })}
+          />
+          Image container — the generator fills it with a photo
+        </label>
+      )}
+
       {isFrame ? (
         <p className="py-1 text-[10px] leading-snug text-[var(--text-muted)]">
-          Image container — the generator always fills it with a generated
-          photo. The hint below doubles as the photo prompt.
+          The generator always fills this slot, even when it is small or
+          decorative. The hint below doubles as the photo prompt. Untick it to
+          keep the artwork that is in there.
         </p>
       ) : (
         <label className="flex items-center gap-2 py-1 text-[11px] text-[var(--text-secondary)]">

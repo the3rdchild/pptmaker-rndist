@@ -772,6 +772,12 @@ function adaptImage(raw: UnknownRecord): SlideElement {
     clippath: readString(raw.clippath ?? raw.clipPath ?? raw.clip_path),
     color: readString(raw.color),
     is_icon: readBoolean(raw, "is_icon"),
+    // Dropping this lost the operator's decision every time a template was
+    // reloaded: an image marked as a photo container fell back to being
+    // inferred from its clip path, and one explicitly marked NOT a container
+    // (every picture the .pptx importer produces) silently became one again.
+    // Absent stays null, so templates authored before this keep inferring.
+    is_frame: readBoolean(raw, "is_frame"),
   };
 }
 

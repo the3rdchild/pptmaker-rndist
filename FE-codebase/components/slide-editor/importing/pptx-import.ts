@@ -1376,9 +1376,76 @@ async function mediaDataUrl(deck: DeckContext, path: string): Promise<string | n
   const entry = deck.zip.file(path);
   const mime = mimeTypeFor(path);
   let dataUrl: string | null = null;
-  if (entry && mime) dataUrl = `data:${mime};base64,${await entry.async("base64")}`;
+  if (entry && mime) {
+    // Shrink from the raw bytes, never from a data URL: base64-encoding a
+    // 6MB photo only to decode it straight back was most of the import's
+    // time. The base64 is produced only for what actually ships.
+    const shrunk = await shrinkOversizedImage(entry, mime);
+    dataUrl = shrunk ?? `data:${mime};base64,${await entry.async("base64")}`;
+  }
   deck.mediaCache.set(path, dataUrl);
   return dataUrl;
+}
+
+/** Longest edge worth keeping. The editor stage is 1280x720 and the PDF export
+ * rasterises it at 2x, so nothing is ever sampled above ~2560px — a source
+ * wider than that is carrying detail no output can show. */
+const MAX_IMAGE_DIMENSION = 2560;
+/** Below this, re-encoding costs more than it saves. */
+const IMAGE_SHRINK_THRESHOLD_BYTES = 256 * 1024;
+
+/** Re-encodes a print-resolution photo down to what the canvas can actually
+ * display. Decks routinely embed originals far beyond that — one sample deck
+ * carries a single 19.5MB image, another reaches 148MB of inline base64 across
+ * ten slides — and every byte is then paid again on each autosave, undo
+ * snapshot and clone, because the importer inlines media as data URLs.
+ *
+ * WebP, not JPEG: imported artwork is full of cut-out shapes and icons whose
+ * transparency JPEG would flatten onto a black box. A browser without WebP
+ * encoding falls back to PNG per the canvas spec, which still gets the
+ * downscale. SVG is skipped — it is vector, already small, and rasterising it
+ * would throw away the very thing that makes it sharp.
+ *
+ * No-ops outside the browser (no canvas), so the import stays usable headlessly
+ * and in any server-side path. */
+async function shrinkOversizedImage(
+  entry: JSZip.JSZipObject,
+  mime: string,
+): Promise<string | null> {
+  if (mime === "image/svg+xml" || mime === "image/gif") return null;
+  if (typeof document === "undefined" || typeof createImageBitmap !== "function") return null;
+
+  try {
+    const blob: Blob = await entry.async("blob");
+    if (blob.size < IMAGE_SHRINK_THRESHOLD_BYTES) return null;
+
+    const bitmap = await createImageBitmap(blob);
+    const longest = Math.max(bitmap.width, bitmap.height);
+    const scale = Math.min(1, MAX_IMAGE_DIMENSION / longest);
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      bitmap.close();
+      return null;
+    }
+    context.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close();
+
+    const encoded = canvas.toDataURL("image/webp", 0.9);
+    // Re-encoding can lose to the original (an already-optimised PNG, or a
+    // browser that fell back to PNG at a size it can't beat). base64 costs
+    // about 4/3 of the raw bytes, which is what the original would ship as —
+    // keep whichever is actually smaller so this never makes a deck heavier.
+    return encoded.length < blob.size * (4 / 3) ? encoded : null;
+  } catch {
+    // A decode failure must not lose the image — fall back to the raw bytes.
+    return null;
+  }
 }
 
 function mimeTypeFor(path: string): string | null {

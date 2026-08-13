@@ -1271,10 +1271,13 @@ function textElement(node: Rec, ctx: PartContext, box: Box, hasBackdrop = false)
   if (!txBody) return null;
 
   const bodyPr = asRecord(txBody["a:bodyPr"]);
-  // Body-level defaults a run inherits when it doesn't set its own properties.
-  const bodyDefaults = asRecord(
-    asRecord(asRecord(txBody["a:lstStyle"])?.["a:lvl1pPr"])?.["a:defRPr"],
-  );
+  const listStyle = asRecord(txBody["a:lstStyle"]);
+  // PowerPoint's own shrink-to-fit. Ignoring it renders text at its authored
+  // size in a box the author had already let PowerPoint shrink it to fit, so
+  // it overflows here while looking fine in the source.
+  const autofit = asRecord(bodyPr?.["a:normAutofit"]);
+  const fontScale = (readAttrNumber(autofit, "@_fontScale") ?? 100000) / 100000;
+  const lineReduction = (readAttrNumber(autofit, "@_lnSpcReduction") ?? 0) / 100000;
   const styleColor = styleRefFontColor(node, ctx.theme);
 
   let firstFont: Rec | null = null;
@@ -1283,15 +1286,20 @@ function textElement(node: Rec, ctx: PartContext, box: Box, hasBackdrop = false)
   let align: string | null = null;
 
   // Paragraphs are collected separately so trailing empty ones (very common —
-  // they only exist to hold cursor state) don't leave stray blank lines.
-  const paragraphRuns: Rec[][] = [];
+  // they only exist to hold cursor state) don't leave stray blank lines, and
+  // so a shape whose paragraphs are all bulleted can become a real list.
+  const paragraphs: { runs: Rec[]; bullet: Bullet }[] = [];
   for (const p of asArray(txBody["a:p"])) {
     const para = asRecord(p);
     if (!para) continue;
     const pPr = asRecord(para["a:pPr"]);
-    const paraDefaults = asRecord(pPr?.["a:defRPr"]) ?? bodyDefaults;
-    if (align == null) align = readAttrString(pPr, "@_algn");
-    if (lineSpacing == null) lineSpacing = lineSpacingOf(pPr);
+    // Run properties are inherited from the list style entry for the
+    // paragraph's OWN level. Reading lvl1pPr for every paragraph, as this did,
+    // gives an indented sub-point the size and colour of a top-level one.
+    const levelStyle = levelProperties(listStyle, readAttrNumber(pPr, "@_lvl") ?? 0);
+    const paraDefaults = asRecord(pPr?.["a:defRPr"]) ?? asRecord(levelStyle?.["a:defRPr"]);
+    if (align == null) align = readAttrString(pPr, "@_algn") ?? readAttrString(levelStyle, "@_algn");
+    if (lineSpacing == null) lineSpacing = lineSpacingOf(pPr) ?? lineSpacingOf(levelStyle);
 
     const current: Rec[] = [];
     for (const r of asArray(para["a:r"])) {
@@ -1301,28 +1309,23 @@ function textElement(node: Rec, ctx: PartContext, box: Box, hasBackdrop = false)
       if (!text) continue;
       const rPr = asRecord(run["a:rPr"]);
       const sizePt = readAttrNumber(rPr, "@_sz") ?? readAttrNumber(paraDefaults, "@_sz");
-      const font = runFont(rPr, paraDefaults, ctx, styleColor);
+      const font = runFont(rPr, paraDefaults, ctx, styleColor, fontScale);
       if (!firstFont && font) {
         firstFont = font;
-        firstFontPt = sizePt == null ? null : sizePt / 100;
+        firstFontPt = sizePt == null ? null : (sizePt / 100) * fontScale;
       }
       current.push(font ? { text, font } : { text });
     }
-    paragraphRuns.push(current);
+    paragraphs.push({ runs: current, bullet: bulletOf(pPr, levelStyle) });
   }
-  while (paragraphRuns.length > 0 && paragraphRuns[paragraphRuns.length - 1].length === 0) {
-    paragraphRuns.pop();
+  while (paragraphs.length > 0 && paragraphs[paragraphs.length - 1].runs.length === 0) {
+    paragraphs.pop();
   }
 
-  const runs: Rec[] = [];
-  paragraphRuns.forEach((paragraph, pIndex) => {
-    if (pIndex > 0) runs.push({ text: "\n" });
-    runs.push(...paragraph);
-  });
+  const filled = paragraphs.filter((paragraph) => paragraph.runs.length > 0);
+  if (filled.length === 0) return null;
 
-  if (runs.length === 0) return null;
-
-  const lineHeight = lineHeightOf(lineSpacing, firstFontPt);
+  const lineHeight = lineHeightOf(lineSpacing, firstFontPt, lineReduction);
   const elementFont: Rec = { ...(firstFont ?? {}) };
   if (lineHeight != null) elementFont.line_height = lineHeight;
 
@@ -1333,15 +1336,135 @@ function textElement(node: Rec, ctx: PartContext, box: Box, hasBackdrop = false)
   if (vertical) alignment.vertical = vertical;
 
   const fill = hasBackdrop ? null : fillOf(asRecord(node["p:spPr"]), ctx.theme);
-
-  return {
-    type: "text",
-    runs,
+  const common = {
     ...(Object.keys(elementFont).length ? { font: elementFont } : {}),
     ...(Object.keys(alignment).length ? { alignment } : {}),
     ...(fill ? { fill } : {}),
     size: { width: box.width, height: box.height },
   };
+
+  // A shape whose paragraphs are ALL bulleted the same way is a list, and
+  // becomes one — the list element draws its own markers with a hanging
+  // indent, which is what the source looks like. Bullets used to be dropped
+  // outright, leaving an unmarked block of lines.
+  const marker = uniformMarker(filled);
+  if (marker) {
+    return {
+      type: "text-list",
+      marker,
+      items: filled.map((paragraph) => paragraph.runs),
+      ...common,
+    };
+  }
+
+  // Mixed or partial bullets can't be one list, so the marker is written into
+  // the text — still visibly a bullet, and still one editable block.
+  const runs: Rec[] = [];
+  paragraphs.forEach((paragraph, index) => {
+    if (index > 0) runs.push({ text: "\n" });
+    if (paragraph.runs.length === 0) return;
+    const prefix = bulletPrefix(paragraph.bullet, index);
+    if (prefix) runs.push({ text: prefix, ...(paragraph.runs[0].font ? { font: paragraph.runs[0].font } : {}) });
+    runs.push(...paragraph.runs);
+  });
+
+  return { type: "text", runs, ...common };
+}
+
+/** How a paragraph is marked. `none` covers both "no bullet properties at
+ * all" and an explicit `a:buNone`. */
+type Bullet =
+  | { kind: "none" }
+  | { kind: "char"; char: string }
+  | { kind: "number"; scheme: string; startAt: number };
+
+/** The list-style entry for a paragraph's outline level (`lvl` is 0-based,
+ * the elements are named from 1). Falls back to level 1, which is what a
+ * shape with a single lstStyle entry means for all its levels. */
+function levelProperties(listStyle: Rec | null, level: number): Rec | null {
+  if (!listStyle) return null;
+  const clamped = Math.max(0, Math.min(8, level));
+  return (
+    asRecord(listStyle[`a:lvl${clamped + 1}pPr`]) ?? asRecord(listStyle["a:lvl1pPr"])
+  );
+}
+
+function bulletOf(pPr: Rec | null, levelStyle: Rec | null): Bullet {
+  for (const source of [pPr, levelStyle]) {
+    if (!source) continue;
+    if (source["a:buNone"] !== undefined) return { kind: "none" };
+    const char = readAttrString(asRecord(source["a:buChar"]), "@_char");
+    if (char) return { kind: "char", char };
+    const auto = asRecord(source["a:buAutoNum"]);
+    if (auto) {
+      return {
+        kind: "number",
+        scheme: readAttrString(auto, "@_type") ?? "arabicPeriod",
+        startAt: readAttrNumber(auto, "@_startAt") ?? 1,
+      };
+    }
+  }
+  return { kind: "none" };
+}
+
+/** "bullet"/"number" when every paragraph carries the same kind of marker,
+ * otherwise null — a partly-bulleted shape is not a list. */
+function uniformMarker(paragraphs: { bullet: Bullet }[]): "bullet" | "number" | null {
+  if (paragraphs.length < 2) return null;
+  const first = paragraphs[0].bullet.kind;
+  if (first === "none") return null;
+  if (paragraphs.some((paragraph) => paragraph.bullet.kind !== first)) return null;
+  return first === "char" ? "bullet" : "number";
+}
+
+function bulletPrefix(bullet: Bullet, index: number): string | null {
+  if (bullet.kind === "char") return `${bullet.char} `;
+  if (bullet.kind === "number") return `${autoNumberLabel(bullet.scheme, bullet.startAt + index)} `;
+  return null;
+}
+
+/** `a:buAutoNum`'s numbering schemes, of which only the shape of the label
+ * matters here — the sequence itself is positional. */
+function autoNumberLabel(scheme: string, value: number): string {
+  const body = scheme.startsWith("alphaLc")
+    ? alphaLabel(value).toLowerCase()
+    : scheme.startsWith("alphaUc")
+      ? alphaLabel(value)
+      : scheme.startsWith("romanLc")
+        ? romanLabel(value).toLowerCase()
+        : scheme.startsWith("romanUc")
+          ? romanLabel(value)
+          : String(value);
+  if (scheme.endsWith("ParenBoth")) return `(${body})`;
+  if (scheme.endsWith("ParenR")) return `${body})`;
+  return `${body}.`;
+}
+
+function alphaLabel(value: number): string {
+  let remaining = Math.max(1, value);
+  let label = "";
+  while (remaining > 0) {
+    const digit = (remaining - 1) % 26;
+    label = String.fromCharCode(65 + digit) + label;
+    remaining = Math.floor((remaining - 1) / 26);
+  }
+  return label;
+}
+
+function romanLabel(value: number): string {
+  const numerals: [number, string][] = [
+    [1000, "M"], [900, "CM"], [500, "D"], [400, "CD"], [100, "C"], [90, "XC"],
+    [50, "L"], [40, "XL"], [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"],
+  ];
+  let remaining = Math.max(1, value);
+  let label = "";
+  for (const [amount, numeral] of numerals) {
+    while (remaining >= amount) {
+      label += numeral;
+      remaining -= amount;
+    }
+  }
+  return label;
 }
 
 function runFont(
@@ -1349,10 +1472,11 @@ function runFont(
   defaults: Rec | null,
   ctx: PartContext,
   styleColor: { color: string; opacity: number } | null,
+  fontScale = 1,
 ): Rec | null {
   const font: Rec = {};
   const sizePt = readAttrNumber(rPr, "@_sz") ?? readAttrNumber(defaults, "@_sz");
-  if (sizePt != null) font.size = fontPx(sizePt, ctx.deck.geo);
+  if (sizePt != null) font.size = fontPx(sizePt * fontScale, ctx.deck.geo);
 
   const bold = readAttrBoolean(rPr, "@_b") ?? readAttrBoolean(defaults, "@_b");
   if (bold) font.bold = true;
@@ -1417,10 +1541,14 @@ function lineSpacingOf(pPr: Rec | null): { pct?: number; pts?: number } | null {
 function lineHeightOf(
   spacing: { pct?: number; pts?: number } | null,
   fontPt: number | null,
+  /** `a:normAutofit/@lnSpcReduction` — the share of line spacing PowerPoint
+   *  already took out to make the text fit its box. */
+  reduction = 0,
 ): number | null {
-  if (!spacing) return null;
-  if (spacing.pct != null) return round2(spacing.pct);
-  if (spacing.pts != null && fontPt && fontPt > 0) return round2(spacing.pts / fontPt);
+  const scale = 1 - Math.max(0, Math.min(0.9, reduction));
+  if (!spacing) return reduction > 0 ? round2(1.2 * scale) : null;
+  if (spacing.pct != null) return round2(spacing.pct * scale);
+  if (spacing.pts != null && fontPt && fontPt > 0) return round2((spacing.pts / fontPt) * scale);
   return null;
 }
 

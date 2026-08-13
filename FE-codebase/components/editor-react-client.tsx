@@ -104,6 +104,7 @@ import {
   fillPlaceholderIcons,
   resolveThemeFromPrompt,
   type AIPPTSlide,
+  type HeroImageMarker,
 } from "@/components/editor-react/ai-layout-fill";
 import {
   fillManifestSlide,
@@ -1026,6 +1027,10 @@ export default function EditorReactClient({
     const currentToken = token;
     /** Fills per generated slide (manifest mode), for the visual review pass. */
     const slideManifestLines = new Map<number, ManifestSlideLine>();
+    /** Photo slot markers per generated slide, so the visual review's image
+     *  check can name them to the reviewer and route a flagged mismatch back
+     *  to the exact element when regenerating it. */
+    const slidePhotoMarkers = new Map<number, { hero: HeroImageMarker | null; secondary: HeroImageMarker[] }>();
 
     // Resolve the chosen pack's font map up front and reset the deck in ONE
     // dispatch. Splitting these used to be a stale-closure bug: the second
@@ -1065,6 +1070,36 @@ export default function EditorReactClient({
       reduxStore.getState().presentationGeneration.presentationData?.slides[index]
         ?.ui as Record<string, unknown> | undefined;
 
+    // One photo resolution — AI-generated or stock-searched depending on
+    // imageSource — returning the URL to patch in, or null if nothing came
+    // back. Factored out (awaitable) so both the fire-and-forget initial
+    // generation below AND the visual review's regeneration of a
+    // reviewer-flagged mismatched photo (reviewSlide, further down — it needs
+    // the replacement in hand before it can re-verify) share one path instead
+    // of two copies of the AI/stock fallback logic drifting apart.
+    const resolvePhotoForSlot = async (
+      prompt: string,
+      searchHint: string,
+    ): Promise<{ url: string; extra?: { credit: string; credit_url: string | null; source_url: string } } | null> => {
+      // "Stock photos" mode: search first. Empty/failed search falls back to
+      // AI generation — a slot must never end up unfilled just because the
+      // stock search had no match.
+      if (imageSource === "stock") {
+        const results = await fetchStockPhotosForHint(searchHint);
+        const result = pickUnusedStockPhoto(results, usedStockPhotoIdsRef.current);
+        if (result) {
+          usedStockPhotoIdsRef.current.add(result.id);
+          trackStockPhotoDownload(result);
+          return {
+            url: result.url,
+            extra: { credit: result.credit, credit_url: result.creditUrl ?? null, source_url: result.sourceUrl },
+          };
+        }
+      }
+      const dataUrl = await generateImage(currentToken, prompt);
+      return dataUrl ? { url: dataUrl } : null;
+    };
+
     // Generates a photo for ONE slot on an already-added slide and patches it
     // in once ready. The patch re-reads the slide's LATEST store ui at
     // resolution time (slideUiAt) because streamed text fills and the
@@ -1087,42 +1122,11 @@ export default function EditorReactClient({
         ? `${hint}. ${heroStyle}`
         : `${subject} — related to ${genTopic}. ${heroStyle}`;
 
-      const applyAiGenerated = () => {
-        void generateImage(currentToken, prompt).then((dataUrl) => {
-          if (!dataUrl) return;
-          const patched = patchHeroImage(slideUiAt(index) ?? getUi(), marker, dataUrl) as Record<string, unknown>;
-          setUi(patched);
-          dispatch(updateSlideUi({ index, ui: patched }));
-        });
-      };
-
-      // "Stock photos" mode: search first, using the same hint that would
-      // otherwise become the AI prompt. Empty/failed search falls back to AI
-      // generation — a slot must never end up unfilled just because the
-      // stock search had no match.
-      if (imageSource !== "stock") {
-        applyAiGenerated();
-        return;
-      }
-      // For the search query specifically (unlike the AI prompt above),
-      // `subject` alone is a far better fallback than appending the entire
-      // raw deck topic — a whole paragraph as a search query reliably
-      // returns 0 results on Unsplash/Pixabay (verified empirically).
-      void fetchStockPhotosForHint(hint || subject).then((results) => {
-        const result = pickUnusedStockPhoto(results, usedStockPhotoIdsRef.current);
-        if (!result) {
-          applyAiGenerated();
-          return;
-        }
-        usedStockPhotoIdsRef.current.add(result.id);
-        const patched = patchHeroImage(slideUiAt(index) ?? getUi(), marker, result.url, {
-          credit: result.credit,
-          credit_url: result.creditUrl ?? null,
-          source_url: result.sourceUrl,
-        }) as Record<string, unknown>;
+      void resolvePhotoForSlot(prompt, hint || subject).then((resolved) => {
+        if (!resolved) return;
+        const patched = patchHeroImage(slideUiAt(index) ?? getUi(), marker, resolved.url, resolved.extra) as Record<string, unknown>;
         setUi(patched);
         dispatch(updateSlideUi({ index, ui: patched }));
-        trackStockPhotoDownload(result);
       });
     };
 
@@ -1240,6 +1244,10 @@ export default function EditorReactClient({
     // chaining (one capture/verify call at a time). Failures are silent — a
     // reviewed deck is a bonus, never a blocker.
     let reviewChain: Promise<void> = Promise.resolve();
+    /** Identifies a photo marker to the reviewer/back to itself — matches how
+     *  the slide's photos are keyed in the verify payload's `photos` list and
+     *  in any "kind":"image" issue the reviewer flags. */
+    const photoSlotName = (marker: HeroImageMarker): string => `${marker.elementName}#${marker.occurrenceIndex}`;
     const reviewSlide = async (slideIndex: number) => {
       const manifestLine = slideManifestLines.get(slideIndex);
       if (!manifestLine) return;
@@ -1248,12 +1256,20 @@ export default function EditorReactClient({
         const textFills = manifestLine.fills
           .filter((f) => f.text)
           .map((f) => ({ name: f.name, text: f.text }));
+        const markers = slidePhotoMarkers.get(slideIndex);
+        const photoMarkers: HeroImageMarker[] = markers
+          ? [markers.hero, ...markers.secondary].filter((m): m is HeroImageMarker => Boolean(m))
+          : [];
 
         // Each slide gets up to MAX_REVIEW_PASSES verify→repair rounds. Pass
         // 1 catches the issues the initial fill left; pass 2 re-verifies the
         // repaired slide and repairs again if the fix introduced a new issue
         // (e.g. a shortened string that now wraps differently). A clean
-        // verify short-circuits the loop early.
+        // verify short-circuits the loop early. The same pass also covers
+        // photos: a "kind":"image" issue means the reviewer judged the
+        // rendered photo a poor fit for THIS slide's specific concept (not
+        // just off the deck's broad topic) — that's regenerated instead of
+        // sent to the text-only repair call.
         for (let pass = 1; pass <= MAX_REVIEW_PASSES; pass++) {
           setGenerationStatus(
             pass > 1
@@ -1265,6 +1281,11 @@ export default function EditorReactClient({
           const image = await captureSlidePng(freshUi);
           if (!image) break;
 
+          const photos = photoMarkers.map((marker) => ({
+            name: photoSlotName(marker),
+            hint: findPhotoSlotHint(freshUi, marker) ?? undefined,
+          }));
+
           const verifyRes = await fetch("/api/ai/visual-review", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1275,30 +1296,63 @@ export default function EditorReactClient({
               language: language ?? "Bahasa Indonesia",
               slots: layout ? describeLayoutSlots(layout) : [],
               fills: textFills,
+              photos,
               provider: providers?.verify ?? null,
             }),
           });
           const verifyBody = await verifyRes.json().catch(() => null);
-          const issues = Array.isArray(verifyBody?.issues) ? verifyBody.issues : [];
+          const issues: { slot: string; problem: string; kind?: string; suggestedPhotoPrompt?: string }[] =
+            Array.isArray(verifyBody?.issues) ? verifyBody.issues : [];
           if (issues.length === 0) break; // slide passed, no more passes needed
 
-          setGenerationStatus(`Fixing slide ${slideIndex + 1}…`);
-          const repairRes = await fetch("/api/ai/visual-review", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              mode: "repair",
-              language: language ?? "Bahasa Indonesia",
-              slots: layout ? describeLayoutSlots(layout) : [],
-              fills: textFills,
-              issues,
-              provider: providers?.repair ?? null,
-            }),
-          });
-          const repairBody = await repairRes.json().catch(() => null);
-          const repaired = Array.isArray(repairBody?.fills) ? repairBody.fills : [];
-          if (repaired.length === 0) break; // nothing to apply, stop
-          dispatch(updateSlideUi({ index: slideIndex, ui: applyFillsToUi(freshUi, repaired) }));
+          const imageIssues = issues.filter((i) => i.kind === "image");
+          const textIssues = issues.filter((i) => i.kind !== "image");
+          let appliedFix = false;
+
+          if (imageIssues.length > 0) {
+            setGenerationStatus(`Refreshing photo on slide ${slideIndex + 1}…`);
+            await Promise.all(
+              imageIssues.map(async (issue) => {
+                const marker = photoMarkers.find((m) => photoSlotName(m) === issue.slot);
+                if (!marker) return;
+                const prompt = issue.suggestedPhotoPrompt
+                  ? `${issue.suggestedPhotoPrompt}. ${heroStyle}`
+                  : `${issue.problem}. ${heroStyle}`;
+                const resolved = await resolvePhotoForSlot(prompt, issue.suggestedPhotoPrompt || genTopic);
+                if (!resolved) return;
+                const base = slideUiAt(slideIndex);
+                if (!base) return;
+                const patched = patchHeroImage(base, marker, resolved.url, resolved.extra) as Record<string, unknown>;
+                dispatch(updateSlideUi({ index: slideIndex, ui: patched }));
+                appliedFix = true;
+              }),
+            );
+          }
+
+          if (textIssues.length > 0) {
+            setGenerationStatus(`Fixing slide ${slideIndex + 1}…`);
+            const repairRes = await fetch("/api/ai/visual-review", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                mode: "repair",
+                language: language ?? "Bahasa Indonesia",
+                slots: layout ? describeLayoutSlots(layout) : [],
+                fills: textFills,
+                issues: textIssues,
+                provider: providers?.repair ?? null,
+              }),
+            });
+            const repairBody = await repairRes.json().catch(() => null);
+            const repaired = Array.isArray(repairBody?.fills) ? repairBody.fills : [];
+            if (repaired.length > 0) {
+              const base = slideUiAt(slideIndex) ?? freshUi;
+              dispatch(updateSlideUi({ index: slideIndex, ui: applyFillsToUi(base, repaired) }));
+              appliedFix = true;
+            }
+          }
+
+          if (!appliedFix) break; // nothing to apply, stop
           // loop continues to re-verify (unless this was the last pass)
         }
       } catch {
@@ -1376,6 +1430,7 @@ export default function EditorReactClient({
         setActiveIndex(index);
         setGenerationStatus(`Building slide ${index + 1}…`);
         pendingStream = { index, layoutId: start.layout_id, fills: [] };
+        slidePhotoMarkers.set(index, { hero: empty.heroImage, secondary: empty.secondaryImages });
         // Photos start NOW — image generation is the slowest piece, and the
         // slot markers don't move with text fills, so there's no reason to
         // wait for the copy.
@@ -1412,6 +1467,7 @@ export default function EditorReactClient({
         }
         count++;
         setActiveIndex(index); // follow the newest slide as it's generated
+        slidePhotoMarkers.set(index, { hero: filled.heroImage, secondary: filled.secondaryImages });
         requestSlidePhotos(index, filled.ui, filled.heroImage, filled.secondaryImages, filled.subject);
       }
     };

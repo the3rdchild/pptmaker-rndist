@@ -28,6 +28,7 @@ export async function POST(request: Request) {
 				language: typeof body.language === "string" ? body.language : "",
 				slots: Array.isArray(body.slots) ? body.slots : [],
 				fills: Array.isArray(body.fills) ? body.fills : [],
+				photos: Array.isArray(body.photos) ? body.photos : undefined,
 				providerId: typeof body.provider === "string" ? body.provider : null,
 			});
 			return NextResponse.json({ issues });

@@ -22,9 +22,27 @@ export interface SlotDescriptor {
   ideal_words?: number;
 }
 
+/** One photo slot on the slide, identified the same way the client patches
+ *  it (elementName#occurrenceIndex) so a flagged issue can be routed back to
+ *  the exact marker without a second lookup. `hint` is the authored/AI intent
+ *  for the slot when one exists — useful context, not the ground truth (the
+ *  reviewer judges the actual rendered photo it sees, not the hint). */
+export interface PhotoDescriptor {
+  name: string;
+  hint?: string;
+}
+
 export interface ReviewIssue {
   slot: string;
   problem: string;
+  /** "image" when `slot` names a PhotoDescriptor (a mismatched/too-generic
+   *  photo) rather than a text slot. Defaults to "text" when absent so older
+   *  callers/responses keep working. */
+  kind?: "text" | "image";
+  /** Only set for kind:"image" — a concrete replacement photo prompt tied to
+   *  THIS slide's specific concept, so regeneration doesn't need a second
+   *  LLM round-trip to figure out what to ask for. */
+  suggestedPhotoPrompt?: string;
 }
 
 export interface VerifyInput {
@@ -33,6 +51,9 @@ export interface VerifyInput {
   language: string;
   slots: SlotDescriptor[];
   fills: { name: string; text?: string }[];
+  /** Photo slots on this slide, for image-relevance checking. Omit/empty to
+   *  skip image review entirely (the model still won't invent slot names). */
+  photos?: PhotoDescriptor[];
   providerId?: string | null;
 }
 
@@ -44,9 +65,9 @@ export interface RepairInput {
   providerId?: string | null;
 }
 
-const VERIFY_SYSTEM = `You are a meticulous slide-design reviewer. You receive a RENDERED slide image, the deck's topic, and the exact text the generator placed into each named slot.
+const VERIFY_SYSTEM = `You are a meticulous slide-design reviewer. You receive a RENDERED slide image, the deck's topic, the exact text the generator placed into each named slot, and (when present) a list of the slide's PHOTO slots.
 
-Report ONLY problems the generator can fix by rewriting slot text:
+Report problems the generator can fix by rewriting slot text:
 - text visibly overflowing its box or clipped
 - text truncated with "…" mid-thought
 - a large text box holding a comically short fragment (or vice versa: a cramped chip overstuffed)
@@ -56,13 +77,29 @@ Report ONLY problems the generator can fix by rewriting slot text:
 - an empty visible text box
 - chart labels/values that are nonsensical for the topic
 
-Do NOT report: colors, fonts, positions, spacing, image choices, layout taste — those are the template author's, and nothing can change them here.
+Also report photo slots (kind:"image") whose picture does not genuinely fit
+THIS SLIDE — judge against the slide's own title/text, not just the deck's
+broad topic. Flag it when the photo is:
+- unrelated or contradictory to what this specific slide is about
+- so generic it could illustrate almost any slide in any deck on this topic
+  (e.g. a bare "technology" stock shot — server racks, generic circuit board
+  close-ups — on a slide about one specific feature or concept)
+- the wrong kind of image for the claim (e.g. an abstract graphic where the
+  slide clearly wants a real photo of a person/place/object, or vice versa)
+A photo that is merely stylistically plain but IS on-topic for this slide is
+fine — do not flag for taste, composition, or color alone.
+
+Do NOT report: colors, fonts, positions, spacing, layout taste — those are
+the template author's, and nothing can change them here.
 
 Respect each slot's stated budget (max_words/ideal_words): flag text that exceeds max_words, or that is far under ideal_words when the box clearly expects more.
 
 OUTPUT: raw JSON ONLY, no fences, no commentary:
-{"issues":[{"slot":"<slot name>","problem":"<one concrete sentence>"}]}
-An empty issues array means the slide passed.`;
+{"issues":[
+  {"slot":"<text slot name>","problem":"<one concrete sentence>"},
+  {"slot":"<photo name from the photos list>","problem":"<why this photo doesn't fit THIS slide>","kind":"image","suggested_photo_prompt":"<a concrete photo description tied to this slide's specific concept, ready to hand a generator>"}
+]}
+An empty issues array means the slide passed. Never invent a slot name that wasn't given to you.`;
 
 export async function reviewSlideVisual(input: VerifyInput): Promise<ReviewIssue[]> {
   const userPayload = JSON.stringify({
@@ -70,6 +107,7 @@ export async function reviewSlideVisual(input: VerifyInput): Promise<ReviewIssue
     language: input.language,
     slots: input.slots,
     fills: input.fills,
+    ...(input.photos && input.photos.length ? { photos: input.photos } : {}),
   });
   const content = await callProvider(
     input.providerId ?? null,
@@ -92,6 +130,9 @@ export async function reviewSlideVisual(input: VerifyInput): Promise<ReviewIssue
     .map((i) => ({
       slot: typeof i.slot === "string" ? i.slot : "",
       problem: typeof i.problem === "string" ? i.problem : "",
+      kind: i.kind === "image" ? ("image" as const) : ("text" as const),
+      suggestedPhotoPrompt:
+        typeof i.suggested_photo_prompt === "string" ? i.suggested_photo_prompt : undefined,
     }))
     .filter((i) => i.slot && i.problem)
     .slice(0, 12);

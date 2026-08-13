@@ -1030,9 +1030,12 @@ async function buildShape(
  * and ellipse elements — which stay directly editable and export as first-class
  * pptx shapes, so there is no reason to path them. */
 type ShapeGeometry =
-  | { kind: "rectangle"; path: null; radii: Rec | null }
-  | { kind: "ellipse"; path: null; radii: null }
-  | { kind: "path"; path: PathGeometry; radii: null };
+  | { kind: "rectangle"; path: null; radii: Rec | null; evenOdd?: false }
+  | { kind: "ellipse"; path: null; radii: null; evenOdd?: false }
+  /** `evenOdd` marks geometry authored HERE that draws a hole as a same-winding
+   *  subpath (the donut preset). Imported freeforms never set it — see
+   *  shapeElementOf. */
+  | { kind: "path"; path: PathGeometry; radii: null; evenOdd?: boolean };
 
 const PLAIN_RECTANGLE: ShapeGeometry = { kind: "rectangle", path: null, radii: null };
 const PLAIN_ELLIPSE: ShapeGeometry = { kind: "ellipse", path: null, radii: null };
@@ -1106,7 +1109,9 @@ function roundedRectRadii(
     case "round2SameRect":
       return { tl: first, tr: first, bl: second, br: second };
     case "round2DiagRect":
-      return { tl: first, tr: second, bl: first, br: second };
+      // Diagonal, not same-side: adj1 rounds top-left AND bottom-right,
+      // adj2 the other pair.
+      return { tl: first, br: first, tr: second, bl: second };
     default:
       return null;
   }
@@ -1123,9 +1128,12 @@ function shapeElementOf(
       type: "path",
       d: geometry.path.d,
       view_box: { width: geometry.path.width, height: geometry.path.height },
-      // DrawingML shapes punch holes by overlapping subpaths (a donut is one
-      // path of two circles), which only reads right under the even-odd rule.
-      fill_rule: "evenodd",
+      // Even-odd ONLY for the presets built in this module, where a hole is
+      // drawn as a second subpath winding the same way as the first (donut).
+      // An imported freeform must stay nonzero: DrawingML decides holes by
+      // winding DIRECTION, so forcing even-odd turns any two overlapping
+      // same-direction subpaths — an ordinary illustration — into a hole.
+      ...(geometry.evenOdd ? { fill_rule: "evenodd" } : {}),
       ...paint,
     };
   }
@@ -1146,7 +1154,7 @@ function presetGeometry(prst: string, prstGeom: Rec | null, box: Box): ShapeGeom
   if (prst === "flowChartConnector") return PLAIN_ELLIPSE;
 
   const path = presetToPath(prst, adj, box.width, box.height);
-  return path ? { kind: "path", path, radii: null } : PLAIN_RECTANGLE;
+  return path ? { kind: "path", path, radii: null, evenOdd: true } : PLAIN_RECTANGLE;
 }
 
 function buildLine(node: Rec, ctx: PartContext, transform: NodeTransform): BuiltElement | null {
@@ -1559,10 +1567,15 @@ function textElement(node: Rec, ctx: PartContext, box: Box, hasBackdrop = false)
   // Mixed or partial bullets can't be one list, so the marker is written into
   // the text — still visibly a bullet, and still one editable block.
   const runs: Rec[] = [];
+  // Auto-numbering counts NUMBERED paragraphs only. Using the paragraph index
+  // would let a heading or a blank spacer above the list push the first item
+  // to "2.".
+  let numbered = 0;
   paragraphs.forEach((paragraph, index) => {
     if (index > 0) runs.push({ text: "\n" });
     if (paragraph.runs.length === 0) return;
-    const prefix = bulletPrefix(paragraph.bullet, index);
+    const prefix = bulletPrefix(paragraph.bullet, numbered);
+    if (paragraph.bullet.kind === "number") numbered += 1;
     if (prefix) runs.push({ text: prefix, ...(paragraph.runs[0].font ? { font: paragraph.runs[0].font } : {}) });
     runs.push(...paragraph.runs);
   });

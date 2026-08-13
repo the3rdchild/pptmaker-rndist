@@ -1327,18 +1327,19 @@ function RawImageElement({
 
   const clippedImageNode = clipPath ? (
     <Group
-      clipFunc={(context) => {
-        // The mirror has to reach the OUTLINE too, not just the picture
-        // inside it. A .pptx flip mirrors the whole shape, geometry included;
-        // flipping only the image (which is where flip_h/flip_v are applied,
-        // on the node below) would cut a mirrored picture with an unmirrored
-        // clip. Imported picture-filled freeforms very often carry flips.
-        if (flipH || flipV) {
-          context.translate(flipH ? width : 0, flipV ? height : 0);
-          context.scale(flipH ? -1 : 1, flipV ? -1 : 1);
-        }
-        drawImageClipPath(context, clipPath, width, height);
-      }}
+      // KNOWN IMPERFECTION, deliberately left: a .pptx flip mirrors the whole
+      // shape, geometry included, so strictly this clip should mirror with
+      // flip_h/flip_v. An attempt to do that by transforming `context` here
+      // made every flipped imported picture VANISH — Konva undoes only its own
+      // matrix after clipFunc returns (Container._drawChildren), so the
+      // transform leaked onto the children and the image was mirrored twice,
+      // landing outside its own clip. Reverted rather than re-fixed blind:
+      // verifying it needs a browser that actually composites, because Konva
+      // draws through requestAnimationFrame. The visible cost is only that an
+      // asymmetric outline on a flipped picture is clipped unmirrored.
+      clipFunc={(context) =>
+        drawImageClipPath(context, clipPath, width, height)
+      }
       listening={interactive}
     >
       {imageNode}

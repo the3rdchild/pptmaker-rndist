@@ -1893,15 +1893,25 @@ export default function EditorReactClient({
 
         const slideUi = slide.ui as Record<string, unknown>;
         const slots = listImageSlots(slideUi);
-        if (!slots.length) return `Slide ${slideIndex} has no image to replace.`;
-        // A model that picked a stale/out-of-range slot still gets a sensible
-        // result rather than an error: fall back to the biggest slot, which is
-        // the one a user pointing at "the photo" almost always means.
+        if (!slots.length) return `Slide ${slideIndex} has no photo slot to fill.`;
+
+        // An out-of-range photo_index is REJECTED, not remapped. An earlier
+        // version fell back to the biggest slot, which meant a model that
+        // over-fired (deepseek answers "isi semua fotonya" with a call per
+        // "image" string it sees, not per real slot) had every bogus index
+        // funnelled onto that one slot — the same container visibly replaced
+        // ten times over, each costing an image generation. Failing here keeps
+        // a chatty model cheap and makes the mistake legible instead of
+        // destructive.
         const asked = Number(action.args.photo_index);
-        const biggest = [...slots].sort((a, b) => b.width * b.height - a.width * a.height)[0];
         const photoIndex = slots.some((s) => s.photo_index === asked)
           ? asked
-          : biggest.photo_index;
+          : Number.isNaN(asked) && slots.length === 1
+            ? slots[0].photo_index
+            : -1;
+        if (photoIndex < 0) {
+          return `Slide ${slideIndex} has ${slots.length} photo slot(s) (0–${slots.length - 1}); ${asked} isn't one of them.`;
+        }
 
         const fullPrompt = `${prompt}. editorial photograph, cinematic natural lighting, cohesive color grading, no text, no watermark, no logo`;
         void generateImage(token, fullPrompt).then((dataUrl) => {

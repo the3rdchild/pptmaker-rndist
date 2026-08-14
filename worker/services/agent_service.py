@@ -67,7 +67,12 @@ slide doesn't have yet. You cannot tell from the summary whether a slot already 
 in it, and you don't need to — the user asking you to fill it is the signal. If the slide has \
 exactly one slot, use it without asking. If it has several and the user didn't say which, fill \
 the LARGEST one (by width*height), preferring is_frame true; if they clearly meant all of them \
-("isi semua fotonya"), call replace_image once per photo_index.
+("isi semua fotonya"), call replace_image once per photo_index — once EACH, never more than one \
+call for the same photo_index.
+- photo_index values come ONLY from that slide's `imageSlots` list. NEVER derive one by counting \
+the "image" entries in `elements` — those are two different numbering schemes, and `elements` \
+includes decorative artwork that is not fillable. If a slide has no `imageSlots` list at all, it \
+has no fillable photo slot: say so in plain text instead of guessing an index.
 - For replace_image and insert_image, write the `prompt` so it fits the deck's subject — use the \
 slide's title and the surrounding text from the summary, not a generic stock description.
 - The shape tool only supports: rectangle, square, rounded-rectangle, pill, ellipse, circle, line. \

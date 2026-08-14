@@ -54,6 +54,22 @@ const agentSchema = z.object({
 			title: z.string().optional(),
 			elementCount: z.number(),
 			elements: z.array(z.string()).optional(),
+			// Fillable photo slots for replace_image. Zod strips unknown keys, so
+			// anything the panel adds to the summary MUST be declared here or it
+			// silently never reaches the worker — the model then invents
+			// photo_index values from the "image" entries in `elements`, which is
+			// how one "isi semua fotonya" turned into 15 replace_image calls.
+			imageSlots: z
+				.array(
+					z.object({
+						photo_index: z.number(),
+						name: z.string().optional(),
+						is_frame: z.boolean().optional(),
+						width: z.number().optional(),
+						height: z.number().optional(),
+					}),
+				)
+				.optional(),
 		})),
 	}).optional(),
 })

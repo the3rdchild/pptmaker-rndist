@@ -8,6 +8,13 @@
 // per-provider quirks (Kimi's coding-agent UA, GLM's disabled thinking,
 // kimi-k2.6's temperature=1 rule) live next to the credentials, exactly like
 // the worker's PROVIDER_CONFIGS — adding a provider is a one-place edit.
+//
+// Two endpoint shapes are supported, chosen per preset via `api`:
+// /chat/completions (every provider here except codex) and /responses (the
+// gpt-*-codex models, which are served on nothing else). callProvider hides
+// the difference, so every call site — auto-label, visual-review verify and
+// repair, theme choice, prompt enhance, font substitution — gets both for
+// free and keeps passing plain chat-style messages.
 
 type Rec = Record<string, unknown>;
 
@@ -31,6 +38,15 @@ export interface ProviderPreset {
    *  worker. Falls back to the authored defaults when unset. */
   base_url_env?: string;
   model_env?: string;
+  /** Which OpenAI-compatible endpoint shape to speak. "chat" (default) is
+   *  /chat/completions; "responses" is /responses, which the gpt-*-codex
+   *  models are only served on — they 404 on /chat/completions with
+   *  "Use the v1/responses endpoint instead". */
+  api?: "chat" | "responses";
+  /** Reasoning effort for `api: "responses"` models. Kept low by default:
+   *  reasoning tokens are billed against max_output_tokens, so a high effort
+   *  can burn the whole budget before any answer text is emitted. */
+  reasoning_effort?: "minimal" | "low" | "medium" | "high";
 }
 
 export const PROVIDER_PRESETS: ProviderPreset[] = [
@@ -99,6 +115,22 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     model_env: "OPENAI_MODEL",
   },
   {
+    id: "codex",
+    label: "GPT-5.3 Codex (vision)",
+    envKey: "OPENAI_API_KEY",
+    base_url: "https://api.openai.com/v1",
+    model: "gpt-5.3-codex",
+    vision: true,
+    // Codex is a reasoning model served only on /responses, and it rejects
+    // `temperature` outright ("not supported with this model") for every value
+    // except the implicit default — so the field is dropped, not pinned to 1.
+    api: "responses",
+    omit_temperature: true,
+    reasoning_effort: "low",
+    base_url_env: "OPENAI_BASE_URL",
+    model_env: "OPENAI_CODEX_MODEL",
+  },
+  {
     id: "deepinfra",
     label: "DeepSeek V3.1",
     envKey: "DEEPINFRA_API_KEY",
@@ -122,6 +154,8 @@ export interface ProviderConfig {
   omit_temperature?: boolean;
   disable_thinking?: boolean;
   vision: boolean;
+  api: "chat" | "responses";
+  reasoning_effort?: "minimal" | "low" | "medium" | "high";
 }
 
 /** Resolves a preset (with env overrides applied) to a ready-to-call config,
@@ -146,6 +180,8 @@ export function getProvider(id: string | null | undefined): ProviderConfig | nul
     omit_temperature: preset.omit_temperature,
     disable_thinking: preset.disable_thinking,
     vision: preset.vision ?? false,
+    api: preset.api ?? "chat",
+    reasoning_effort: preset.reasoning_effort,
   };
 }
 
@@ -209,6 +245,55 @@ const PROVIDER_TIMEOUT_MS = 60000;
 // exactly how auto-label behaved.
 const VISION_TIMEOUT_MS = 180000;
 
+// Reasoning models bill their hidden reasoning tokens against the SAME
+// max_output_tokens budget as the visible answer. Call sites size maxTokens
+// for the answer alone (enhance-prompt asks for 400), so passing it straight
+// through returns status:"incomplete" with zero text — the reasoning ate the
+// whole budget. This floor buys room for the reasoning pass on top of
+// whatever the caller asked for; max() means a caller asking for more (
+// auto-label's 16000) still wins.
+const RESPONSES_MIN_OUTPUT_TOKENS = 4000;
+
+type ContentPart = { type?: string; text?: string; image_url?: { url?: string } };
+
+/** Chat-completions `messages` → Responses `input`. The two APIs disagree on
+ *  the multimodal part names: {type:"text"} / {type:"image_url",image_url:{url}}
+ *  becomes {type:"input_text"} / {type:"input_image",image_url:"<url>"} (the
+ *  url is a bare string here, not an object). Assistant text uses output_text.
+ *  Plain string content is accepted verbatim by both. */
+function toResponsesInput(messages: ChatMessage[]): Rec[] {
+  return messages.map((m) => {
+    if (!Array.isArray(m.content)) return { role: m.role, content: m.content };
+    const content = (m.content as ContentPart[]).map((part) => {
+      if (part.type === "image_url") {
+        return { type: "input_image", image_url: part.image_url?.url ?? "" };
+      }
+      return {
+        type: m.role === "assistant" ? "output_text" : "input_text",
+        text: part.text ?? "",
+      };
+    });
+    return { role: m.role, content };
+  });
+}
+
+/** Concatenates the text parts of a Responses payload. The output array also
+ *  carries `reasoning` items with no text, which are skipped. */
+function readResponsesText(data: Rec): string {
+  const output = data.output as Rec[] | undefined;
+  if (!Array.isArray(output)) return "";
+  let text = "";
+  for (const item of output) {
+    if (item.type !== "message") continue;
+    const parts = item.content as Rec[] | undefined;
+    if (!Array.isArray(parts)) continue;
+    for (const part of parts) {
+      if (typeof part.text === "string") text += part.text;
+    }
+  }
+  return text;
+}
+
 /** One round trip to the provider's chat-completions endpoint. Throws on HTTP
  *  failure, a timeout, or an empty response — the route maps that to a 502
  *  the caller can show. Per-provider quirks (UA header, omitted temperature,
@@ -224,20 +309,32 @@ export async function callProvider(
     Authorization: `Bearer ${cfg.apiKey}`,
     ...(cfg.headers ?? {}),
   };
-  const body: Rec = {
-    model: cfg.model,
-    messages,
-    max_tokens: opts.maxTokens,
-  };
+  const useResponses = cfg.api === "responses";
+  const body: Rec = useResponses
+    ? {
+        model: cfg.model,
+        input: toResponsesInput(messages),
+        // /responses rejects `max_tokens` outright ("Unknown parameter").
+        max_output_tokens: Math.max(opts.maxTokens, RESPONSES_MIN_OUTPUT_TOKENS),
+        ...(cfg.reasoning_effort ? { reasoning: { effort: cfg.reasoning_effort } } : {}),
+      }
+    : {
+        model: cfg.model,
+        messages,
+        max_tokens: opts.maxTokens,
+      };
   if (!cfg.omit_temperature) body.temperature = 1;
   if (cfg.disable_thinking) body.thinking = { type: "disabled" };
 
-  const timeoutMs = opts.vision ? VISION_TIMEOUT_MS : PROVIDER_TIMEOUT_MS;
+  const endpoint = useResponses ? "responses" : "chat/completions";
+  // Reasoning models think before they answer, so even a text-only codex call
+  // outlives the 60s bound sized for one-shot chat models.
+  const timeoutMs = opts.vision || useResponses ? VISION_TIMEOUT_MS : PROVIDER_TIMEOUT_MS;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   let res: Response;
   try {
-    res = await fetch(`${cfg.base_url}/chat/completions`, {
+    res = await fetch(`${cfg.base_url}/${endpoint}`, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
@@ -256,8 +353,19 @@ export async function callProvider(
     throw new Error(`${cfg.id} API ${res.status}: ${text.slice(0, 200)}`);
   }
   const data = (await res.json()) as Rec;
-  const choices = data.choices as Rec[] | undefined;
-  const content = choices?.[0] && (choices[0].message as Rec | undefined)?.content;
+  let content: unknown;
+  if (useResponses) {
+    content = readResponsesText(data);
+    // A truncated reasoning pass returns HTTP 200 with an empty message and
+    // status:"incomplete" — name the real cause instead of "empty response".
+    if (typeof content === "string" && !content.trim() && data.status === "incomplete") {
+      const reason = (data.incomplete_details as Rec | undefined)?.reason ?? "unknown";
+      throw new Error(`${cfg.id} returned no text (incomplete: ${String(reason)})`);
+    }
+  } else {
+    const choices = data.choices as Rec[] | undefined;
+    content = choices?.[0] && (choices[0].message as Rec | undefined)?.content;
+  }
   if (typeof content !== "string" || !content.trim()) {
     throw new Error(`${cfg.id} returned an empty response`);
   }

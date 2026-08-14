@@ -56,6 +56,17 @@ the target element within that slide's `elements` list, in the exact order given
 element_index 0 is the first string in that slide's `elements` array). Match "that box"/"the \
 icon"/"the chart"/"it" etc. against the element descriptions in the list (and against what was \
 just inserted/discussed in the conversation history) to figure out which index to use.
+- Each slide may also carry an `imageSlots` list describing the photo slots ALREADY on it, each \
+with its own `photo_index` (separate from the `elements` index above), an optional authored \
+`name`, `is_frame`, and `looks_unfilled`. When the user asks to FILL IN, change, swap or update \
+a picture that already exists on the slide ("isi gambar ini", "fill this image", "ganti fotonya", \
+"make the photo match the topic"), call replace_image with that photo_index — do NOT call \
+insert_image, which adds a brand new picture on top and is almost never what they meant. Reserve \
+insert_image for requests that clearly ask to ADD an image the slide doesn't have yet. If several \
+slots match, prefer one with looks_unfilled true, else the first; if the slide has exactly one \
+image slot, just use it without asking.
+- For replace_image and insert_image, write the `prompt` so it fits the deck's subject — use the \
+slide's title and the surrounding text from the summary, not a generic stock description.
 - The shape tool only supports: rectangle, square, rounded-rectangle, pill, ellipse, circle, line. \
 There is no triangle/polygon shape yet — if asked for one, say so in plain text rather than \
 silently picking something else."""
@@ -371,6 +382,36 @@ TOOLS = [
                     "prompt": {"type": "string", "description": "Short visual description of the desired image."},
                 },
                 "required": ["slide_index", "prompt"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "replace_image",
+            "description": (
+                "Fill or replace a photo slot the slide ALREADY has, keeping its "
+                "existing frame, crop, size and position — only the artwork changes. "
+                "This is the right tool whenever the user asks to fill in, change, "
+                "swap or update a picture that is already on the slide. Target it "
+                "with photo_index from that slide's `imageSlots` in the deck summary "
+                "(NOT the `elements` index). Generates the new artwork from a prompt."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "slide_index": {"type": "integer", "description": "0-based index"},
+                    "photo_index": {
+                        "type": "integer",
+                        "description": (
+                            "0-based photo_index from that slide's imageSlots list. "
+                            "Prefer a slot whose looks_unfilled is true when the user "
+                            "asks to 'fill' the image."
+                        ),
+                    },
+                    "prompt": {"type": "string", "description": "Short visual description of the desired image."},
+                },
+                "required": ["slide_index", "photo_index", "prompt"],
             },
         },
     },

@@ -5,6 +5,7 @@ import { Bot, Check, ChevronDown, FileText, Loader2, Send, Trash2, User, X, Zap 
 import { TEMPLATE_V2_SURFACE_SELECTED_EVENT } from "@/components/slide-editor/events/events";
 import { useSessionStore } from "@/store/session.store";
 import { streamAgent, type AgentAction } from "@/lib/api";
+import { listImageSlots } from "@/components/editor-react/agent-dispatch";
 import { cn } from "@/lib/utils";
 import type { SlideData } from "@/store/presentationGeneration";
 
@@ -205,12 +206,22 @@ function buildDeckSummary(slides: SlideData[], activeIndex: number) {
         }
       }
 
+      // Image slots are listed separately from `elements` because they use a
+      // different addressing scheme: `elements` is the flat, non-recursive
+      // index move_element/recolor_element take, while photo_index is
+      // recursive, so a photo nested in a card grid is still addressable.
+      // Without this the model only ever saw the word "image" with no way to
+      // target one, so "fill this image" had no option but insert_image —
+      // which spawns a NEW picture instead of filling the frame.
+      const photoSlots = listImageSlots(ui);
+
       return {
         index,
         isActive: index === activeIndex,
         title,
         elementCount: elementDescs.length,
         elements: elementDescs,
+        ...(photoSlots.length ? { imageSlots: photoSlots } : {}),
       };
     }),
   };

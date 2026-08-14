@@ -23,6 +23,7 @@ import {
   chartTypeFromPaletteId,
 } from "@/components/slide-editor/insert/insert-elements";
 import { applyBackgroundStyle } from "@/components/editor-react/background-panel";
+import { isImageFrameElement } from "@/components/editor-react/image-frames";
 import type { BackgroundStyle } from "@/components/slide-editor/surface/SlideBackground";
 import { PresentationGenerationApi } from "@/app/(presentation-generator)/services/api/presentation-generation";
 import type { RawUi, RawElement } from "@/components/slide-editor/model/core";
@@ -302,6 +303,105 @@ export function insertImagePlaceholderIntoSlide(
   const components = Array.isArray(newUi.components) ? (newUi.components as AnyRecord[]) : [];
   const last = components[components.length - 1];
   return { ui: newUi, componentId: String((last as AnyRecord | undefined)?.id ?? "") };
+}
+
+// ── replace_image: fill an image slot the slide ALREADY has, instead of
+// spawning a new one.
+//
+// The flat `element_index` move_element/recolor_element use walks
+// components -> component.elements only, so it cannot address a photo nested
+// inside a grid/flex card — and template photo slots very often are. Rather
+// than make that index recursive (it would silently renumber every existing
+// tool's addressing), image slots get their own recursive index: `photo_index`,
+// enumerated by listImageSlots below and consumed by replaceImageInSlide. Both
+// walk in the same order, and buildDeckSummary reports the same list, so the
+// index the model sees is the index that gets patched. ──
+
+export interface ImageSlotInfo {
+  photo_index: number;
+  /** Authored slot name when the template has one ("hero_photo"). */
+  name?: string;
+  /** Clipped photo container — the generator treats these as photo slots. */
+  is_frame: boolean;
+  /** Heuristic: still showing template artwork rather than a real photo the
+   *  user or the generator put there. Generated images arrive as data: URIs
+   *  and stock photos as remote URLs, so a bare template/static path means
+   *  nothing has filled this slot yet. */
+  looks_unfilled: boolean;
+}
+
+function imageSlotInfo(el: AnyRecord, index: number): ImageSlotInfo {
+  const data = typeof el.data === "string" ? el.data : "";
+  const isRealPhoto = data.startsWith("data:") || /^https?:\/\//i.test(data);
+  const name = typeof el.name === "string" && el.name ? el.name : undefined;
+  return {
+    photo_index: index,
+    ...(name ? { name } : {}),
+    is_frame: isImageFrameElement(el),
+    looks_unfilled: !isRealPhoto,
+  };
+}
+
+/** Every image element on the slide, in recursive document order. Icons and
+ *  elements flagged decorative are skipped — they're artwork, not photo slots
+ *  the user means when they say "fill the image". */
+export function listImageSlots(ui: AnyRecord): ImageSlotInfo[] {
+  const out: ImageSlotInfo[] = [];
+  const visit = (el: AnyRecord) => {
+    if (el.type === "image") {
+      if (el.is_icon !== true && el.decorative !== true) {
+        out.push(imageSlotInfo(el, out.length));
+      }
+      return;
+    }
+    const children = el.children;
+    if (Array.isArray(children)) {
+      for (const child of children) if (isRecord(child)) visit(child);
+      return;
+    }
+    if (isRecord(el.child)) visit(el.child);
+  };
+  const components = Array.isArray(ui.components) ? (ui.components as AnyRecord[]) : [];
+  for (const component of components) {
+    const elements = Array.isArray(component.elements) ? (component.elements as AnyRecord[]) : [];
+    for (const el of elements) if (isRecord(el)) visit(el);
+  }
+  return out;
+}
+
+/** Swaps the artwork of the photo_index-th image slot, leaving its clip,
+ *  size, position and corner radii untouched — that's the whole point versus
+ *  insert_image, which appends a brand new free-floating element. Returns null
+ *  when the index doesn't resolve. */
+export function replaceImageInSlide(
+  ui: AnyRecord,
+  photoIndex: number,
+  dataUrl: string,
+): AnyRecord | null {
+  let counter = 0;
+  let replaced = false;
+  const visit = (el: AnyRecord): AnyRecord => {
+    if (el.type === "image") {
+      if (el.is_icon === true || el.decorative === true) return el;
+      const isTarget = counter === photoIndex;
+      counter += 1;
+      if (!isTarget) return el;
+      replaced = true;
+      return { ...el, data: dataUrl };
+    }
+    const children = el.children;
+    if (Array.isArray(children)) {
+      return { ...el, children: children.map((c) => (isRecord(c) ? visit(c) : c)) };
+    }
+    if (isRecord(el.child)) return { ...el, child: visit(el.child) };
+    return el;
+  };
+  const components = Array.isArray(ui.components) ? (ui.components as AnyRecord[]) : [];
+  const nextComponents = components.map((component) => {
+    const elements = Array.isArray(component.elements) ? (component.elements as AnyRecord[]) : [];
+    return { ...component, elements: elements.map((el) => (isRecord(el) ? visit(el) : el)) };
+  });
+  return replaced ? { ...ui, components: nextComponents } : null;
 }
 
 export function patchInsertedImage(

@@ -133,6 +133,8 @@ import {
   insertTableIntoSlide,
   insertImagePlaceholderIntoSlide,
   patchInsertedImage,
+  listImageSlots,
+  replaceImageInSlide,
   moveElementInSlide,
   recolorElementInSlide,
   setElementShadowInSlide,
@@ -1566,6 +1568,12 @@ export default function EditorReactClient({
     );
   };
 
+  // Latest slides, readable from async callbacks that outlive the render they
+  // were queued in (image generation takes seconds). Same ref idiom as
+  // zoomRef/activeUiRef above.
+  const slidesRef = useRef<SlideData[]>(presentationData?.slides ?? []);
+  slidesRef.current = presentationData?.slides ?? [];
+
   // Every branch calls an EXISTING function (Redux action or an
   // agent-dispatch.ts transform) — the agent only decides + supplies text
   // content, it never authors layout/HTML itself. Returns the chat message
@@ -1874,6 +1882,38 @@ export default function EditorReactClient({
         });
 
         return `Generating an image on slide ${slideIndex}…`;
+      }
+      case "replace_image": {
+        const slideIndex = Number(action.args.slide_index);
+        const slide = currentSlides[slideIndex];
+        if (!slide || !slide.ui) return `Slide ${slideIndex} doesn't exist.`;
+        const prompt = String(action.args.prompt || "");
+        if (!prompt) return "No image prompt provided.";
+        if (!token) return "Session not ready — try again in a moment.";
+
+        const slideUi = slide.ui as Record<string, unknown>;
+        const slots = listImageSlots(slideUi);
+        if (!slots.length) return `Slide ${slideIndex} has no image to replace.`;
+        // A model that picked a stale/out-of-range slot still gets a sensible
+        // result rather than an error: fall back to the first unfilled slot,
+        // else the first one.
+        const asked = Number(action.args.photo_index);
+        const photoIndex = slots.some((s) => s.photo_index === asked)
+          ? asked
+          : (slots.find((s) => s.looks_unfilled) ?? slots[0]).photo_index;
+
+        const fullPrompt = `${prompt}. editorial photograph, cinematic natural lighting, cohesive color grading, no text, no watermark, no logo`;
+        void generateImage(token, fullPrompt).then((dataUrl) => {
+          if (!dataUrl) return;
+          // Re-read the slide instead of closing over `slideUi` — generation
+          // takes seconds, and the user may well have edited the slide since.
+          const baseUi = (slidesRef.current[slideIndex]?.ui ?? slideUi) as Record<string, unknown>;
+          const newUi = replaceImageInSlide(baseUi, photoIndex, dataUrl);
+          if (!newUi) return;
+          dispatch(updateSlideUi({ index: slideIndex, ui: newUi }));
+        });
+
+        return `Replacing the photo on slide ${slideIndex}…`;
       }
       case "move_element": {
         const slideIndex = Number(action.args.slide_index);

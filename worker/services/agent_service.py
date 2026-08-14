@@ -498,6 +498,10 @@ def process(ctx: dict):
     user_message = params.get("message", "")
     deck_summary = params.get("deckSummary")
     history = params.get("history") or []
+    # Model switcher in the editor's AI chat panel. Same `model` param name the
+    # homepage picker uses for deck/outline jobs; unset or unknown falls back
+    # to LLM_PROVIDER inside llm_client.resolve_provider.
+    provider = params.get("model") or params.get("llm_provider")
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     for turn in history:
@@ -512,9 +516,12 @@ def process(ctx: dict):
         }
     )
 
-    logger.info("[agent_service] job_id=%s message=%r", ctx["job_id"], user_message[:120])
+    logger.info(
+        "[agent_service] job_id=%s provider=%r message=%r",
+        ctx["job_id"], provider, user_message[:120],
+    )
 
-    resp_message = llm_client.chat_tools(messages, TOOLS, temperature=0.3)
+    resp_message = llm_client.chat_tools(messages, TOOLS, provider=provider, temperature=0.3)
 
     tool_calls = getattr(resp_message, "tool_calls", None) or []
     for call in tool_calls:

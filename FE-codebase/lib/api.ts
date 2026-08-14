@@ -151,6 +151,9 @@ export async function streamAgent(
 		message: string
 		deckSummary?: unknown
 		history?: { role: 'user' | 'assistant'; content: string }[]
+		/** Provider id from the chat panel's model switcher. Same param name
+		 *  the homepage picker uses for deck jobs; unset = worker default. */
+		model?: string
 	},
 ): Promise<{ state: -1; message: string } | Response> {
 	const res = await fetch(`${API_BASE}/api/v1/tools/agent`, {

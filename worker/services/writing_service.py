@@ -22,6 +22,9 @@ def process(ctx: dict):
     content = params.get("content", "")
     command = params.get("command", "rewrite")
     stream_mode = params.get("stream_mode")
+    # Same `model` override every other job type accepts; unset falls back to
+    # LLM_PROVIDER in llm_client.resolve_provider.
+    provider = params.get("model") or params.get("llm_provider")
 
     prompt_prefix = COMMAND_PROMPTS.get(command, COMMAND_PROMPTS["rewrite"])
     messages = [
@@ -29,14 +32,14 @@ def process(ctx: dict):
         {"role": "user", "content": prompt_prefix + content},
     ]
 
-    logger.info("[writing_service] command=%s len=%d", command, len(content))
+    logger.info("[writing_service] command=%s len=%d provider=%r", command, len(content), provider)
 
     if stream_mode == "raw":
-        for chunk in llm_client.chat_stream(messages, temperature=0.5):
+        for chunk in llm_client.chat_stream(messages, provider=provider, temperature=0.5):
             publish(ctx["job_id"], {"type": "chunk", "text": chunk})
         publish(ctx["job_id"], {"type": "done"})
     else:
-        text = llm_client.chat(messages, temperature=0.5)
+        text = llm_client.chat(messages, provider=provider, temperature=0.5)
         from core.db.repository import save_result
         save_result(ctx["request_id"], ctx["job_id"], "writing", {"text": text})
         publish(ctx["job_id"], {"type": "done", "result": {"text": text}, "resultType": "writing"})

@@ -26,6 +26,7 @@ const aipptSchema = z.object({
 const writingSchema = z.object({
 	content: z.string(),
 	command: z.string().optional().default('polish'),
+	model: z.string().optional(),
 })
 const imageSchema = z.object({
 	prompt: z.string(),
@@ -33,6 +34,9 @@ const imageSchema = z.object({
 })
 const agentSchema = z.object({
 	message: z.string(),
+	// Provider id from the editor chat panel's model switcher, forwarded to the
+	// worker untouched — same `model` param the outline/aippt jobs carry.
+	model: z.string().optional(),
 	history: z
 		.array(
 			z.object({
@@ -251,7 +255,7 @@ tools.post('/ai_writing', async (c) => {
 			job_id: jobId,
 			session_id: sessionId,
 			status: 'pending',
-			params: { type: 'writing', content: parsed.data.content, command: parsed.data.command, stream_mode: 'raw' },
+			params: { type: 'writing', content: parsed.data.content, command: parsed.data.command, model: parsed.data.model, stream_mode: 'raw' },
 		})
 		await QueueClient.enqueueJob(jobId, {
 			request_id: request.id,
@@ -259,6 +263,7 @@ tools.post('/ai_writing', async (c) => {
 			type: 'writing',
 			content: parsed.data.content,
 			command: parsed.data.command,
+			model: parsed.data.model,
 			stream_mode: 'raw',
 		})
 
@@ -301,6 +306,7 @@ tools.post('/agent', async (c) => {
 			params: {
 				type: 'agent',
 				message: parsed.data.message,
+				model: parsed.data.model,
 				history: parsed.data.history,
 				deckSummary: parsed.data.deckSummary,
 				stream_mode: 'raw',
@@ -311,6 +317,7 @@ tools.post('/agent', async (c) => {
 			session_id: sessionId,
 			type: 'agent',
 			message: parsed.data.message,
+			model: parsed.data.model,
 			history: parsed.data.history,
 			deckSummary: parsed.data.deckSummary,
 			stream_mode: 'raw',

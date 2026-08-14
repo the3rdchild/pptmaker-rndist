@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Bot, FileText, Loader2, Send, Trash2, User, X, Zap } from "lucide-react";
+import { Bot, Check, ChevronDown, FileText, Loader2, Send, Trash2, User, X, Zap } from "lucide-react";
 import { TEMPLATE_V2_SURFACE_SELECTED_EVENT } from "@/components/slide-editor/events/events";
 import { useSessionStore } from "@/store/session.store";
 import { streamAgent, type AgentAction } from "@/lib/api";
@@ -19,6 +19,101 @@ const SUGGESTIONS = [
   "Ubah warna background jadi gelap",
   "Hapus slide terakhir",
 ];
+
+interface ProviderOption {
+  id: string;
+  label: string;
+  vision: boolean;
+}
+
+// Remembers the model picked in the switcher across sessions, the same way the
+// homepage picker and the template engine's auto-label selector do.
+const PROVIDER_STORAGE_KEY = "ppt_chat_provider";
+
+// The chat itself runs on the worker, but the list of models comes from the
+// Next.js route because that's the only side the browser can reach. Both
+// layers key off the same API-key env var names (OPENAI_API_KEY, ZHIPU_API_KEY,
+// …) and share one provider-id namespace, so the ids listed here are the ids
+// the worker understands. If an env ever drifts, the worker's resolve_provider
+// falls back to its default rather than failing the request.
+function useChatProviders() {
+  const [options, setOptions] = useState<ProviderOption[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/ai/providers")
+      .then((r) => r.json())
+      .then((data: { text?: ProviderOption[] }) => {
+        if (!cancelled && Array.isArray(data?.text)) setOptions(data.text);
+      })
+      .catch(() => {
+        // Selector just stays on "Default" — the worker picks its own model.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return options;
+}
+
+/** Compact model switcher for the chat. "Default" clears the choice and lets
+ *  the worker's LLM_PROVIDER decide, matching the homepage dropdowns. */
+function ModelSwitcher({
+  options,
+  selected,
+  onSelect,
+  disabled,
+}: {
+  options: ProviderOption[];
+  selected: string | null;
+  onSelect: (id: string | null) => void;
+  disabled: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const current = options.find((o) => o.id === selected);
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        disabled={disabled}
+        title="Model"
+        className="flex max-w-[150px] items-center gap-1 rounded-full bg-[var(--bg-surface)] px-2 py-0.5 text-[10px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-50"
+      >
+        <span className="truncate">{current?.label ?? "Default model"}</span>
+        <ChevronDown className="h-2.5 w-2.5 shrink-0" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full z-20 mt-1 max-h-64 w-52 overflow-y-auto rounded-lg border border-[var(--border-strong)] bg-[var(--bg-elevated)] py-1 shadow-xl">
+            <button
+              onClick={() => {
+                onSelect(null);
+                setOpen(false);
+              }}
+              className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)]"
+            >
+              <span>Default</span>
+              {selected === null && <Check className="h-3 w-3 shrink-0 text-[var(--accent-light)]" />}
+            </button>
+            {options.map((opt) => (
+              <button
+                key={opt.id}
+                onClick={() => {
+                  onSelect(opt.id);
+                  setOpen(false);
+                }}
+                className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)]"
+              >
+                <span className="truncate">{opt.label}</span>
+                {selected === opt.id && <Check className="h-3 w-3 shrink-0 text-[var(--accent-light)]" />}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 function extractText(runs: unknown): string {
   if (!Array.isArray(runs)) return "";
@@ -141,6 +236,18 @@ export default function AIAssistantPanel({ slides, activeIndex, onAction, onClos
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // null = let the worker use its configured default (LLM_PROVIDER).
+  const providerOptions = useChatProviders();
+  const [provider, setProvider] = useState<string | null>(null);
+  useEffect(() => {
+    setProvider(localStorage.getItem(PROVIDER_STORAGE_KEY));
+  }, []);
+  const chooseProvider = (id: string | null) => {
+    setProvider(id);
+    if (id) localStorage.setItem(PROVIDER_STORAGE_KEY, id);
+    else localStorage.removeItem(PROVIDER_STORAGE_KEY);
+  };
+
   // Track selected element via editor's custom event
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
   useEffect(() => {
@@ -178,7 +285,12 @@ export default function AIAssistantPanel({ slides, activeIndex, onAction, onClos
 
     let rawRes: Awaited<ReturnType<typeof streamAgent>>;
     try {
-      rawRes = await streamAgent(token, { message: msg, deckSummary: buildDeckSummary(slides, activeIndex), history });
+      rawRes = await streamAgent(token, {
+        message: msg,
+        model: provider ?? undefined,
+        deckSummary: buildDeckSummary(slides, activeIndex),
+        history,
+      });
     } catch {
       setBusy(false);
       setMessages((m) => [...m, { role: "assistant", kind: "error", text: "Sorry, I couldn't reach the server. Please try again." }]);
@@ -268,17 +380,25 @@ export default function AIAssistantPanel({ slides, activeIndex, onAction, onClos
         </div>
       </div>
 
-      {/* Context indicator */}
+      {/* Context indicator + model switcher */}
       <div className="flex items-center gap-1.5 border-b border-[var(--border)] px-4 py-1.5">
         <span className="rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] font-medium text-[var(--accent-light)]">
           Slide {activeIndex + 1}
         </span>
         {selectedLabel && (
-          <span className="flex max-w-[180px] items-center gap-1 truncate rounded-full bg-[var(--bg-surface)] px-2 py-0.5 text-[10px] text-[var(--text-secondary)]">
+          <span className="flex max-w-[110px] items-center gap-1 truncate rounded-full bg-[var(--bg-surface)] px-2 py-0.5 text-[10px] text-[var(--text-secondary)]">
             <FileText className="h-2.5 w-2.5 shrink-0" />
             <span className="truncate">{selectedLabel}</span>
           </span>
         )}
+        <div className="ml-auto">
+          <ModelSwitcher
+            options={providerOptions}
+            selected={provider}
+            onSelect={chooseProvider}
+            disabled={busy}
+          />
+        </div>
       </div>
 
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">

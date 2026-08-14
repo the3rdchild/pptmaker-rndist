@@ -321,56 +321,84 @@ export interface ImageSlotInfo {
   photo_index: number;
   /** Authored slot name when the template has one ("hero_photo"). */
   name?: string;
-  /** Clipped photo container — the generator treats these as photo slots. */
+  /** Clipped/marked photo container. The single most reliable signal. */
   is_frame: boolean;
-  /** Heuristic: still showing template artwork rather than a real photo the
-   *  user or the generator put there. Generated images arrive as data: URIs
-   *  and stock photos as remote URLs, so a bare template/static path means
-   *  nothing has filled this slot yet. */
-  looks_unfilled: boolean;
+  width: number;
+  height: number;
 }
 
-function imageSlotInfo(el: AnyRecord, index: number): ImageSlotInfo {
-  const data = typeof el.data === "string" ? el.data : "";
-  const isRealPhoto = data.startsWith("data:") || /^https?:\/\//i.test(data);
-  const name = typeof el.name === "string" && el.name ? el.name : undefined;
-  return {
-    photo_index: index,
-    ...(name ? { name } : {}),
-    is_frame: isImageFrameElement(el),
-    looks_unfilled: !isRealPhoto,
-  };
+// Minimum area for an unframed image to count as a photo slot — same
+// threshold findAllPhotoSlots uses in ai-layout-fill.ts.
+const MIN_PHOTO_SLOT_AREA = 20000;
+
+/** Is this image a photo slot a user would mean by "the picture on this
+ *  slide"? Mirrors findAllPhotoSlots' predicate in ai-layout-fill.ts on
+ *  purpose — the generator already settled which images are fillable slots
+ *  and which are artwork, and the agent must not disagree with it.
+ *
+ *  The `name` requirement carries the weight. A .pptx-imported deck arrives as
+ *  dozens of unnamed decorative images (torn-paper edges, stamps, washi tape),
+ *  none of which set is_icon/decorative — an earlier version of this offered
+ *  all 16 images on one imported slide as fill targets, so "fill the photo"
+ *  painted a generated landscape onto a piece of torn-paper trim. */
+function isPhotoSlotElement(el: AnyRecord): boolean {
+  if (el.type !== "image") return false;
+  if (isImageFrameElement(el)) return true;
+  if (el.is_icon === true || el.decorative === true) return false;
+  if (typeof el.name !== "string" || !el.name) return false;
+  const size = isRecord(el.size) ? el.size : undefined;
+  const w = typeof size?.width === "number" ? size.width : 0;
+  const h = typeof size?.height === "number" ? size.height : 0;
+  return w * h > MIN_PHOTO_SLOT_AREA;
 }
 
-/** Every image element on the slide, in recursive document order. Icons and
- *  elements flagged decorative are skipped — they're artwork, not photo slots
- *  the user means when they say "fill the image". */
-export function listImageSlots(ui: AnyRecord): ImageSlotInfo[] {
-  const out: ImageSlotInfo[] = [];
-  const visit = (el: AnyRecord) => {
+// Both the summary and the patch walk through here, so the photo_index the
+// model is shown always addresses the element that actually gets written.
+// Deliberately NO "looks unfilled" signal: an empty slot cannot be told from a
+// filled one by its data field. A .pptx import embeds its placeholder as a
+// ~1KB data: URI while a real photo on the same slide is a 138KB one, so
+// "data: URI means filled" is precisely backwards on imported decks — which is
+// how the two genuinely-empty frames got reported as already done.
+function walkPhotoSlots(ui: AnyRecord, visit: (el: AnyRecord, index: number) => void): void {
+  let index = 0;
+  const walk = (el: AnyRecord) => {
     if (el.type === "image") {
-      if (el.is_icon !== true && el.decorative !== true) {
-        out.push(imageSlotInfo(el, out.length));
-      }
+      if (isPhotoSlotElement(el)) visit(el, index++);
       return;
     }
     const children = el.children;
     if (Array.isArray(children)) {
-      for (const child of children) if (isRecord(child)) visit(child);
+      for (const child of children) if (isRecord(child)) walk(child);
       return;
     }
-    if (isRecord(el.child)) visit(el.child);
+    if (isRecord(el.child)) walk(el.child);
   };
   const components = Array.isArray(ui.components) ? (ui.components as AnyRecord[]) : [];
   for (const component of components) {
     const elements = Array.isArray(component.elements) ? (component.elements as AnyRecord[]) : [];
-    for (const el of elements) if (isRecord(el)) visit(el);
+    for (const el of elements) if (isRecord(el)) walk(el);
   }
+}
+
+/** The slide's fillable photo slots, in recursive document order. */
+export function listImageSlots(ui: AnyRecord): ImageSlotInfo[] {
+  const out: ImageSlotInfo[] = [];
+  walkPhotoSlots(ui, (el, index) => {
+    const size = isRecord(el.size) ? el.size : undefined;
+    const name = typeof el.name === "string" && el.name ? el.name : undefined;
+    out.push({
+      photo_index: index,
+      ...(name ? { name } : {}),
+      is_frame: isImageFrameElement(el),
+      width: Math.round(typeof size?.width === "number" ? size.width : 0),
+      height: Math.round(typeof size?.height === "number" ? size.height : 0),
+    });
+  });
   return out;
 }
 
-/** Swaps the artwork of the photo_index-th image slot, leaving its clip,
- *  size, position and corner radii untouched — that's the whole point versus
+/** Swaps the artwork of the photo_index-th slot, leaving its clip, size,
+ *  position and corner radii untouched — that's the whole point versus
  *  insert_image, which appends a brand new free-floating element. Returns null
  *  when the index doesn't resolve. */
 export function replaceImageInSlide(
@@ -378,30 +406,27 @@ export function replaceImageInSlide(
   photoIndex: number,
   dataUrl: string,
 ): AnyRecord | null {
-  let counter = 0;
-  let replaced = false;
-  const visit = (el: AnyRecord): AnyRecord => {
-    if (el.type === "image") {
-      if (el.is_icon === true || el.decorative === true) return el;
-      const isTarget = counter === photoIndex;
-      counter += 1;
-      if (!isTarget) return el;
-      replaced = true;
-      return { ...el, data: dataUrl };
-    }
+  const target: { el?: AnyRecord } = {};
+  walkPhotoSlots(ui, (el, index) => {
+    if (index === photoIndex) target.el = el;
+  });
+  if (!target.el) return null;
+
+  const swap = (el: AnyRecord): AnyRecord => {
+    if (el === target.el) return { ...el, data: dataUrl };
     const children = el.children;
     if (Array.isArray(children)) {
-      return { ...el, children: children.map((c) => (isRecord(c) ? visit(c) : c)) };
+      return { ...el, children: children.map((c) => (isRecord(c) ? swap(c) : c)) };
     }
-    if (isRecord(el.child)) return { ...el, child: visit(el.child) };
+    if (isRecord(el.child)) return { ...el, child: swap(el.child) };
     return el;
   };
   const components = Array.isArray(ui.components) ? (ui.components as AnyRecord[]) : [];
   const nextComponents = components.map((component) => {
     const elements = Array.isArray(component.elements) ? (component.elements as AnyRecord[]) : [];
-    return { ...component, elements: elements.map((el) => (isRecord(el) ? visit(el) : el)) };
+    return { ...component, elements: elements.map((el) => (isRecord(el) ? swap(el) : el)) };
   });
-  return replaced ? { ...ui, components: nextComponents } : null;
+  return { ...ui, components: nextComponents };
 }
 
 export function patchInsertedImage(

@@ -1895,12 +1895,13 @@ export default function EditorReactClient({
         const slots = listImageSlots(slideUi);
         if (!slots.length) return `Slide ${slideIndex} has no image to replace.`;
         // A model that picked a stale/out-of-range slot still gets a sensible
-        // result rather than an error: fall back to the first unfilled slot,
-        // else the first one.
+        // result rather than an error: fall back to the biggest slot, which is
+        // the one a user pointing at "the photo" almost always means.
         const asked = Number(action.args.photo_index);
+        const biggest = [...slots].sort((a, b) => b.width * b.height - a.width * a.height)[0];
         const photoIndex = slots.some((s) => s.photo_index === asked)
           ? asked
-          : (slots.find((s) => s.looks_unfilled) ?? slots[0]).photo_index;
+          : biggest.photo_index;
 
         const fullPrompt = `${prompt}. editorial photograph, cinematic natural lighting, cohesive color grading, no text, no watermark, no logo`;
         void generateImage(token, fullPrompt).then((dataUrl) => {

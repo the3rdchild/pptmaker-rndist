@@ -58,13 +58,16 @@ icon"/"the chart"/"it" etc. against the element descriptions in the list (and ag
 just inserted/discussed in the conversation history) to figure out which index to use.
 - Each slide may also carry an `imageSlots` list describing the photo slots ALREADY on it, each \
 with its own `photo_index` (separate from the `elements` index above), an optional authored \
-`name`, `is_frame`, and `looks_unfilled`. When the user asks to FILL IN, change, swap or update \
-a picture that already exists on the slide ("isi gambar ini", "fill this image", "ganti fotonya", \
-"make the photo match the topic"), call replace_image with that photo_index — do NOT call \
-insert_image, which adds a brand new picture on top and is almost never what they meant. Reserve \
-insert_image for requests that clearly ask to ADD an image the slide doesn't have yet. If several \
-slots match, prefer one with looks_unfilled true, else the first; if the slide has exactly one \
-image slot, just use it without asking.
+`name`, `is_frame`, and its `width`/`height`. When the user asks to FILL IN, change, swap or \
+update a picture that already exists on the slide ("isi gambar ini", "isi foto di slide ini", \
+"fill this image", "ganti fotonya", "make the photo match the topic"), call replace_image with \
+that photo_index — do NOT call insert_image, which adds a brand new picture on top and is almost \
+never what they meant. Reserve insert_image for requests that clearly ask to ADD an image the \
+slide doesn't have yet. You cannot tell from the summary whether a slot already has a real photo \
+in it, and you don't need to — the user asking you to fill it is the signal. If the slide has \
+exactly one slot, use it without asking. If it has several and the user didn't say which, fill \
+the LARGEST one (by width*height), preferring is_frame true; if they clearly meant all of them \
+("isi semua fotonya"), call replace_image once per photo_index.
 - For replace_image and insert_image, write the `prompt` so it fits the deck's subject — use the \
 slide's title and the surrounding text from the summary, not a generic stock description.
 - The shape tool only supports: rectangle, square, rounded-rectangle, pill, ellipse, circle, line. \
@@ -405,8 +408,8 @@ TOOLS = [
                         "type": "integer",
                         "description": (
                             "0-based photo_index from that slide's imageSlots list. "
-                            "Prefer a slot whose looks_unfilled is true when the user "
-                            "asks to 'fill' the image."
+                            "When the user didn't say which picture, use the largest "
+                            "slot (width*height), preferring one with is_frame true."
                         ),
                     },
                     "prompt": {"type": "string", "description": "Short visual description of the desired image."},

@@ -54,6 +54,7 @@ import {
   type TemplateImportProgress,
 } from "@/components/slide-editor/importing/pptx-template-pages";
 import { uploadGlobalFont } from "@/lib/fonts/global-fonts";
+import { toSameOriginAssetUrl } from "@/lib/storage/asset-proxy";
 import type { RootState } from "@/store/store";
 import { setPresentationData } from "@/store/slices/presentationGeneration";
 import { ThemePaletteEditor } from "@/components/template-engine/theme-palette-editor";
@@ -1903,7 +1904,15 @@ function SaveImageToLibrary({
 }
 
 async function toDataUrl(src: string): Promise<string> {
-  const response = await fetch(src);
+  // Resolved the same way the canvas loader resolves it. A .pptx-imported
+  // asset's `data` is the raw bucket URL, and the bucket has no CORS policy:
+  // the <img> on the canvas renders it, but a bare fetch() of the same URL is
+  // refused outright — which is why this used to fail only for imported
+  // images, never for ones loaded from a saved theme.
+  const response = await fetch(toSameOriginAssetUrl(src));
+  // Without this a 404 from the proxy reads back as a perfectly valid blob,
+  // and an HTML error page lands in the library as the "image".
+  if (!response.ok) throw new Error(`asset fetch failed: ${response.status}`);
   const blob = await response.blob();
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

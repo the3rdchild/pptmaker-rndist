@@ -1,31 +1,13 @@
-import { ASSET_PROXY_PREFIX } from "@/lib/storage/asset-proxy";
+// Cross-origin bucket URLs get rewritten to the same-origin asset proxy, so
+// they render WITHOUT tainting the canvas. Shared with the read paths that
+// need the same resolution (template-engine-panel's Save to My elements) —
+// external URLs we don't own pass through untouched.
+import { toSameOriginAssetUrl } from "@/lib/storage/asset-proxy";
 
 const imageCache = new Map<string, Promise<HTMLImageElement | null>>();
 
 export function svgToDataUri(svg: string): string {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-}
-
-/** Cross-origin bucket URLs get rewritten to the same-origin asset proxy
- * (templates/ and elements/ are the two prefixes it serves), so they render
- * WITHOUT tainting the canvas. External URLs we don't own pass through
- * untouched. */
-function toSameOriginAssetUrl(src: string): string {
-  if (typeof window === "undefined") return src;
-  if (!/^https?:\/\//i.test(src)) return src;
-  try {
-    const url = new URL(src);
-    if (url.origin === window.location.origin) return src;
-    // The bucket serves two URL shapes: virtual-host style starts with the
-    // owned prefix (/templates/…), path style carries the bucket name first
-    // (…/<bucket>/templates/… — forced on dotted bucket names). Take the path
-    // from the first owned segment either way.
-    const match = url.pathname.match(/\/(templates|elements)\/(.+)$/);
-    if (match) return `${ASSET_PROXY_PREFIX}/${match[1]}/${match[2]}`;
-    return src;
-  } catch {
-    return src;
-  }
 }
 
 export function loadKonvaImage(src: string): Promise<HTMLImageElement | null> {

@@ -48,3 +48,32 @@ export function proxyAssetUrl(url: string): string {
   if (!base || !assetProxyEnabled() || !url.startsWith(`${base}/`)) return url;
   return `${ASSET_PROXY_PREFIX}/${url.slice(base.length + 1)}`;
 }
+
+/** Client-side counterpart to proxyAssetUrl, for bucket URLs that reach the
+ *  browser unrewritten — an upload response handed back directly, or a layout
+ *  the .pptx importer built from one. Derives the proxy path from the URL
+ *  alone, because CDN_PUBLIC_URL is server-only and is not in a client bundle.
+ *
+ *  Rewrites for READING, never for storing: what goes back to the bucket must
+ *  stay an absolute CDN URL (see the header note, and keyFromPublicUrl, which
+ *  rejects proxy URLs on purpose). Cross-origin bucket URLs are otherwise
+ *  fetchable only by an <img> — which renders them but taints the canvas —
+ *  while fetch() is refused outright for as long as the bucket has no CORS
+ *  policy. */
+export function toSameOriginAssetUrl(src: string): string {
+  if (typeof window === "undefined") return src;
+  if (!/^https?:\/\//i.test(src)) return src;
+  try {
+    const url = new URL(src);
+    if (url.origin === window.location.origin) return src;
+    // The bucket serves two URL shapes: virtual-host style starts with the
+    // owned prefix (/templates/…), path style carries the bucket name first
+    // (…/<bucket>/templates/… — forced on dotted bucket names). Take the path
+    // from the first owned segment either way.
+    const match = url.pathname.match(/\/(templates|elements)\/(.+)$/);
+    if (match) return `${ASSET_PROXY_PREFIX}/${match[1]}/${match[2]}`;
+    return src;
+  } catch {
+    return src;
+  }
+}

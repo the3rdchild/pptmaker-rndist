@@ -39,6 +39,7 @@ import { cn } from "@/lib/utils";
 import { createDeck, streamAipptOutline } from "@/lib/api";
 import { useSessionStore } from "@/store/session.store";
 import { useTemplateThemes } from "@/components/editor-react/theme-picker";
+import { OutlineChat } from "./outline-chat";
 import { Button } from "@/components/shared/button";
 import {
   parseOutline,
@@ -81,6 +82,15 @@ export function OutlinePage() {
   const [generating, setGenerating] = useState(false);
   const [promptOpen, setPromptOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Text fragments the user selected inside outline fields — shown as context
+  // chips in the chat and sent with the next message.
+  const [selectedTexts, setSelectedTexts] = useState<string[]>([]);
+
+  const handleTextSelected = (text: string) => {
+    setSelectedTexts((cur) =>
+      cur.includes(text) || cur.length >= 5 ? cur : [...cur, text],
+    );
+  };
 
   // Raw streamed markdown accumulates here; `outline` is always a parse of it.
   const rawRef = useRef("");
@@ -203,6 +213,30 @@ export function OutlinePage() {
     setExpandedId(id);
   };
 
+  /** The chat's revision landing spot: replaces the target page's content.
+   *  No-op when the page was deleted while the reply was streaming. */
+  const applyRevision = (
+    pageId: string,
+    revision: { heading: string; description: string; bullets: string[] },
+  ) => {
+    setOutline((o) => {
+      if (!o.pages.some((p) => p.id === pageId)) return o;
+      return {
+        ...o,
+        pages: o.pages.map((p) =>
+          p.id === pageId
+            ? {
+                ...p,
+                heading: revision.heading,
+                description: revision.description,
+                bullets: revision.bullets,
+              }
+            : p,
+        ),
+      };
+    });
+  };
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
@@ -250,6 +284,19 @@ export function OutlinePage() {
     PAGE_COUNTS.find((c) => c.id === pageCountId)?.label ?? "Auto";
   const canGenerate =
     !streaming && !generating && outline.pages.some((p) => p.heading.trim());
+
+  // The slide the chat talks about — the currently expanded accordion card.
+  const expandedIndex = outline.pages.findIndex((p) => p.id === expandedId);
+  const chatTarget =
+    expandedIndex >= 0
+      ? {
+          pageId: outline.pages[expandedIndex].id,
+          index: expandedIndex,
+          heading: outline.pages[expandedIndex].heading,
+          description: outline.pages[expandedIndex].description,
+          bullets: outline.pages[expandedIndex].bullets,
+        }
+      : null;
 
   /* -------------------------------- render ------------------------------- */
 
@@ -325,10 +372,11 @@ export function OutlinePage() {
         )}
       </header>
 
-      {/* Body — outline list (left) + theme picker (right) */}
+      {/* Body — outline list (left) + AI chat (center) + theme picker (right) */}
       <div className="flex min-h-0 flex-1">
-        <main className="flex-1 overflow-y-auto px-6 py-5">
-          <h1 className="mb-4 text-sm font-semibold">Presentation outline</h1>
+        <main className="flex min-h-0 flex-1">
+          <div className="w-[26rem] shrink-0 overflow-y-auto px-6 py-5">
+            <h1 className="mb-4 text-sm font-semibold">Presentation outline</h1>
 
           {streamError && (
             <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
@@ -357,7 +405,7 @@ export function OutlinePage() {
               items={outline.pages.map((p) => p.id)}
               strategy={verticalListSortingStrategy}
             >
-              <div className="flex max-w-2xl flex-col gap-2.5">
+              <div className="flex flex-col gap-2.5">
                 {outline.pages.map((page) => (
                   <SortableOutlineCard
                     key={page.id}
@@ -372,6 +420,7 @@ export function OutlinePage() {
                     onAddBullet={(i) => addBullet(page.id, i)}
                     onRemoveBullet={(i) => removeBullet(page.id, i)}
                     onRemove={() => removePage(page.id)}
+                    onTextSelected={handleTextSelected}
                   />
                 ))}
               </div>
@@ -381,11 +430,30 @@ export function OutlinePage() {
           {!streaming && outline.pages.length > 0 && (
             <button
               onClick={addPage}
-              className="mt-3 flex w-full max-w-2xl items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--border-strong)] py-3 text-sm text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-white"
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--border-strong)] py-3 text-sm text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-white"
             >
               <Plus className="h-4 w-4" /> Add Page
             </button>
           )}
+          </div>
+
+          {/* Center — AI chat for revising the previewed slide */}
+          <div className="min-w-0 flex-1 border-l border-[var(--border)] p-4">
+            <OutlineChat
+              token={token}
+              language={language}
+              model={searchParams.get("gen") ?? undefined}
+              topic={prompt}
+              outlineTitle={outline.title}
+              target={chatTarget}
+              selectedTexts={selectedTexts}
+              onRemoveSelectedText={(i) =>
+                setSelectedTexts((cur) => cur.filter((_, idx) => idx !== i))
+              }
+              onClearSelectedTexts={() => setSelectedTexts([])}
+              onApplyRevision={applyRevision}
+            />
+          </div>
         </main>
 
         {/* Sidebar — theme picker + generate */}
@@ -541,6 +609,7 @@ function SortableOutlineCard({
   onAddBullet,
   onRemoveBullet,
   onRemove,
+  onTextSelected,
 }: {
   page: OutlinePageModel;
   expanded: boolean;
@@ -551,9 +620,26 @@ function SortableOutlineCard({
   onAddBullet: (afterIndex: number) => void;
   onRemoveBullet: (index: number) => void;
   onRemove: () => void;
+  onTextSelected: (text: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: page.id, disabled });
+
+  // Text selected inside any of this card's fields becomes a chat-context
+  // chip ("add context to chat" — automatic on mouseup/keyup selection).
+  const captureSelection = (el: HTMLInputElement | HTMLTextAreaElement) => {
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? 0;
+    if (end - start < 3) return;
+    const text = el.value.substring(start, end).trim();
+    if (text.length >= 3) onTextSelected(text);
+  };
+  const selectionHandlers = {
+    onMouseUp: (e: React.MouseEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+      captureSelection(e.currentTarget),
+    onKeyUp: (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+      captureSelection(e.currentTarget),
+  };
 
   return (
     <div
@@ -608,6 +694,7 @@ function SortableOutlineCard({
           <input
             value={page.heading}
             onChange={(e) => onUpdate({ heading: e.target.value })}
+            {...selectionHandlers}
             disabled={disabled}
             placeholder="Judul slide"
             className="mb-2 w-full rounded-md border border-[var(--border)] bg-transparent px-2.5 py-1.5 text-sm font-medium outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
@@ -615,6 +702,7 @@ function SortableOutlineCard({
           <textarea
             value={page.description}
             onChange={(e) => onUpdate({ description: e.target.value })}
+            {...selectionHandlers}
             disabled={disabled}
             placeholder="Deskripsi singkat slide (1 kalimat)"
             rows={2}
@@ -628,6 +716,7 @@ function SortableOutlineCard({
                 <input
                   value={bullet}
                   onChange={(e) => onUpdateBullet(i, e.target.value)}
+                  {...selectionHandlers}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();

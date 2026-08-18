@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 def handle(data: dict):
     """
     Dispatcher: baca job, ambil request row, lalu lempar ke service yang sesuai
-    berdasarkan params.type (outline | deck | slide | agent).
+    berdasarkan params.type (outline | deck | writing | agent | outline_chat | image).
     """
     job_id = data.get("jobId")
     payload = data.get("payload") or {}
@@ -70,6 +70,9 @@ def _dispatch(job_type: str, job_id: str, request: dict, params: dict):
         process(ctx)
     elif job_type == "deck":
         from services.deck_service import process
+        process(ctx)
+    elif job_type == "outline_chat":
+        from services.outline_chat_service import process
         process(ctx)
     elif job_type == "writing":
         from services.writing_service import process

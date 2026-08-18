@@ -94,3 +94,35 @@ export function serializeOutline(outline: Outline): string {
   }
   return parts.join("\n");
 }
+
+/** Parses the ```slide fenced block the outline-chat worker emits when it
+ *  revises a slide — first line is the heading, first plain line after it the
+ *  description, `- ` lines the bullets. Returns null when the reply carries no
+ *  revision (plain chat answer). Mirrors parse_revision_block in the worker. */
+export function parseSlideRevisionBlock(
+  text: string,
+): { heading: string; description: string; bullets: string[] } | null {
+  const match = text.match(/```slide\s*\n([\s\S]*?)```/);
+  if (!match) return null;
+  const lines = match[1]
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return null;
+  const heading = stripEmphasis(lines[0]);
+  let description = "";
+  const bullets: string[] = [];
+  for (const line of lines.slice(1)) {
+    const bulletMatch = line.match(/^[-*•]\s+(.*)$/);
+    if (bulletMatch) bullets.push(stripEmphasis(bulletMatch[1]));
+    else if (!description) description = stripEmphasis(line);
+    else bullets.push(stripEmphasis(line));
+  }
+  return heading ? { heading, description, bullets } : null;
+}
+
+/** The reply text with the ```slide block removed — what the chat bubble
+ *  shows alongside the revision preview. */
+export function stripRevisionBlock(text: string): string {
+  return text.replace(/```slide\s*\n[\s\S]*?```/g, "").trim();
+}

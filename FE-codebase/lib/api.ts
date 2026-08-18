@@ -204,6 +204,31 @@ export async function streamAipptOutline(
 	return res
 }
 
+/** Streams a reply from the /outline page's chat (/tools/outline_chat). Raw
+ *  text chunks like the outline stream; when the model revises the slide, the
+ *  full reply contains a ```slide fenced block the caller can parse+apply. */
+export async function streamOutlineChat(
+	token: string,
+	body: {
+		message: string
+		language?: string
+		model?: string
+		history?: { role: 'user' | 'assistant'; content: string }[]
+		context?: unknown
+	},
+): Promise<{ state: -1; message: string } | Response> {
+	const res = await fetch(`${API_BASE}/api/v1/tools/outline_chat`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
+		body: JSON.stringify(body),
+	})
+	const contentType = res.headers.get('content-type') || ''
+	if (!contentType.includes('text/event-stream')) {
+		return res.json().catch(() => ({ state: -1, message: 'Request failed' }))
+	}
+	return res
+}
+
 // ── Theme manifest (slot-by-slot generation contract) ─────────────────────
 
 /** Asks the server (Kimi) which theme best fits a deck topic, matched against

@@ -35,6 +35,23 @@ const imageSchema = z.object({
 	prompt: z.string(),
 	size: z.string().optional(),
 })
+// Outline-page chat: revise the slide the user is previewing. `context` is the
+// FE-assembled snapshot (topic, outline title, target slide, selected text
+// fragments) — passed through to the worker untouched, same as `manifest`.
+const outlineChatSchema = z.object({
+	message: z.string(),
+	language: z.string().optional(),
+	model: z.string().optional(),
+	history: z
+		.array(
+			z.object({
+				role: z.enum(['user', 'assistant']),
+				content: z.string(),
+			}),
+		)
+		.optional(),
+	context: z.any().optional(),
+})
 const agentSchema = z.object({
 	message: z.string(),
 	// Provider id from the editor chat panel's model switcher, forwarded to the
@@ -347,6 +364,57 @@ tools.post('/agent', async (c) => {
 			// JSONL: one action (or {tool:'_reply', args:{text}}) per line
 			s.write(text + '\n').catch(() => {})
 		}, 30000) // single-turn tool-call-or-reply, no need for the long idle window
+	})
+})
+
+// ── POST /tools/outline_chat — raw text stream (may contain a ```slide block) ──
+
+tools.post('/outline_chat', async (c) => {
+	const body = await c.req.json().catch(() => ({}))
+	const parsed = outlineChatSchema.safeParse(body)
+	if (!parsed.success) return c.json({ state: -1, message: 'Invalid body' }, 400)
+
+	const sessionId = requireSession(c)
+	if (!sessionId) return c.json({ state: -1, message: 'Missing session' }, 401)
+
+	const jobId = crypto.randomUUID()
+
+	c.header('Content-Type', 'text/event-stream')
+	c.header('Cache-Control', 'no-cache')
+	c.header('Connection', 'keep-alive')
+
+	return stream(c, async (s) => {
+		const subscriber = await subscribeToJob(jobId)
+
+		const request = await createPoolRequest({
+			job_id: jobId,
+			session_id: sessionId,
+			status: 'pending',
+			params: {
+				type: 'outline_chat',
+				message: parsed.data.message,
+				language: parsed.data.language,
+				model: parsed.data.model,
+				history: parsed.data.history,
+				context: parsed.data.context,
+				stream_mode: 'raw',
+			},
+		})
+		await QueueClient.enqueueJob(jobId, {
+			request_id: request.id,
+			session_id: sessionId,
+			type: 'outline_chat',
+			message: parsed.data.message,
+			language: parsed.data.language,
+			model: parsed.data.model,
+			history: parsed.data.history,
+			context: parsed.data.context,
+			stream_mode: 'raw',
+		})
+
+		await readJobStream(subscriber, (text) => {
+			s.write(text).catch(() => {})
+		}, 30000)
 	})
 })
 

@@ -39,6 +39,7 @@ import { cn } from "@/lib/utils";
 import { createDeck, streamAipptOutline } from "@/lib/api";
 import { useSessionStore } from "@/store/session.store";
 import { useTemplateThemes } from "@/components/editor-react/theme-picker";
+import { LazyLayoutThumbnail } from "@/components/editor-react/lazy-layout-thumbnail";
 import { OutlineChat } from "./outline-chat";
 import { Button } from "@/components/shared/button";
 import {
@@ -492,13 +493,13 @@ export function OutlinePage() {
                       )}
                     >
                       <div className="relative aspect-video w-full overflow-hidden bg-[var(--bg-elevated)]">
-                        {theme.thumbnail ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={theme.thumbnail}
-                            alt={theme.name}
-                            className="h-full w-full object-cover"
-                            loading="lazy"
+                        {theme.layouts[0] ? (
+                          // Live render of the theme's cover layout — the
+                          // static thumbnail.png files don't exist in storage,
+                          // so <img> 404s. Same pattern as /template-list.
+                          <LazyLayoutThumbnail
+                            layout={theme.layouts[0] as Record<string, unknown>}
+                            width={123}
                           />
                         ) : (
                           <div className="flex h-full items-center justify-center text-[10px] text-[var(--text-muted)]">

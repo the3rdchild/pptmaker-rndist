@@ -61,6 +61,7 @@ import {
   invalidateThemeCache,
   loadAllThemes,
   loadDefaultTheme,
+  loadTheme,
   type TemplateTheme,
 } from "@/lib/templates/themes";
 import { TemplateEnginePanel } from "@/components/template-engine/template-engine-panel";
@@ -151,7 +152,18 @@ const TemplateV2KonvaSlide = dynamic(
   { ssr: false }
 );
 
-async function loadDefaultLayout(): Promise<Record<string, unknown>> {
+async function loadDefaultLayout(
+  themeId?: string | null
+): Promise<Record<string, unknown>> {
+  // A theme pinned via ?theme= (the /outline page's picker) provides the
+  // starter slide too — otherwise the loading screen before the first
+  // streamed slide shows the DEFAULT theme while the deck generates in the
+  // pinned one. Invalid/empty ids fall through to the default.
+  if (themeId) {
+    const pinned = await loadTheme(themeId);
+    const layout = pinned?.layouts[0];
+    if (layout) return layout as Record<string, unknown>;
+  }
   // loadDefaultTheme, not loadTheme(DEFAULT_THEME_ID) — the default theme id
   // can point at an entry with zero layouts, and a blank deck needs an
   // actually-populated theme to start from, not {}.
@@ -568,7 +580,7 @@ export default function EditorReactClient({
             })
           );
         } else {
-          const layout = await loadDefaultLayout();
+          const layout = await loadDefaultLayout(searchParams.get("theme"));
           if (cancelled) return;
           dispatch(
             setPresentationData({
@@ -591,7 +603,7 @@ export default function EditorReactClient({
     return () => {
       cancelled = true;
     };
-  }, [deckId, token, dispatch, templateMode]);
+  }, [deckId, token, dispatch, templateMode, searchParams]);
 
   // Persist edits back to the API (debounced) whenever the deck changes.
   // Template mode saves explicitly to disk instead — an autosave here would

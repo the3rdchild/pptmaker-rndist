@@ -1446,9 +1446,13 @@ export default function EditorReactClient({
         pendingStream.fills.push(fill);
         const latest = slideUiAt(pendingStream.index);
         if (latest) {
+          // Replay ALL fills so far, not just the new one: applyFillsToUi maps
+          // the Nth fill for a repeated slot name to the Nth element, so a lone
+          // fill always lands on the FIRST element and overwrites it (3 fills
+          // for 3 "body" slots would all clobber slot #1).
           dispatch(updateSlideUi({
             index: pendingStream.index,
-            ui: applyFillsToUi(latest, [fill]),
+            ui: applyFillsToUi(latest, pendingStream.fills),
           }));
         }
         return;

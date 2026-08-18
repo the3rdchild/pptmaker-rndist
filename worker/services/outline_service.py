@@ -17,20 +17,22 @@ SYSTEM_PROMPT = """You are a presentation outline generator. Given a topic, crea
 
 Format:
 # <Presentation Title>
-## <Section 1 title>
-### <Topic>
+## <Slide 1 title>
+<one short sentence describing what this slide covers>
 - <key point>
 - <key point>
-## <Section 2 title>
-### <Topic>
+## <Slide 2 title>
+<one short sentence describing what this slide covers>
+- <key point>
 - <key point>
 
 Rules:
 - Start with a # main title.
-- Use ## for major sections (aim for 4-6 sections).
-- Use ### for subsections within sections.
-- Use - bullet points for key talking points under each topic.
-- Each section should have 3-5 bullet points.
+- Use ## for slides (aim for 5-8 slides).
+- Put EXACTLY ONE plain-text description sentence directly under each ## slide title — no heading, no bullet, just one sentence.
+- Use - bullet points for key talking points under each slide.
+- Each slide should have 3-5 bullet points.
+- Do NOT use ### subsections.
 - Write ALL content in the specified language.
 - Be specific and engaging, not generic."""
 

@@ -12,6 +12,9 @@ const outlineSchema = z.object({
 	content: z.string(),
 	language: z.string().optional().default('English'),
 	model: z.string().optional(),
+	// Optional slide-count hint for the outline (the /outline page's "6-10
+	// Pages" pill sends the range midpoint). The worker already reads this.
+	slideCount: z.number().int().min(1).max(30).optional(),
 })
 const aipptSchema = z.object({
 	content: z.string(),
@@ -175,7 +178,7 @@ tools.post('/aippt_outline', async (c) => {
 			job_id: jobId,
 			session_id: sessionId,
 			status: 'pending',
-			params: { type: 'outline', prompt: parsed.data.content, language: parsed.data.language, model: parsed.data.model, stream_mode: 'raw' },
+			params: { type: 'outline', prompt: parsed.data.content, language: parsed.data.language, model: parsed.data.model, slideCount: parsed.data.slideCount, stream_mode: 'raw' },
 		})
 		await QueueClient.enqueueJob(jobId, {
 			request_id: request.id,
@@ -184,6 +187,7 @@ tools.post('/aippt_outline', async (c) => {
 			prompt: parsed.data.content,
 			language: parsed.data.language,
 			model: parsed.data.model,
+			slideCount: parsed.data.slideCount,
 			stream_mode: 'raw',
 		})
 

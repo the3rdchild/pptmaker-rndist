@@ -184,6 +184,26 @@ export async function streamAipptDeck(
 	return res
 }
 
+/** Streams a markdown outline for a topic (/tools/aippt_outline). Same SSE
+ *  envelope as streamAipptDeck, but the chunks are RAW markdown text (no
+ *  JSONL) — append them as they arrive. `slideCount` is the outline-only
+ *  page-count hint from the /outline page's "6-10 Pages" pill. */
+export async function streamAipptOutline(
+	token: string,
+	body: { content: string; language?: string; model?: string; slideCount?: number },
+): Promise<{ state: -1; message: string } | Response> {
+	const res = await fetch(`${API_BASE}/api/v1/tools/aippt_outline`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
+		body: JSON.stringify(body),
+	})
+	const contentType = res.headers.get('content-type') || ''
+	if (!contentType.includes('text/event-stream')) {
+		return res.json().catch(() => ({ state: -1, message: 'Request failed' }))
+	}
+	return res
+}
+
 // ── Theme manifest (slot-by-slot generation contract) ─────────────────────
 
 /** Asks the server (Kimi) which theme best fits a deck topic, matched against

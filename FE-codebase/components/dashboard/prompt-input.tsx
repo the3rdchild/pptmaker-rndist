@@ -125,22 +125,23 @@ export function PromptInput() {
 		setSubmitting(true)
 		setLocalError(null)
 		try {
-			// Create an empty deck, then open the editor passing the prompt via
-			// URL query params — editor-react-client auto-generates from it on mount.
-			const deck = await createDeck(token, { title: prompt.slice(0, 60) })
+			// Go to the outline step first — the user reviews/edits the AI outline
+			// there; the deck itself is only created when they click "Generate
+			// Presentation" on that page (which then opens the editor).
 			const qs = new URLSearchParams({
 				prompt,
 				lang: language,
 			})
-			// Provider choices travel to the editor as separate params so each
-			// section (generate/verify/repair) can be overridden independently.
+			// Provider choices travel as separate params so each section
+			// (generate/verify/repair) can be overridden independently.
 			// Absent param = the editor applies the server default.
 			if (genProvider) qs.set('gen', genProvider)
 			if (verifyProvider) qs.set('verify', verifyProvider)
 			if (repairProvider) qs.set('repair', repairProvider)
 			if (!review) qs.set('review', 'off')
 			if (imageSource === 'stock') qs.set('images', 'stock')
-			router.push(`/editor-react/${deck.id}?${qs.toString()}`)
+			router.push(`/outline?${qs.toString()}`)
+			setSubmitting(false)
 		} catch (e) {
 			setLocalError(e instanceof Error ? e.message : 'Failed to start')
 			setSubmitting(false)

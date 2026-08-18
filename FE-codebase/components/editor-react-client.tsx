@@ -944,6 +944,9 @@ export default function EditorReactClient({
     withReview = true,
     providers?: { verify?: string | null; repair?: string | null },
     imageSource: "ai" | "stock" = "ai",
+    /** Theme pinned on the /outline page (?theme=). Wins over every other
+     *  resolution step; DeckLayoutPicker silently ignores it when invalid. */
+    pinnedThemeId?: string | null,
   ): Promise<number> => {
     if (!token) return 0;
     imageSourceRef.current = imageSource;
@@ -953,11 +956,12 @@ export default function EditorReactClient({
     // contract (model fills NAMED slots under their authored budgets) instead
     // of the legacy 5-type guess-where-text-goes contract.
     //
-    // Priority: a theme named explicitly in the prompt wins; otherwise the
-    // theme-choice step (Kimi + the themes' authored when_to_use/avoid_when)
-    // picks one; the DeckLayoutPicker seed hash is only the last-resort
-    // fallback when the choice call fails or declines.
-    const askedTheme = await resolveThemeFromPrompt(topic);
+    // Priority: a theme pinned on the /outline page wins outright; then a
+    // theme named explicitly in the prompt; otherwise the theme-choice step
+    // (Kimi + the themes' authored when_to_use/avoid_when) picks one; the
+    // DeckLayoutPicker seed hash is only the last-resort fallback when the
+    // choice call fails or declines.
+    const askedTheme = pinnedThemeId ?? (await resolveThemeFromPrompt(topic));
     // A terse prompt ("ppt tentang kopi") starves the generator of material —
     // expand it into a richer brief (audience, angle, structure, tone) BEFORE
     // theme choice and generation. Theme-name detection above still runs on
@@ -1505,11 +1509,12 @@ export default function EditorReactClient({
     return count;
   };
 
-  // Auto-generate once when opened with ?prompt= (homepage "Generate" flow
-  // creates an empty deck, then routes here with the prompt in the query
-  // string — cross-origin-safe, survives a reload). ?review=off comes from
-  // the homepage toggle and skips the pipelined visual review that otherwise
-  // verifies/fixes each slide as it finishes streaming.
+  // Auto-generate once when opened with ?prompt= (the /outline page creates
+  // an empty deck on "Generate Presentation", then routes here with the
+  // edited outline markdown in the query string — cross-origin-safe, survives
+  // a reload). ?theme= pins the theme picked there; absent = auto-choose.
+  // ?review=off comes from the homepage toggle and skips the pipelined visual
+  // review that otherwise verifies/fixes each slide as it finishes streaming.
   // ?gen= / ?verify= / ?repair= carry the per-section provider choices from
   // the homepage dropdowns; absent = the server applies its default.
   // ?images=stock switches photo slots from AI generation to stock-photo
@@ -1525,7 +1530,9 @@ export default function EditorReactClient({
     const repairProvider = searchParams.get("repair") ?? null;
     const withReview = searchParams.get("review") !== "off";
     const imageSource = searchParams.get("images") === "stock" ? "stock" : "ai";
-    runGeneration(prompt, language, genProvider, withReview, { verify: verifyProvider, repair: repairProvider }, imageSource);
+    // Theme pinned on the /outline page; absent = auto-choose as before.
+    const pinnedTheme = searchParams.get("theme");
+    runGeneration(prompt, language, genProvider, withReview, { verify: verifyProvider, repair: repairProvider }, imageSource, pinnedTheme);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, token, searchParams]);
 
@@ -1539,11 +1546,12 @@ export default function EditorReactClient({
     withReview = true,
     providers?: { verify?: string | null; repair?: string | null },
     imageSource: "ai" | "stock" = "ai",
+    pinnedThemeId?: string | null,
   ) => {
     setGenerationError(null);
     setGenerationStatus(null);
     setIsGenerating(true);
-    generateDeckFromTopic(topic, language, model, withReview, providers, imageSource)
+    generateDeckFromTopic(topic, language, model, withReview, providers, imageSource, pinnedThemeId)
       .catch((e) => {
         setGenerationError({
           message: e instanceof Error ? e.message : "Something went wrong while generating your deck.",
@@ -1569,6 +1577,7 @@ export default function EditorReactClient({
       generationError.withReview,
       generationError.providers,
       generationError.imageSource,
+      searchParams.get("theme"), // the pinned theme is still in the URL
     );
   };
 

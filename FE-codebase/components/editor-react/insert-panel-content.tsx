@@ -31,6 +31,7 @@ import {
   ELEMENT_CATEGORY_LABELS,
   ELEMENT_DRAG_MIME,
   elementCategoryOrder,
+  insertedBoxSize,
   makeDragGhost,
   renderCatalogIcon,
   type ElementCatalogEntry,
@@ -305,7 +306,14 @@ export function ElementsTab({
       onDragStart={(e) => {
         e.dataTransfer.setData(ELEMENT_DRAG_MIME, entry.key);
         e.dataTransfer.effectAllowed = "copy";
-        const ghost = makeDragGhost(e.currentTarget, e.clientX, e.clientY);
+        const ghost = makeDragGhost(
+          e.currentTarget,
+          e.clientX,
+          e.clientY,
+          // Same builder the drop uses, so the preview is the size that
+          // actually lands rather than an approximation of it.
+          insertedBoxSize(entry.build()),
+        );
         if (ghost) {
           e.dataTransfer.setDragImage(ghost.node, ghost.offsetX, ghost.offsetY);
         }

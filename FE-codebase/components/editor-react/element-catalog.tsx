@@ -47,8 +47,83 @@ export const ELEMENT_DRAG_MIME = "application/x-pptmaker-element";
  *  and so have no key to look up — the payload carries the item itself. */
 export const CUSTOM_ELEMENT_DRAG_MIME = "application/x-pptmaker-custom-element";
 
-/** Longest side of a drag preview, in CSS pixels. */
-const DRAG_GHOST_SIZE = 88;
+/** Longest side of a drag preview when the real insert size is unknown. */
+const DRAG_GHOST_FALLBACK_SIZE = 88;
+/** Small enough to be pointless, big enough to be in the way. */
+const DRAG_GHOST_MIN_SIZE = 24;
+
+type Boxish = {
+  position?: { x?: number; y?: number };
+  size?: { width?: number; height?: number };
+};
+
+/** Bounding box of everything an entry inserts, in slide units — what the drop
+ *  handler recentres on the cursor, so it is also what the preview should be
+ *  sized to. */
+export function insertedBoxSize(
+  built: SlideElement[] | TemplateV2InsertComponent,
+): { width: number; height: number } | null {
+  const items = (Array.isArray(built) ? built : [built]) as unknown as Boxish[];
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const item of items) {
+    const width = item?.size?.width ?? 0;
+    const height = item?.size?.height ?? 0;
+    if (!(width > 0) || !(height > 0)) continue;
+    const x = item?.position?.x ?? 0;
+    const y = item?.position?.y ?? 0;
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x + width);
+    maxY = Math.max(maxY, y + height);
+  }
+  if (!Number.isFinite(minX)) return null;
+  return { width: maxX - minX, height: maxY - minY };
+}
+
+/** On-screen pixels per slide unit, read off the canvas so the preview tracks
+ *  the current zoom instead of assuming 100%. */
+function canvasDisplayScale(): number {
+  if (typeof document === "undefined") return 1;
+  const width =
+    document.querySelector(".editor-slide-frame")?.getBoundingClientRect()
+      .width ?? 0;
+  return width > 0 ? width / EDITOR_STAGE_WIDTH : 1;
+}
+
+/** How big the preview should be, in CSS pixels: the size the element will
+ *  actually occupy on the canvas at the current zoom, so the drag shows how
+ *  much room it takes rather than a thumbnail. Falls back to a fixed thumbnail
+ *  when the caller cannot say what it is inserting, and never grows past the
+ *  viewport — a full-bleed motif would otherwise hand the browser a drag image
+ *  larger than the screen. */
+function ghostSize(
+  artworkRect: DOMRect,
+  insertSize?: { width: number; height: number } | null,
+): { width: number; height: number } {
+  const round = (value: number) =>
+    Math.max(DRAG_GHOST_MIN_SIZE, Math.round(value));
+  if (insertSize && insertSize.width > 0 && insertSize.height > 0) {
+    const scale = canvasDisplayScale();
+    const width = insertSize.width * scale;
+    const height = insertSize.height * scale;
+    const fit = Math.min(
+      1,
+      (window.innerWidth * 0.9) / width,
+      (window.innerHeight * 0.9) / height,
+    );
+    return { width: round(width * fit), height: round(height * fit) };
+  }
+  const scale =
+    DRAG_GHOST_FALLBACK_SIZE /
+    Math.max(artworkRect.width, artworkRect.height, 1);
+  return {
+    width: round(artworkRect.width * scale),
+    height: round(artworkRect.height * scale),
+  };
+}
 
 /** Drag preview for any Elements-tab card: the card's own artwork, enlarged and
  *  isolated.
@@ -81,6 +156,7 @@ export function makeDragGhost(
   card: HTMLElement,
   clientX: number,
   clientY: number,
+  insertSize?: { width: number; height: number } | null,
 ): { node: HTMLElement; offsetX: number; offsetY: number } | null {
   const artwork = card.querySelector(
     "img, svg, div[style*='background-image']",
@@ -89,9 +165,9 @@ export function makeDragGhost(
   const rect = artwork.getBoundingClientRect();
   const longest = Math.max(rect.width, rect.height);
   if (!(longest > 0)) return null;
-  const scale = DRAG_GHOST_SIZE / longest;
-  const width = Math.max(1, Math.round(rect.width * scale));
-  const height = Math.max(1, Math.round(rect.height * scale));
+  const target = ghostSize(rect, insertSize);
+  const width = target.width;
+  const height = target.height;
 
   const clone = artwork.cloneNode(true) as HTMLElement;
   clone.style.width = `${width}px`;

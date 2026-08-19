@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Trash2, Upload } from "lucide-react";
 import {
   CUSTOM_ELEMENT_DRAG_MIME,
+  buildCustomElementImage,
   makeDragGhost,
 } from "@/components/editor-react/element-catalog";
 
@@ -247,6 +248,7 @@ export function CustomElementsSection({
                   e.currentTarget,
                   e.clientX,
                   e.clientY,
+                  buildCustomElementImage(item).size,
                 );
                 if (ghost) {
                   e.dataTransfer.setDragImage(

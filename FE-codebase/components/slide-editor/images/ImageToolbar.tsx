@@ -376,6 +376,17 @@ export function ImageToolbar({
     onChange(index, { ...element, ...changes });
   };
 
+  /** A .pptx picture fill's srcRect/fillRect is imported as `crop`, and the
+   *  renderer treats it as an exact mapping that outranks every fit rule (see
+   *  imageSourceRect in surface/nodes.tsx). That is right for an untouched
+   *  import — the file already stated the mapping — but it also means Fill /
+   *  Contain / Stretch do nothing at all on an imported image, with no way out
+   *  from the UI. Picking one here is a deliberate choice rather than a
+   *  heuristic, so it drops the imported mapping. Spread into the same update
+   *  as the fit itself: `undefined` overwrites the field, and JSON.stringify
+   *  drops it from the saved payload. */
+  const dropImportedSourceRect = { crop: undefined } as Partial<ImageSlideElement>;
+
   const currentClippath = normalizeClippath(
     element.clippath ?? element.clipPath ?? element.clip_path,
   );
@@ -402,6 +413,7 @@ export function ImageToolbar({
       focus_x: draft.x,
       focus_y: draft.y,
       crop_scale: draft.scale > MIN_CROP_SCALE + 0.01 ? draft.scale : null,
+      ...dropImportedSourceRect,
     });
   };
 
@@ -539,7 +551,7 @@ export function ImageToolbar({
                   type="button"
                   aria-pressed={fit === option.value}
                   onClick={() => {
-                    update({ fit: option.value });
+                    update({ fit: option.value, ...dropImportedSourceRect });
                   }}
                   className={cn(
                     "flex w-full items-center rounded-[8px] px-3 py-2 text-left text-[13px] text-[#191919] hover:bg-[#F4F3FF]",

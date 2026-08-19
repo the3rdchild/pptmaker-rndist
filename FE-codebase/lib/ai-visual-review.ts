@@ -36,9 +36,12 @@ export interface ReviewIssue {
   slot: string;
   problem: string;
   /** "image" when `slot` names a PhotoDescriptor (a mismatched/too-generic
-   *  photo) rather than a text slot. Defaults to "text" when absent so older
-   *  callers/responses keep working. */
-  kind?: "text" | "image";
+   *  photo) rather than a text slot. "resize" when the slot's text should
+   *  render larger given the empty space in its box — fixed by scaling the
+   *  font client-side, never by rewriting the copy, so it skips the repair
+   *  call entirely. Defaults to "text" when absent so older callers/responses
+   *  keep working. */
+  kind?: "text" | "image" | "resize";
   /** Only set for kind:"image" — a concrete replacement photo prompt tied to
    *  THIS slide's specific concept, so regeneration doesn't need a second
    *  LLM round-trip to figure out what to ask for. */
@@ -70,12 +73,22 @@ const VERIFY_SYSTEM = `You are a meticulous slide-design reviewer. You receive a
 Report problems the generator can fix by rewriting slot text:
 - text visibly overflowing its box or clipped
 - text truncated with "…" mid-thought
+- two text elements visually overlapping or colliding — one rendered on top
+  of (or crashing into) another so either becomes partly illegible. Being
+  close together is normal design; actually overlapping is the bug.
 - a large text box holding a comically short fragment (or vice versa: a cramped chip overstuffed)
 - leftover placeholder/sample text (lorem, "Your Name", "2024", ...)
 - duplicated text across two slots on the same slide
 - wrong language (the slide must be in the requested language)
 - an empty visible text box
 - chart labels/values that are nonsensical for the topic
+
+Separately, flag a text slot as too small (kind:"resize") when its font
+renders noticeably small AND the box — or the empty space around it — clearly
+has room for larger text: e.g. a short headline sitting tiny inside a mostly
+empty box. Only flag when the smallness is genuinely awkward to look at; a
+normally-proportioned body paragraph is not a "resize" issue just because
+some whitespace remains.
 
 Also report photo slots (kind:"image") whose picture does not genuinely fit
 THIS SLIDE — judge against the slide's own title/text, not just the deck's
@@ -86,17 +99,23 @@ broad topic. Flag it when the photo is:
   close-ups — on a slide about one specific feature or concept)
 - the wrong kind of image for the claim (e.g. an abstract graphic where the
   slide clearly wants a real photo of a person/place/object, or vice versa)
+- picked for the wrong sense of an ambiguous word — judge the photo against
+  the MEANING this slide's own text establishes, not the word's most common
+  meaning (e.g. "traveling" as tourism vs. the basketball rule violation;
+  "bank" as a financial institution vs. a riverbank)
 A photo that is merely stylistically plain but IS on-topic for this slide is
 fine — do not flag for taste, composition, or color alone.
 
 Do NOT report: colors, fonts, positions, spacing, layout taste — those are
-the template author's, and nothing can change them here.
+the template author's, and nothing can change them here. The one exception is
+the "resize" case above: that's about size versus available space, not taste.
 
 Respect each slot's stated budget (max_words/ideal_words): flag text that exceeds max_words, or that is far under ideal_words when the box clearly expects more.
 
 OUTPUT: raw JSON ONLY, no fences, no commentary:
 {"issues":[
   {"slot":"<text slot name>","problem":"<one concrete sentence>"},
+  {"slot":"<text slot name>","problem":"<why this text looks too small for its space>","kind":"resize"},
   {"slot":"<photo name from the photos list>","problem":"<why this photo doesn't fit THIS slide>","kind":"image","suggested_photo_prompt":"<a concrete photo description tied to this slide's specific concept, ready to hand a generator>"}
 ]}
 An empty issues array means the slide passed. Never invent a slot name that wasn't given to you.`;
@@ -130,7 +149,12 @@ export async function reviewSlideVisual(input: VerifyInput): Promise<ReviewIssue
     .map((i) => ({
       slot: typeof i.slot === "string" ? i.slot : "",
       problem: typeof i.problem === "string" ? i.problem : "",
-      kind: i.kind === "image" ? ("image" as const) : ("text" as const),
+      kind:
+        i.kind === "image"
+          ? ("image" as const)
+          : i.kind === "resize"
+            ? ("resize" as const)
+            : ("text" as const),
       suggestedPhotoPrompt:
         typeof i.suggested_photo_prompt === "string" ? i.suggested_photo_prompt : undefined,
     }))
@@ -144,6 +168,10 @@ Rules:
 - Respect each slot's max_words strictly; aim for ideal_words when stated.
 - Write in the requested language.
 - No placeholder text, no duplicated text across slots, no raw double quotes inside the copy.
+- When a problem describes text overlapping/colliding with another element,
+  shorten that slot's text more aggressively than usual — even below
+  ideal_words if that's what clears the collision. Visual clarity beats
+  hitting the ideal length in that case.
 
 OUTPUT: raw JSON ONLY: {"fills":[{"name":"<slot>","text":"<corrected copy>"}]}`;
 

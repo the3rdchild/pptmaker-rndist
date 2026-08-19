@@ -11,8 +11,11 @@
 //      client guarantees it),
 //   3. prunes conditional slots the model legitimately left out, and
 //   4. backstops "always" slots the model forgot.
-// Colors, positions, decorative elements, and fonts are never touched —
-// the slide stays exactly as the template author designed it.
+// Colors, positions, decorative elements, and fonts are never touched by the
+// normal fill path — the slide stays exactly as the template author designed
+// it. The one deliberate exception is applyFontBoostToUi at the bottom of
+// this file, which the visual-review "resize" fix uses to grow a slot's font
+// when the reviewer judged it too small for its own empty space.
 
 import {
   findAllPhotoSlots,
@@ -38,6 +41,13 @@ import {
   DEFAULT_CHART_COLORS,
 } from "@/components/slide-editor/charts/chart-data";
 import type { ChartType } from "@/components/slide-editor/types";
+import {
+  lineRenderHeight,
+  layoutRenderTextRuns,
+  rawFont,
+  rawTextContent,
+  scaleRawTextMetrics,
+} from "@/components/slide-editor/text/template-v2-text";
 
 type Rec = Record<string, unknown>;
 
@@ -572,6 +582,67 @@ export function applyFillsToUi(ui: Rec, fills: SlotFill[]): Rec {
   }
 
   return next;
+}
+
+/* ---------------------- Visual-review "resize" fix ------------------------ */
+
+// Candidate scales tried largest-first — the biggest one that still fits the
+// slot's AUTHORED box height wins. Small enough that a mildly-optimistic
+// reviewer call doesn't blow past the box; large enough to read as an
+// obvious size bump rather than a rounding error.
+const FONT_BOOST_CANDIDATES = [1.25, 1.15, 1.08];
+
+/** Wrapped height of a text element's current content at `fontScale`, within
+ *  `width` — the same measurement setText's own fit check uses, run in the
+ *  growth direction instead of the shrink direction. */
+function wrappedHeightAtScale(el: Rec, fontScale: number, width: number): number {
+  const font = rawFont(el as never);
+  const scaledFont = { ...font, size: font.size * fontScale };
+  const lines = layoutRenderTextRuns(
+    [{ text: rawTextContent(el as never), font: scaledFont }],
+    width,
+    undefined,
+  );
+  return lines.reduce((sum, line) => sum + lineRenderHeight(line, scaledFont.lineHeight), 0);
+}
+
+/** Grows the font of named plain-text slots the reviewer flagged as too small
+ *  for their empty space ("resize" issues). Box position/size are never
+ *  touched — only font metrics — and only up to whichever candidate scale
+ *  still fits the box's ORIGINAL height at its ORIGINAL width. A slot where
+ *  even the smallest candidate would overflow is left untouched (`changed`
+ *  reports whether anything actually moved, so a no-op fix doesn't fool the
+ *  caller into re-verifying for nothing). Text-list/table/chart elements are
+ *  skipped — this only handles plain "text" elements, which cover the
+ *  headline/body-copy cases the reviewer actually flags. Returns a new ui
+ *  (input is not mutated). */
+export function applyFontBoostToUi(
+  ui: Rec,
+  slotNames: string[],
+): { ui: Rec; changed: boolean } {
+  const next = JSON.parse(JSON.stringify(ui)) as Rec;
+  const components = (next.components as Rec[]) ?? [];
+  const namedSlots = collectNamedTextSlots(components);
+  const targets = new Set(slotNames);
+  let changed = false;
+
+  for (const named of namedSlots) {
+    if (named.kind !== "text" || named.el.type !== "text" || !targets.has(named.name)) continue;
+    const size = named.el.size as Rec | undefined;
+    const width = typeof size?.width === "number" ? size.width : null;
+    const height = typeof size?.height === "number" ? size.height : null;
+    if (width == null || height == null) continue;
+
+    const fitScale = FONT_BOOST_CANDIDATES.find(
+      (scale) => wrappedHeightAtScale(named.el, scale, width) <= height,
+    );
+    if (!fitScale) continue;
+
+    Object.assign(named.el, scaleRawTextMetrics(named.el as never, fitScale));
+    changed = true;
+  }
+
+  return { ui: next, changed };
 }
 
 /** High-level entry: fill + swap placeholder icons, mirroring

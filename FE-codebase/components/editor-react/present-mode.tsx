@@ -208,6 +208,16 @@ function rectFromNode(node: Konva.Node | undefined): FlightRect | null {
   return { x: Math.floor(box.x), y: Math.floor(box.y), width, height };
 }
 
+interface MorphCapture {
+  flights: MorphFlight[];
+  /** The outgoing nodes the flights were cut from. They have to be hidden
+   *  before the backdrop is frozen, or each one shows twice: stuck at its old
+   *  position inside the backdrop, and again in flight. */
+  sources: Konva.Node[];
+}
+
+const NO_MORPH: MorphCapture = { flights: [], sources: [] };
+
 /** Freezes the matched elements of the outgoing slide into bitmaps, read off
  *  the live stage *before* navigating — so they are guaranteed fully painted
  *  and no second Konva surface has to be mounted to produce them. */
@@ -215,8 +225,8 @@ function captureMorphFlights(
   uiA: Record<string, unknown> | null | undefined,
   uiB: Record<string, unknown> | null | undefined,
   refs: Map<string, Konva.Node> | null,
-): MorphFlight[] {
-  if (!refs || !uiA || !uiB) return [];
+): MorphCapture {
+  if (!refs || !uiA || !uiB) return NO_MORPH;
   const moved = matchMorphPairs(uiA, uiB).pairs.flatMap((pair) => {
     const from = morphGeometry(uiA, pair.selectionA);
     const to = morphGeometry(uiB, pair.selectionB);
@@ -240,6 +250,7 @@ function captureMorphFlights(
   );
 
   const flights: MorphFlight[] = [];
+  const sources: Konva.Node[] = [];
   for (const entry of moved.slice(0, MAX_MORPH_FLIGHTS)) {
     const node = refs.get(entry.pair.keyA);
     const rect = rectFromNode(node);
@@ -272,8 +283,9 @@ function captureMorphFlights(
         height: entry.to.box.height,
       },
     });
+    sources.push(node);
   }
-  return flights;
+  return { flights, sources };
 }
 
 /** Hosts a detached canvas element inside the React tree. */
@@ -383,19 +395,36 @@ export default function PresentMode({
         return;
       }
 
+      const captured =
+        type === "morph"
+          ? captureMorphFlights(
+              list[current]?.ui,
+              list[target]?.ui,
+              nodeRefs.current,
+            )
+          : NO_MORPH;
+      // Cut the flying elements out of the frame that is about to be frozen.
+      // The bitmaps were already taken above (at full opacity), so what stays
+      // behind is the slide minus everything in flight — otherwise each of
+      // them appears twice: once stranded at its old spot in the backdrop, and
+      // once travelling. Konva keeps whatever opacity is set imperatively, so
+      // this is put back the moment the freeze is done.
+      const opacities = captured.sources.map(
+        (node) => [node, node.opacity()] as const,
+      );
+      if (opacities.length > 0) {
+        opacities.forEach(([node]) => node.opacity(0));
+        stageRef.current?.getLayers().forEach((layer) => layer.draw());
+      }
+      const backdrop = rasterizeStage(stageRef.current);
+      opacities.forEach(([node, opacity]) => node.opacity(opacity));
+
       runIdRef.current += 1;
       const run: TransitionRun = {
         id: runIdRef.current,
         type,
-        backdrop: rasterizeStage(stageRef.current),
-        flights:
-          type === "morph"
-            ? captureMorphFlights(
-                list[current]?.ui,
-                list[target]?.ui,
-                nodeRefs.current,
-              )
-            : [],
+        backdrop,
+        flights: captured.flights,
         stage: "preparing",
       };
       runRef.current = run;

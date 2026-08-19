@@ -51,10 +51,7 @@ function TransitionPreview({ id }: { id: SlideTransition }) {
     return (
       <div className="relative h-full w-full overflow-hidden">
         <div className={cn(box, "bg-[var(--bg-elevated)]")} />
-        <div
-          className="absolute left-2 top-2 h-4 w-4 rounded-sm bg-[var(--accent)]/70"
-          style={{ animation: "slide-transition-morph-preview 1.6s ease-out infinite" }}
-        />
+        <div className="slide-transition-morph-chip absolute left-[10%] top-1/2 h-5 w-5 -translate-y-1/2 rounded-md bg-[var(--accent)]/70" />
       </div>
     );
   }

@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { Wand2, Plus, ChevronDown, Loader2, ScanEye, Check, ImageIcon } from 'lucide-react'
+import { Wand2, Plus, ChevronDown, Loader2, ScanEye, Check, ImageIcon, FilePlus2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useSessionStore } from '@/store/session.store'
 import { createDeck, saveDeck } from '@/lib/api'
@@ -225,6 +225,21 @@ export function PromptInput() {
 						e.target.value = ''
 					}}
 				/>
+				{/* Non-AI entry points, kept next to each other: start from an
+				    empty deck, or from an existing .pptx. /editor-react already
+				    creates a blank deck and redirects into it, so this just goes
+				    there rather than duplicating the createDeck call. */}
+				<Button
+					variant="subtle"
+					size="sm"
+					disabled={importing || submitting}
+					onClick={() => router.push('/editor-react')}
+					title="Langsung buka editor dengan presentasi kosong, tanpa generate AI."
+				>
+					<FilePlus2 className="h-4 w-4" />
+					Presentasi Kosong
+				</Button>
+
 				<Button
 					variant="subtle"
 					size="sm"

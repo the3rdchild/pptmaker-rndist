@@ -235,6 +235,20 @@ export function CustomElementsSection({
                   }),
                 );
                 e.dataTransfer.effectAllowed = "copy";
+                // The default ghost snapshots the whole card — dark tile,
+                // border, and the delete badge that hover puts in the corner.
+                // Dragging the <img> on its own keeps the artwork's own
+                // transparency, so what follows the cursor is the element
+                // rather than a screenshot of the panel.
+                const preview = e.currentTarget.querySelector("img");
+                if (preview) {
+                  const rect = preview.getBoundingClientRect();
+                  e.dataTransfer.setDragImage(
+                    preview,
+                    rect.width / 2,
+                    rect.height / 2,
+                  );
+                }
               }}
             >
               <button

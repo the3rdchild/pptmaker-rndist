@@ -51,7 +51,11 @@ export function ShapePreview({
   );
 }
 
-export function shapeDataUri(kind: ShapeKind, fillHex = "#7A5AF8"): string {
+/** The fill every shape from the Elements tab is inserted with. Exported so the
+ *  drag preview can colour its ghost the same, instead of guessing. */
+export const SHAPE_INSERT_FILL = "#7A5AF8";
+
+export function shapeDataUri(kind: ShapeKind, fillHex = SHAPE_INSERT_FILL): string {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="${SHAPE_PATHS[kind]}" fill="${fillHex}"/></svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }

@@ -34,6 +34,7 @@ import {
   renderCatalogIcon,
   type ElementCatalogEntry,
 } from "@/components/editor-react/element-catalog";
+import { SHAPE_INSERT_FILL } from "@/components/editor-react/shape-icons";
 import {
   createChartInsertElements,
   createCustomFormulaInsertElements,
@@ -73,6 +74,48 @@ const EAGER_TEMPLATE_CARDS = 6;
 
 function matches(label: string, search: string) {
   return !search || label.toLowerCase().includes(search.toLowerCase());
+}
+
+const DRAG_GHOST_SIZE = 88;
+
+/** Drag preview for an Elements card: the entry's own artwork, enlarged, on
+ *  nothing.
+ *
+ *  The browser's default is a snapshot of whatever element started the drag —
+ *  here the card — so its dark tile came along and read as a grey box floating
+ *  over the white canvas. Dragging the icon `<span>` instead only shrank the
+ *  box. What actually has to move is the artwork inside it.
+ *
+ *  It has to be a clone: the card renders its icon at 22px, and setDragImage
+ *  snapshots an element as rendered, so the original would give a preview too
+ *  small to recognise. Cloned inline SVG paints synchronously — no decode to
+ *  wait on, unlike re-pointing an <img> at a data URI — and the host carries
+ *  the fill shapes are actually inserted with, which is what `currentColor`
+ *  inside the icon resolves against.
+ *
+ *  setDragImage can only snapshot something that is in the document, hence the
+ *  off-screen host; the browser takes that snapshot during this event, so the
+ *  host can go on the next tick. */
+function makeDragGhost(card: HTMLElement): HTMLElement | null {
+  const artwork = card.querySelector("svg, img");
+  if (!artwork) return null;
+  const clone = artwork.cloneNode(true) as SVGElement | HTMLImageElement;
+  clone.setAttribute("width", String(DRAG_GHOST_SIZE));
+  clone.setAttribute("height", String(DRAG_GHOST_SIZE));
+  const host = document.createElement("div");
+  host.style.cssText = [
+    "position:fixed",
+    "top:-9999px",
+    "left:-9999px",
+    `width:${DRAG_GHOST_SIZE}px`,
+    `height:${DRAG_GHOST_SIZE}px`,
+    `color:${SHAPE_INSERT_FILL}`,
+    "pointer-events:none",
+  ].join(";");
+  host.appendChild(clone);
+  document.body.appendChild(host);
+  window.setTimeout(() => host.remove(), 0);
+  return host;
 }
 
 /* ------------------------------- Templates ------------------------------ */
@@ -304,13 +347,13 @@ export function ElementsTab({
       onDragStart={(e) => {
         e.dataTransfer.setData(ELEMENT_DRAG_MIME, entry.key);
         e.dataTransfer.effectAllowed = "copy";
-        // The default drag ghost snapshots the whole card (dark background +
-        // label) and looks broken mid-drag. Use just the icon box, centered
-        // under the cursor.
-        const icon = e.currentTarget.querySelector("span");
-        if (icon) {
-          const rect = icon.getBoundingClientRect();
-          e.dataTransfer.setDragImage(icon, rect.width / 2, rect.height / 2);
+        const ghost = makeDragGhost(e.currentTarget);
+        if (ghost) {
+          e.dataTransfer.setDragImage(
+            ghost,
+            DRAG_GHOST_SIZE / 2,
+            DRAG_GHOST_SIZE / 2,
+          );
         }
       }}
       className="cursor-grab active:cursor-grabbing"

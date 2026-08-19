@@ -2,12 +2,19 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import type Konva from "konva";
 import { ChevronLeft, ChevronRight, MonitorPlay, X } from "lucide-react";
 import {
   usePresenterChannel,
   type PresenterPoint,
 } from "@/components/editor-react/presenter-sync";
 import { collectMediaOverlays } from "@/components/editor-react/present-media-overlay";
+import {
+  matchMorphPairs,
+  morphGeometry,
+  type MorphGeometry,
+} from "@/components/editor-react/morph";
+import { pendingKonvaImageLoads } from "@/components/slide-editor/surface/exportAssets";
 import type { SlideTransition } from "@/store/presentationGeneration";
 
 const TemplateV2KonvaSlide = dynamic(
@@ -20,6 +27,14 @@ const TemplateV2KonvaSlide = dynamic(
 
 const SLIDE_W = 1280;
 const SLIDE_H = 720;
+const MORPH_DURATION = 600;
+
+interface MorphOverlay {
+  key: string;
+  src: string;
+  from: MorphGeometry;
+  to: MorphGeometry;
+}
 
 export default function PresentMode({
   slides,
@@ -66,12 +81,151 @@ export default function PresentMode({
     const type = slides[index]?.transition;
     if (type && type !== "none" && slides[from]?.ui) {
       setAnim({ from, type });
+      // Morph owns its lifecycle (async prepare, then a timed finish) in the
+      // effect below — a fixed timer here would cut it off mid-flight.
+      if (type === "morph") return;
       // 60ms animation delay + 450ms duration (see globals.css), plus slack.
       const timer = window.setTimeout(() => setAnim(null), 560);
       return () => window.clearTimeout(timer);
     }
     setAnim(null);
   }, [index, slides]);
+
+  // ── Morph (match & move) ────────────────────────────────────────────────
+  // Raster-overlay FLIP: matched elements on the previous slide are
+  // snapshotted to PNGs via their Konva nodes, both stages' copies are
+  // hidden, and the snapshots fly from A's geometry to B's as DOM images
+  // (GPU-composited CSS transform). Unmatched elements fade out with A's
+  // container / fade in via a rAF opacity ramp on B's nodes.
+  const [morph, setMorph] = useState<{ overlays: MorphOverlay[]; playing: boolean } | null>(null);
+  const morphRefsA = useRef<Map<string, Konva.Node> | null>(null);
+  const morphRefsB = useRef<Map<string, Konva.Node> | null>(null);
+  const morphRestoreRef = useRef<(() => void)[]>([]);
+  const morphFinishTimerRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    if (!anim || anim.type !== "morph") return;
+    let cancelled = false;
+
+    const restoreNodes = () => {
+      morphRestoreRef.current.forEach((restore) => restore());
+      morphRestoreRef.current = [];
+    };
+
+    const finish = () => {
+      restoreNodes();
+      // Synchronous draw (not batchDraw's scheduled one) so the restored
+      // nodes are painted into the canvas bitmap before the overlay images
+      // come down next frame — otherwise matched elements blink out for a
+      // frame in between.
+      morphRefsB.current?.values().next().value?.getLayer()?.draw();
+      requestAnimationFrame(() => {
+        setMorph(null);
+        setAnim(null);
+      });
+    };
+
+    (async () => {
+      // Wait for the new slide's images so the snapshots aren't blank.
+      try {
+        await Promise.all(pendingKonvaImageLoads());
+      } catch {
+        // A failed image just snapshots without it.
+      }
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      );
+      if (cancelled) return;
+
+      const uiA = slides[anim.from]?.ui;
+      const uiB = slides[index]?.ui;
+      const refsA = morphRefsA.current;
+      const refsB = morphRefsB.current;
+      if (!uiA || !uiB || !refsA || !refsB) {
+        finish();
+        return;
+      }
+
+      const match = matchMorphPairs(uiA, uiB);
+      // Safety valve: every pair costs a decoded PNG layer in the flight.
+      // On element-dense slides, morph the biggest N and let the rest simply
+      // be revealed by the outgoing slide's fade — better a few elements
+      // popping than the whole flight dropping frames.
+      const MORPH_MAX_OVERLAYS = 30;
+      const pairs = [...match.pairs]
+        .sort((a, b) => {
+          const boxA = morphGeometry(uiA, a.selectionA)?.box;
+          const boxB = morphGeometry(uiA, b.selectionA)?.box;
+          return (boxB?.width ?? 0) * (boxB?.height ?? 0) - (boxA?.width ?? 0) * (boxA?.height ?? 0);
+        })
+        .slice(0, MORPH_MAX_OVERLAYS);
+      const overlays: MorphOverlay[] = [];
+      for (const pair of pairs) {
+        const nodeA = refsA.get(pair.keyA);
+        const nodeB = refsB.get(pair.keyB);
+        const from = morphGeometry(uiA, pair.selectionA);
+        const to = morphGeometry(uiB, pair.selectionB);
+        if (!nodeA || !nodeB || !from || !to) continue;
+        let src: string;
+        try {
+          src = nodeA.toDataURL({ pixelRatio: 1 });
+        } catch {
+          continue;
+        }
+        overlays.push({ key: pair.keyB, src, from, to });
+        const origA = nodeA.opacity();
+        const origB = nodeB.opacity();
+        nodeA.opacity(0);
+        nodeB.opacity(0);
+        morphRestoreRef.current.push(() => {
+          nodeA.opacity(origA);
+          nodeB.opacity(origB);
+        });
+      }
+
+      // B's unmatched elements need no work of their own: the outgoing slide
+      // sits on top and fades out, revealing them — that reads as a fade-in
+      // for free. The flight itself is pure CSS translate3d transforms on
+      // the overlay images, which stay on the GPU compositor; any per-frame
+      // Konva batchDraw() here (a per-node opacity ramp was tried and
+      // dropped) repaints the whole canvas layer and kills the frame rate.
+      const layerB = refsB.values().next().value?.getLayer();
+      layerB?.batchDraw();
+      refsA.values().next().value?.getLayer()?.batchDraw();
+
+      // Decode every snapshot before the flight starts — an <img> that
+      // decodes its data URL mid-animation stutters its first frames.
+      await Promise.all(
+        overlays.map((overlay) => {
+          const img = new window.Image();
+          img.src = overlay.src;
+          return img.decode().catch(() => {});
+        })
+      );
+
+      if (cancelled) return;
+      setMorph({ overlays, playing: false });
+      // Let the overlays paint at their "from" geometry, then flip to the
+      // final state so the CSS transitions run.
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          if (cancelled) return;
+          setMorph((current) => (current ? { ...current, playing: true } : current));
+          morphFinishTimerRef.current = window.setTimeout(finish, MORPH_DURATION + 100);
+        })
+      );
+    })();
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(morphFinishTimerRef.current);
+      restoreNodes();
+      setMorph(null);
+    };
+    // anim is set exactly when index moves to a morph slide; re-running on
+    // slides/index identity changes would restart a running animation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anim]);
   const [scale, setScale] = useState(1);
   const [laser, setLaser] = useState<{ x: number; y: number } | null>(null);
   const [strokes, setStrokes] = useState<PresenterPoint[][]>([]);
@@ -198,14 +352,26 @@ export default function PresentMode({
               transform: `scale(${scale})`,
             }}
           >
-            {/* Previous slide, kept underneath while the new one animates in. */}
+            {/* Previous slide. During morph it sits ON TOP (z-10) and fades
+                out over the fully opaque new slide — fading the new slide in
+                from opacity 0 over present mode's black backdrop reads as a
+                dark flash halfway through the crossfade. */}
             {anim && slides[anim.from]?.ui ? (
-              <div className="absolute inset-0">
+              <div
+                className={
+                  anim.type === "morph"
+                    ? morph?.playing
+                      ? "slide-transition-morph-fade absolute inset-0 z-10"
+                      : "absolute inset-0 z-10"
+                    : "absolute inset-0"
+                }
+              >
                 <TemplateV2KonvaSlide
                   layout={slides[anim.from].ui as never}
                   isEditMode={false}
                   slideIndex={anim.from}
                   fonts={fonts}
+                  externalNodeRefs={morphRefsA}
                 />
               </div>
             ) : null}
@@ -223,6 +389,7 @@ export default function PresentMode({
                 isEditMode={false}
                 slideIndex={index}
                 fonts={fonts}
+                externalNodeRefs={morphRefsB}
               />
               {/* Real media players overlaid on the Konva static stand-in.
                   Coordinates are in slide space (1280x720); the parent div's
@@ -262,6 +429,41 @@ export default function PresentMode({
                 ),
               )}
             </div>
+            {/* Morph overlays: snapshots of the previous slide's matched
+                elements flying to their new geometry (FLIP — rendered at the
+                final box, animated in from the inverse transform). */}
+            {morph?.overlays.map((overlay) => {
+              const { from, to } = overlay;
+              const dx =
+                from.box.x + from.box.width / 2 - (to.box.x + to.box.width / 2);
+              const dy =
+                from.box.y + from.box.height / 2 - (to.box.y + to.box.height / 2);
+              const sx = from.box.width / Math.max(1, to.box.width);
+              const sy = from.box.height / Math.max(1, to.box.height);
+              return (
+                <img
+                  key={overlay.key}
+                  src={overlay.src}
+                  alt=""
+                  draggable={false}
+                  className="pointer-events-none absolute"
+                  style={{
+                    // Above the outgoing slide (z-10) that's fading out.
+                    zIndex: 20,
+                    left: to.box.x,
+                    top: to.box.y,
+                    width: to.box.width,
+                    height: to.box.height,
+                    transformOrigin: "center",
+                    willChange: "transform",
+                    transform: morph.playing
+                      ? "translate3d(0, 0, 0) scale(1, 1)"
+                      : `translate3d(${dx}px, ${dy}px, 0) scale(${sx}, ${sy})`,
+                    transition: `transform ${MORPH_DURATION}ms cubic-bezier(0.22, 1, 0.36, 1)`,
+                  }}
+                />
+              );
+            })}
             {/* fade-white / fade-black: opaque cover over the new slide that
                 fades out to reveal it. */}
             {anim?.type === "fade-white" || anim?.type === "fade-black" ? (
@@ -317,11 +519,14 @@ export default function PresentMode({
           deliberate: these float over whatever the current slide looks
           like, and a light/white slide showing through a bg-white/10 tint
           made a button effectively invisible — white-on-white. A dark chip
-          keeps the white icon readable regardless of what's under it. */}
+          keeps the white icon readable regardless of what's under it.
+          backdrop-blur is dropped while a transition is playing: blurring
+          over content that changes every frame forces an expensive
+          re-composite per frame. */}
       <div className="absolute right-4 top-4 z-[10010] flex items-center gap-2">
         {deckId ? (
           <button
-            className="rounded-full border border-white/10 bg-black/70 p-2 text-white shadow-lg backdrop-blur transition-colors hover:bg-black/85"
+            className={`rounded-full border border-white/10 bg-black/70 p-2 text-white shadow-lg transition-colors hover:bg-black/85${anim ? "" : " backdrop-blur"}`}
             onClick={openPresenterView}
             title="Open Presenter View"
           >
@@ -329,14 +534,14 @@ export default function PresentMode({
           </button>
         ) : null}
         <button
-          className="rounded-full border border-white/10 bg-black/70 p-2 text-white shadow-lg backdrop-blur transition-colors hover:bg-black/85"
+          className={`rounded-full border border-white/10 bg-black/70 p-2 text-white shadow-lg transition-colors hover:bg-black/85${anim ? "" : " backdrop-blur"}`}
           onClick={onClose}
           title="Exit (Esc)"
         >
           <X size={18} />
         </button>
       </div>
-      <div className="absolute bottom-5 left-1/2 z-[10010] flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-black/70 px-3 py-1.5 text-white shadow-lg backdrop-blur">
+      <div className={`absolute bottom-5 left-1/2 z-[10010] flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-black/70 px-3 py-1.5 text-white shadow-lg${anim ? "" : " backdrop-blur"}`}>
         <button
           className="rounded-full p-1 transition-colors hover:bg-white/15 disabled:opacity-30 disabled:hover:bg-transparent"
           onClick={prev}

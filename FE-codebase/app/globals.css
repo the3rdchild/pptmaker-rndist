@@ -153,21 +153,22 @@ body {
 	}
 }
 
-/* The 60ms delay (with fill "backwards" holding the "from" state) gives the
-   incoming slide's Konva stage one beat to finish mounting/painting before
-   the motion starts — otherwise the mount work eats the first frames of the
-   animation and it reads as ~15fps. */
+/* No start delay: present-mode.tsx only adds these classes once the incoming
+   slide's Konva scene has finished rebuilding and gone quiet, so there is no
+   mount work left to eat the first frames. The "backwards"/"both" fills still
+   hold the "from" state for the frame between the class landing and the
+   animation's first tick. */
 .slide-transition-slide-right {
 	will-change: transform;
-	animation: slide-transition-right 450ms cubic-bezier(0.22, 1, 0.36, 1) 60ms backwards;
+	animation: slide-transition-right 450ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 .slide-transition-slide-left {
 	will-change: transform;
-	animation: slide-transition-left 450ms cubic-bezier(0.22, 1, 0.36, 1) 60ms backwards;
+	animation: slide-transition-left 450ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 .slide-transition-fade-cover {
 	will-change: opacity;
-	animation: slide-transition-fade-cover 450ms ease-out 60ms both;
+	animation: slide-transition-fade-cover 450ms ease-out both;
 }
 
 /* Morph: the outgoing slide's container fades while its matched elements fly

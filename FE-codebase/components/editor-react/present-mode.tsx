@@ -80,6 +80,10 @@ interface TransitionRun {
   type: Exclude<SlideTransition, "none">;
   /** Frozen bitmap of the slide we are leaving. */
   backdrop: HTMLCanvasElement | null;
+  /** Frozen bitmap of the slide we are arriving at, captured once the scene
+   *  settled. This is what actually moves — the live stage stays hidden for
+   *  the duration, so nothing in the animation can be repainted. */
+  incoming: HTMLCanvasElement | null;
   flights: MorphFlight[];
   stage: TransitionStage;
 }
@@ -196,6 +200,34 @@ async function waitForSceneSettled(
   } finally {
     spy.stop();
   }
+}
+
+/** Opt-in frame profiler for the flight itself. Turn it on in the console with
+ *  `localStorage.setItem("ppt:profile-transitions", "1")`, reload, then
+ *  navigate — every transition logs its real frame timings. Measuring this from
+ *  an automation browser is worthless (a backgrounded tab throttles rAF), so
+ *  the only honest numbers come from the machine actually complaining. */
+function profileFlight(label: string, durationMs: number) {
+  if (typeof window === "undefined") return;
+  if (window.localStorage?.getItem("ppt:profile-transitions") !== "1") return;
+  const times: number[] = [];
+  const start = performance.now();
+  const tick = (now: number) => {
+    times.push(now);
+    if (now - start < durationMs) window.requestAnimationFrame(tick);
+    else {
+      const deltas = times.slice(1).map((t, i) => t - times[i]);
+      if (deltas.length === 0) return;
+      const sorted = [...deltas].sort((a, b) => a - b);
+      const median = sorted[sorted.length >> 1];
+      console.info(
+        `[transition] ${label}: ${deltas.length} frames, ~${(1000 / median).toFixed(0)}fps ` +
+          `(median ${median.toFixed(1)}ms, worst ${sorted[sorted.length - 1].toFixed(1)}ms, ` +
+          `${deltas.filter((d) => d > 20).length} over 20ms)`,
+      );
+    }
+  };
+  window.requestAnimationFrame(tick);
 }
 
 function rectFromNode(node: Konva.Node | undefined): FlightRect | null {
@@ -424,6 +456,7 @@ export default function PresentMode({
         id: runIdRef.current,
         type,
         backdrop,
+        incoming: null,
         flights: captured.flights,
         stage: "preparing",
       };
@@ -470,16 +503,24 @@ export default function PresentMode({
       if (morphRestoreRef.current.length > 0) {
         stageRef.current?.getLayers().forEach((layer) => layer.draw());
       }
-      settle((current) => ({ ...current, flights, stage: "staged" }));
+      // Freeze the incoming slide too, and animate THAT instead of the live
+      // surface. A Konva stage is five full-size canvases; moving them means
+      // the compositor blends five stacked 1280x720 layers every frame, and a
+      // late image or font arriving after the readiness gate would repaint one
+      // of them mid-flight. One flat bitmap has neither problem.
+      const incoming = rasterizeStage(stageRef.current);
+      settle((current) => ({ ...current, flights, incoming, stage: "staged" }));
 
       // Two frames for the flights to paint at their "from" transform — a CSS
       // transition needs a rendered starting value to animate away from.
       await nextFrame();
       await nextFrame();
       if (!alive()) return;
+      const duration = run.type === "morph" ? MORPH_DURATION : SLIDE_DURATION;
       settle((current) => ({ ...current, stage: "playing" }));
+      profileFlight(`${run.type} (${run.flights.length} flights)`, duration);
 
-      await sleep((run.type === "morph" ? MORPH_DURATION : SLIDE_DURATION) + 60);
+      await sleep(duration + 60);
       if (!alive()) return;
       restoreMorphNodes();
       await nextFrame();
@@ -605,6 +646,11 @@ export default function PresentMode({
   // new slide to crossfade over it; the others drop it underneath so the new
   // slide can move across it.
   const backdropZ = playing && transition?.type !== "morph" ? 0 : 3;
+  // Once the incoming slide is frozen, the live surface steps out of the way
+  // entirely and its bitmap does the moving. It stays mounted (Konva keeps
+  // drawing into its canvases either way) — only hidden, so the compositor has
+  // one flat layer to move instead of five live ones.
+  const frozenIncoming = transition?.incoming ?? null;
 
   return (
     <div
@@ -635,8 +681,11 @@ export default function PresentMode({
             }}
           >
             <div
-              className={`relative ${slideAnimation}`}
-              style={{ zIndex: 1 }}
+              className={`relative ${frozenIncoming ? "" : slideAnimation}`}
+              style={{
+                zIndex: 1,
+                visibility: frozenIncoming ? "hidden" : "visible",
+              }}
             >
               {/* One live Konva surface for the whole presentation. Slide
                   changes swap its layout instead of mounting a second one —
@@ -690,6 +739,16 @@ export default function PresentMode({
                 ),
               )}
             </div>
+
+            {/* The arriving slide, frozen the moment its scene settled. This
+                is the thing that actually slides/fades in. */}
+            {frozenIncoming ? (
+              <CanvasHost
+                canvas={frozenIncoming}
+                className={`pointer-events-none absolute inset-0 ${slideAnimation}`}
+                style={{ zIndex: 1 }}
+              />
+            ) : null}
 
             {/* The slide being left, frozen to a bitmap. Nothing repaints it,
                 so animating it is compositor-only work. */}
@@ -840,11 +899,13 @@ export default function PresentMode({
         </button>
       </div>
 
-      {/* Progress bar */}
+      {/* Progress bar. Animated with scaleX rather than width: the width
+          version relayouts and repaints on the main thread every frame, and
+          its 300ms run overlaps the slide transition it sits under. */}
       <div className="absolute inset-x-0 bottom-0 z-[10010] h-0.5 bg-white/10">
         <div
-          className="h-full bg-[var(--accent)] transition-[width] duration-300"
-          style={{ width: `${((position + 1) / Math.max(1, total)) * 100}%` }}
+          className="h-full origin-left bg-[var(--accent)] transition-transform duration-300"
+          style={{ transform: `scaleX(${(position + 1) / Math.max(1, total)})` }}
         />
       </div>
     </div>

@@ -29,6 +29,11 @@ export type ElementCategory =
   | "flowchart"
   | "infographics";
 
+/** dataTransfer MIME for dragging a catalog entry from the Elements tab onto
+ *  the canvas. The payload is just the entry key; the drop side looks the
+ *  entry up in ELEMENT_CATALOG and builds it at the drop point. */
+export const ELEMENT_DRAG_MIME = "application/x-pptmaker-element";
+
 export type ElementCatalogEntry = {
   key: string;
   label: string;

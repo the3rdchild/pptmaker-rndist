@@ -85,6 +85,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import SlideSidebar from "@/components/editor-react/slide-sidebar";
 import InsertToolbar from "@/components/editor-react/insert-toolbar";
+import {
+  ELEMENT_CATALOG,
+  ELEMENT_DRAG_MIME,
+} from "@/components/editor-react/element-catalog";
+import { appendInsertedContent } from "@/components/slide-editor/model/inserted-content";
+import type { RawUi } from "@/components/slide-editor/model/core";
+import {
+  EDITOR_STAGE_HEIGHT,
+  EDITOR_STAGE_WIDTH,
+} from "@/components/slide-editor/types";
 import PresentMode from "@/components/editor-react/present-mode";
 import { exportToPptx } from "@/components/editor-react/export-pptx";
 import { buildPdfFromSlideImages } from "@/components/editor-react/export-pdf";
@@ -924,6 +934,70 @@ export default function EditorReactClient({
       dispatch(setSlideTransition({ index: safeActive, transition: split.transition }));
     }
     dispatch(updateSlideUi({ index: safeActive, ui: split.ui }));
+  };
+
+  // Drag & drop from the Elements tab: the drag payload is the catalog entry
+  // key (see insert-panel-content); here it is built and re-centered on the
+  // drop point. Slide coordinates come from the frame's bounding rect, which
+  // already includes pan/zoom.
+  const [dropActive, setDropActive] = useState(false);
+  const slideFrameRef = useRef<HTMLDivElement>(null);
+
+  const handleCanvasDragOver = (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes(ELEMENT_DRAG_MIME)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    setDropActive(true);
+  };
+
+  const handleCanvasDrop = (e: React.DragEvent) => {
+    setDropActive(false);
+    const key = e.dataTransfer.getData(ELEMENT_DRAG_MIME);
+    if (!key || !activeUi) return;
+    e.preventDefault();
+    const entry = ELEMENT_CATALOG.find((item) => item.key === key);
+    if (!entry) return;
+
+    const rect = slideFrameRef.current?.getBoundingClientRect();
+    const dropPoint = rect
+      ? {
+          x: Math.min(Math.max(((e.clientX - rect.left) / rect.width) * EDITOR_STAGE_WIDTH, 0), EDITOR_STAGE_WIDTH),
+          y: Math.min(Math.max(((e.clientY - rect.top) / rect.height) * EDITOR_STAGE_HEIGHT, 0), EDITOR_STAGE_HEIGHT),
+        }
+      : { x: EDITOR_STAGE_WIDTH / 2, y: EDITOR_STAGE_HEIGHT / 2 };
+
+    const built = entry.build();
+    const elements = (Array.isArray(built) ? built : []) as Record<string, unknown>[];
+    const components = (Array.isArray(built) ? [] : [built]) as Record<string, unknown>[];
+
+    // Shift the inserted content so its bounding-box center lands on the
+    // drop point instead of the catalog's default position.
+    const boxes = [...elements, ...components].map((item) => {
+      const position = (item.position ?? {}) as { x?: number; y?: number };
+      const size = (item.size ?? {}) as { width?: number; height?: number };
+      return {
+        x: position.x ?? 0,
+        y: position.y ?? 0,
+        width: size.width ?? 0,
+        height: size.height ?? 0,
+      };
+    });
+    if (boxes.length > 0) {
+      const minX = Math.min(...boxes.map((b) => b.x));
+      const minY = Math.min(...boxes.map((b) => b.y));
+      const maxX = Math.max(...boxes.map((b) => b.x + b.width));
+      const maxY = Math.max(...boxes.map((b) => b.y + b.height));
+      const dx = dropPoint.x - (minX + maxX) / 2;
+      const dy = dropPoint.y - (minY + maxY) / 2;
+      for (const item of [...elements, ...components]) {
+        const position = (item.position ?? {}) as { x?: number; y?: number };
+        item.position = { x: (position.x ?? 0) + dx, y: (position.y ?? 0) + dy };
+      }
+    }
+
+    handleInsert(
+      appendInsertedContent(activeUi as RawUi, elements, components) as Record<string, unknown>,
+    );
   };
 
   // Held in refs so the paste listener is registered once instead of on every
@@ -2335,6 +2409,9 @@ export default function EditorReactClient({
           onMouseMove={onCanvasMouseMove}
           onMouseUp={onCanvasMouseUp}
           onMouseLeave={onCanvasMouseUp}
+          onDragOver={handleCanvasDragOver}
+          onDragLeave={() => setDropActive(false)}
+          onDrop={handleCanvasDrop}
           style={{
             cursor: isPanning ? "grabbing" : handTool ? "grab" : "default",
           }}
@@ -2347,7 +2424,13 @@ export default function EditorReactClient({
           )}
           {activeUi ? (
             <div
-              className="editor-slide-frame"
+              ref={slideFrameRef}
+              className={cn(
+                "editor-slide-frame",
+                // Drop target feedback while dragging an element in from the
+                // Elements tab.
+                dropActive && "ring-2 ring-[var(--accent)]",
+              )}
               style={{
                 transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
                 transition: isPanning ? "none" : "transform 0.1s ease-out",

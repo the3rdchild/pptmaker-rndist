@@ -29,6 +29,7 @@ import { EmptyState, GridCard, PanelLabel } from "@/components/editor-react/ui";
 import {
   ELEMENT_CATALOG,
   ELEMENT_CATEGORY_LABELS,
+  ELEMENT_DRAG_MIME,
   elementCategoryOrder,
   renderCatalogIcon,
   type ElementCatalogEntry,
@@ -293,6 +294,35 @@ export function ElementsTab({
     }))
     .filter((group) => group.entries.length > 0);
 
+  // Cards double as drag sources: dragging one onto the canvas drops the
+  // element at that spot (handled by the canvas's drop handler), clicking
+  // still inserts at the default position.
+  const renderEntryCard = (entry: ElementCatalogEntry, key: string) => (
+    <div
+      key={key}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData(ELEMENT_DRAG_MIME, entry.key);
+        e.dataTransfer.effectAllowed = "copy";
+        // The default drag ghost snapshots the whole card (dark background +
+        // label) and looks broken mid-drag. Use just the icon box, centered
+        // under the cursor.
+        const icon = e.currentTarget.querySelector("span");
+        if (icon) {
+          const rect = icon.getBoundingClientRect();
+          e.dataTransfer.setDragImage(icon, rect.width / 2, rect.height / 2);
+        }
+      }}
+      className="cursor-grab active:cursor-grabbing"
+    >
+      {/* w-full: the grid now stretches this wrapper, not the button — so the
+          button must be told to fill it, or every card shrinks to its icon. */}
+      <GridCard label={entry.label} className="w-full" onClick={() => onInsertElements(entry)}>
+        {renderCatalogIcon(entry)}
+      </GridCard>
+    </div>
+  );
+
   return (
     <div className="p-1.5">
       <CustomElementsSection
@@ -304,15 +334,7 @@ export function ElementsTab({
         <>
           <PanelLabel>Recently used</PanelLabel>
           <div className="grid grid-cols-4 gap-2.5 px-2.5 pb-2">
-            {recent.map((entry) => (
-              <GridCard
-                key={`recent-${entry.key}`}
-                label={entry.label}
-                onClick={() => onInsertElements(entry)}
-              >
-                {renderCatalogIcon(entry)}
-              </GridCard>
-            ))}
+            {recent.map((entry) => renderEntryCard(entry, `recent-${entry.key}`))}
           </div>
         </>
       )}
@@ -320,15 +342,7 @@ export function ElementsTab({
         <div key={category}>
           <PanelLabel>{ELEMENT_CATEGORY_LABELS[category]}</PanelLabel>
           <div className="grid grid-cols-4 gap-2.5 px-2.5 pb-2">
-            {entries.map((entry) => (
-              <GridCard
-                key={entry.key}
-                label={entry.label}
-                onClick={() => onInsertElements(entry)}
-              >
-                {renderCatalogIcon(entry)}
-              </GridCard>
-            ))}
+            {entries.map((entry) => renderEntryCard(entry, entry.key))}
           </div>
         </div>
       ))}

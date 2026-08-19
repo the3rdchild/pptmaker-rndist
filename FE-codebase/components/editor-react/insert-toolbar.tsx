@@ -44,6 +44,7 @@ import {
   type BackgroundStyle,
 } from "@/components/slide-editor/surface/SlideBackground";
 import type { RawUi } from "@/components/slide-editor/model/core";
+import type { TemplateSelectionPayload } from "@/components/slide-editor/surface/TemplateV2KonvaSlide";
 import type { SlideTransition } from "@/store/presentationGeneration";
 import {
   EDITOR_STAGE_HEIGHT,
@@ -105,6 +106,9 @@ export interface InsertToolbarProps {
   /** Entrance transition of the currently selected slide (undefined = none). */
   activeTransition?: SlideTransition;
   onSelectTransition?: (transition: SlideTransition) => void;
+  /** The element selected on the canvas — the Transition tab's morph link
+   *  editor writes `morph_id` through its patch. */
+  elementSelection?: TemplateSelectionPayload | null;
 }
 
 type TabId =
@@ -170,6 +174,7 @@ export default function InsertToolbar({
   templatePanel,
   activeTransition,
   onSelectTransition,
+  elementSelection,
 }: InsertToolbarProps) {
   // The template tab only exists in the engine; the normal editor never sees it.
   const tabs = templatePanel
@@ -387,6 +392,8 @@ export default function InsertToolbar({
               <TransitionPanel
                 value={activeTransition ?? "none"}
                 onSelect={(t) => onSelectTransition?.(t)}
+                elementSelection={elementSelection}
+                activeUi={activeUi}
               />
             )}
           </div>

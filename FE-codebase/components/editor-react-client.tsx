@@ -2300,6 +2300,7 @@ export default function EditorReactClient({
           onSelectTransition={(transition) =>
             dispatch(setSlideTransition({ index: safeActive, transition }))
           }
+          elementSelection={templateSelection}
           templatePanel={
             templateMode ? (
               <TemplateEnginePanel
@@ -2368,9 +2369,10 @@ export default function EditorReactClient({
                 slideIndex={safeActive}
                 fonts={presentationData?.fonts}
                 themeId={templateMode ? templateThemeId : null}
-                onTemplateSelection={
-                  templateMode ? handleTemplateSelection : undefined
-                }
+                // Wired in deck mode too (not just the engine): the
+                // Transition tab's morph link editor needs the selected
+                // element and its patch.
+                onTemplateSelection={handleTemplateSelection}
               />
             </div>
           ) : generationError ? (

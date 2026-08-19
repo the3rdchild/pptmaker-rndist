@@ -87,7 +87,10 @@ import SlideSidebar from "@/components/editor-react/slide-sidebar";
 import InsertToolbar from "@/components/editor-react/insert-toolbar";
 import {
   ELEMENT_CATALOG,
+  CUSTOM_ELEMENT_DRAG_MIME,
   ELEMENT_DRAG_MIME,
+  buildCustomElementImage,
+  readCustomElementDragPayload,
 } from "@/components/editor-react/element-catalog";
 import { appendInsertedContent } from "@/components/slide-editor/model/inserted-content";
 import type { RawUi } from "@/components/slide-editor/model/core";
@@ -944,7 +947,13 @@ export default function EditorReactClient({
   const slideFrameRef = useRef<HTMLDivElement>(null);
 
   const handleCanvasDragOver = (e: React.DragEvent) => {
-    if (!e.dataTransfer.types.includes(ELEMENT_DRAG_MIME)) return;
+    const types = e.dataTransfer.types;
+    if (
+      !types.includes(ELEMENT_DRAG_MIME) &&
+      !types.includes(CUSTOM_ELEMENT_DRAG_MIME)
+    ) {
+      return;
+    }
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
     setDropActive(true);
@@ -952,11 +961,18 @@ export default function EditorReactClient({
 
   const handleCanvasDrop = (e: React.DragEvent) => {
     setDropActive(false);
+    if (!activeUi) return;
+
+    // Two drag sources land here: a catalog entry (payload = its key, built
+    // from ELEMENT_CATALOG) and a "My elements" upload (payload = the item
+    // itself, since an upload has no catalog key). Both end up as loose
+    // elements/components, recentred on the drop point below.
     const key = e.dataTransfer.getData(ELEMENT_DRAG_MIME);
-    if (!key || !activeUi) return;
+    const customRaw = e.dataTransfer.getData(CUSTOM_ELEMENT_DRAG_MIME);
+    const custom = customRaw ? readCustomElementDragPayload(customRaw) : null;
+    const entry = key ? ELEMENT_CATALOG.find((item) => item.key === key) : null;
+    if (!entry && !custom) return;
     e.preventDefault();
-    const entry = ELEMENT_CATALOG.find((item) => item.key === key);
-    if (!entry) return;
 
     const rect = slideFrameRef.current?.getBoundingClientRect();
     const dropPoint = rect
@@ -966,7 +982,7 @@ export default function EditorReactClient({
         }
       : { x: EDITOR_STAGE_WIDTH / 2, y: EDITOR_STAGE_HEIGHT / 2 };
 
-    const built = entry.build();
+    const built = entry ? entry.build() : [buildCustomElementImage(custom!)];
     const elements = (Array.isArray(built) ? built : []) as Record<string, unknown>[];
     const components = (Array.isArray(built) ? [] : [built]) as Record<string, unknown>[];
 

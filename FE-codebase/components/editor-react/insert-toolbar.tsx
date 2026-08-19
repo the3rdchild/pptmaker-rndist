@@ -33,7 +33,10 @@ import {
   TextTab,
   type UploadedAsset,
 } from "@/components/editor-react/insert-panel-content";
-import type { ElementCatalogEntry } from "@/components/editor-react/element-catalog";
+import {
+  buildCustomElementImage,
+  type ElementCatalogEntry,
+} from "@/components/editor-react/element-catalog";
 import { appendInsertedContent } from "@/components/slide-editor/model/inserted-content";
 import {
   createIconInsertElement,
@@ -262,20 +265,7 @@ export default function InsertToolbar({
     width: number;
     height: number;
   }) => {
-    const fit = fitWithin({ width: item.width, height: item.height }, 480, 360);
-    runInsert([
-      {
-        type: "image",
-        position: {
-          x: Math.round((EDITOR_STAGE_WIDTH - fit.width) / 2),
-          y: Math.round((EDITOR_STAGE_HEIGHT - fit.height) / 2),
-        },
-        size: fit,
-        data: item.src,
-        fit: "contain",
-        decorative: true,
-      } as SlideElement,
-    ]);
+    runInsert([buildCustomElementImage(item) as unknown as SlideElement]);
   };
 
   const handleBackgroundApply = (ui: Record<string, unknown>) => {

@@ -17,7 +17,11 @@ import {
 } from "@/components/editor-react/image-frames";
 import { MOTIF_BUILDERS } from "@/components/editor-react/motif-library";
 import type { TemplateV2InsertComponent } from "@/components/slide-editor/events/events";
-import type { SlideElement } from "@/components/slide-editor/types";
+import {
+  EDITOR_STAGE_HEIGHT,
+  EDITOR_STAGE_WIDTH,
+  type SlideElement,
+} from "@/components/slide-editor/types";
 
 export type ElementCategory =
   | "frames"
@@ -33,6 +37,73 @@ export type ElementCategory =
  *  the canvas. The payload is just the entry key; the drop side looks the
  *  entry up in ELEMENT_CATALOG and builds it at the drop point. */
 export const ELEMENT_DRAG_MIME = "application/x-pptmaker-element";
+
+/** Same idea for "My elements", which are uploads rather than catalog entries
+ *  and so have no key to look up — the payload carries the item itself. */
+export const CUSTOM_ELEMENT_DRAG_MIME = "application/x-pptmaker-custom-element";
+
+export type CustomElementDragPayload = {
+  src: string;
+  width: number;
+  height: number;
+};
+
+export function readCustomElementDragPayload(
+  raw: string,
+): CustomElementDragPayload | null {
+  try {
+    const parsed = JSON.parse(raw) as Partial<CustomElementDragPayload>;
+    if (typeof parsed?.src !== "string" || !parsed.src) return null;
+    return {
+      src: parsed.src,
+      width: typeof parsed.width === "number" ? parsed.width : 200,
+      height: typeof parsed.height === "number" ? parsed.height : 200,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Scales a size down to fit a bound, keeping its ratio. */
+function fitWithin(
+  size: { width: number; height: number },
+  maxWidth: number,
+  maxHeight: number,
+): { width: number; height: number } {
+  const ratio = size.width / size.height || 1;
+  let width = size.width;
+  let height = size.height;
+  if (width > maxWidth) {
+    width = maxWidth;
+    height = Math.round(width / ratio);
+  }
+  if (height > maxHeight) {
+    height = maxHeight;
+    width = Math.round(height * ratio);
+  }
+  return { width: Math.max(1, width), height: Math.max(1, height) };
+}
+
+/** The image element a "My elements" upload inserts as. Shared by the click
+ *  path (Insert toolbar) and the drag path (canvas drop) so the two cannot
+ *  drift — `decorative` keeps the generator from treating it as a fillable
+ *  photo slot and swapping it out. Natural size comes from the manifest,
+ *  recorded at upload time. The caller positions it; this centres it on the
+ *  stage, which is what the click path wants. */
+export function buildCustomElementImage(item: CustomElementDragPayload) {
+  const size = fitWithin({ width: item.width, height: item.height }, 480, 360);
+  return {
+    type: "image",
+    position: {
+      x: Math.round((EDITOR_STAGE_WIDTH - size.width) / 2),
+      y: Math.round((EDITOR_STAGE_HEIGHT - size.height) / 2),
+    },
+    size,
+    data: item.src,
+    fit: "contain",
+    decorative: true,
+  };
+}
 
 export type ElementCatalogEntry = {
   key: string;

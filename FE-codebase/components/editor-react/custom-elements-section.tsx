@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Trash2, Upload } from "lucide-react";
+import { CUSTOM_ELEMENT_DRAG_MIME } from "@/components/editor-react/element-catalog";
 
 export type CustomElementItem = {
   id: string;
@@ -216,16 +217,39 @@ export function CustomElementsSection({
       ) : (
         <div className="grid grid-cols-4 gap-2.5 px-2.5 pb-2">
           {visible.map((item) => (
-            <div key={item.id} className="group relative">
+            <div
+              key={item.id}
+              className="group relative cursor-grab active:cursor-grabbing"
+              // Same as the built-in catalog cards: drag one onto the canvas to
+              // drop it where the cursor is, click to insert at the default
+              // position. The payload carries the item, since an upload has no
+              // catalog key for the drop side to look up.
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData(
+                  CUSTOM_ELEMENT_DRAG_MIME,
+                  JSON.stringify({
+                    src: item.src,
+                    width: item.width,
+                    height: item.height,
+                  }),
+                );
+                e.dataTransfer.effectAllowed = "copy";
+              }}
+            >
               <button
                 onClick={() => onInsertElement(item)}
                 title={item.label}
                 className="flex aspect-square w-full items-center justify-center rounded-lg border border-[var(--border-strong)] bg-[var(--bg-surface)] p-1.5 transition-colors hover:border-[var(--accent)]"
               >
+                {/* draggable={false}: an <img> is a native drag source, and its
+                    own drag (of the image URL) pre-empts the card's before the
+                    canvas ever sees our payload. */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={item.src}
                   alt={item.label}
+                  draggable={false}
                   className="max-h-full max-w-full object-contain"
                 />
               </button>

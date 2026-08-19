@@ -51,7 +51,11 @@ function TransitionPreview({ id }: { id: SlideTransition }) {
     return (
       <div className="relative h-full w-full overflow-hidden">
         <div className={cn(box, "bg-[var(--bg-elevated)]")} />
-        <div className="slide-transition-morph-chip absolute left-[10%] top-1/2 h-5 w-5 -translate-y-1/2 rounded-md bg-[var(--accent)]/70" />
+        {/* Track carries the horizontal travel, chip carries rotate/scale —
+            see globals.css for why it takes two elements. */}
+        <div className="slide-transition-morph-track absolute inset-x-[10%] top-1/2">
+          <div className="slide-transition-morph-chip h-5 w-5 rounded-md bg-[var(--accent)]/70" />
+        </div>
       </div>
     );
   }

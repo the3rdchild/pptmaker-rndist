@@ -187,25 +187,40 @@ body {
 
 /* Morph option preview in the Transition panel: a chip gliding left → right
    across the middle of the card while rotating and growing, then holding
-   before the loop restarts. Size/position live in Tailwind classes (so the
-   chip never renders 0×0); `left` is animated here (percent of the card)
-   because transform percentages would be relative to the chip itself. */
+   before the loop restarts.
+
+   Split over two elements on purpose. Animating the chip's `left` reads
+   naturally but relayouts the whole panel on every frame; a transform
+   percentage on the chip would resolve against the chip's own 20px instead of
+   the card. So an invisible full-width track carries the travel (percentages
+   there ARE card-relative) and the chip inside carries only rotate/scale —
+   both compositor-only properties. The track spans the middle 80% of the card,
+   so 77.5% of it lands the chip at 72% of the card. */
+.slide-transition-morph-track {
+	will-change: transform;
+	animation: slide-transition-morph-travel 1.8s ease-in-out infinite;
+}
 .slide-transition-morph-chip {
+	transform: translateY(-50%);
+	will-change: transform, opacity;
 	animation: slide-transition-morph-preview 1.8s ease-in-out infinite;
+}
+@keyframes slide-transition-morph-travel {
+	0% {
+		transform: translate3d(0, 0, 0);
+	}
+	55%,
+	100% {
+		transform: translate3d(77.5%, 0, 0);
+	}
 }
 @keyframes slide-transition-morph-preview {
 	0% {
-		left: 10%;
 		transform: translateY(-50%) rotate(0deg) scale(0.65);
 		opacity: 0.35;
 	}
-	55% {
-		left: 72%;
-		transform: translateY(-50%) rotate(180deg) scale(1);
-		opacity: 1;
-	}
+	55%,
 	100% {
-		left: 72%;
 		transform: translateY(-50%) rotate(180deg) scale(1);
 		opacity: 1;
 	}

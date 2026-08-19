@@ -137,6 +137,13 @@ import {
   type SlotFill,
 } from "@/components/editor-react/ai-slot-fill";
 import { captureSlidePng } from "@/components/editor-react/slide-capture";
+import GenerationProgress, {
+  type SlideProgress,
+  type SlideReviewIssue,
+} from "@/components/editor-react/generation-progress";
+import SlideBuildSkeleton, {
+  photoSlotKey,
+} from "@/components/editor-react/slide-build-skeleton";
 import {
   applyFontToAllSlides,
   applyThemeToAllSlides,
@@ -197,6 +204,10 @@ const ZOOM_STEP = 0.2;
 // slide and fixes again if the repair itself introduced a new issue. A clean
 // verify short-circuits early, so clean slides still cost only one call.
 const MAX_REVIEW_PASSES = 2;
+
+// Stable identity for slides with no photo jobs in flight — a fresh Set per
+// render would re-run the skeleton's collection work on every frame.
+const EMPTY_PHOTO_SET: Set<string> = new Set();
 
 function clampZoom(value: number): number {
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, value));
@@ -352,13 +363,23 @@ export default function EditorReactClient({
   /** Sub-status during generation ("Reviewing slide 2 of 9…") shown under
    *  the spinner. */
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
-  /** Per-slide visual-review status, keyed by slide index — drives the header
-   *  pill ("AI reviewing this page…" → "Completed") for whichever slide the
-   *  user currently has open. Absent entries mean that slide hasn't been
-   *  through the review pipeline (e.g. review disabled, or an existing deck
-   *  opened without generation). */
-  const [slideReviewStatus, setSlideReviewStatus] = useState<
-    Record<number, "reviewing" | "completed">
+  /** Per-slide build/review state, keyed by slide index — feeds the progress
+   *  bar's activity log, the filmstrip badges and the canvas skeleton. Absent
+   *  entries mean that slide never went through generation (an existing deck
+   *  opened normally), so nothing is shown for it. */
+  const [slideProgress, setSlideProgress] = useState<
+    Record<number, SlideProgress>
+  >({});
+  /** Slides the outline asked for, when the prompt is a serialized outline —
+   *  null for a free-text prompt, which leaves the progress bar indeterminate. */
+  const [expectedSlideCount, setExpectedSlideCount] = useState<number | null>(
+    null,
+  );
+  /** Photo slots whose image job is still in flight, keyed by slide index —
+   *  a pending photo is indistinguishable from a filled one in the ui (the
+   *  template ships a sample image), so the skeleton needs this told to it. */
+  const [pendingPhotos, setPendingPhotos] = useState<
+    Record<number, Set<string>>
   >({});
   // Template mode only.
   const [themes, setThemes] = useState<TemplateTheme[]>([]);
@@ -688,6 +709,19 @@ export default function EditorReactClient({
   const slides = presentationData?.slides ?? [];
   const safeActive = Math.min(activeIndex, Math.max(0, slides.length - 1));
   const activeUi = slides[safeActive]?.ui ?? null;
+
+  /** Filmstrip badge state, derived from the same per-slide progress the
+   *  activity log reads. */
+  const reviewBadges = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(slideProgress).map(([index, progress]) => [
+          index,
+          { phase: progress.phase, issueCount: progress.issues.length },
+        ]),
+      ),
+    [slideProgress],
+  );
 
   const handleTemplateSelection = useCallback(
     (payload: TemplateSelectionPayload | null) => setTemplateSelection(payload),
@@ -1060,6 +1094,17 @@ export default function EditorReactClient({
     return () => document.removeEventListener("paste", handlePaste);
   }, []);
 
+  /** Adds/removes one photo slot from the slide's pending set, which is what
+   *  the canvas skeleton shimmers over. */
+  const markPhotoPending = (index: number, slotKey: string, pending: boolean) => {
+    setPendingPhotos((prev) => {
+      const next = new Set(prev[index] ?? []);
+      if (pending) next.add(slotKey);
+      else next.delete(slotKey);
+      return { ...prev, [index]: next };
+    });
+  };
+
   // Streams AIPPTSlide JSONL for a topic and appends each mapped slide.
   // Shared by the AI Assistant's create_deck tool and the one-time
   // auto-generate-on-open flow (?prompt= from the homepage). Throws on real
@@ -1256,12 +1301,18 @@ export default function EditorReactClient({
         ? `${hint}. ${heroStyle}`
         : `${subject} — related to ${genTopic}. ${heroStyle}`;
 
-      void resolvePhotoForSlot(prompt, hint || subject).then((resolved) => {
-        if (!resolved) return;
-        const patched = patchHeroImage(slideUiAt(index) ?? getUi(), marker, resolved.url, resolved.extra) as Record<string, unknown>;
-        setUi(patched);
-        dispatch(updateSlideUi({ index, ui: patched }));
-      });
+      const slotKey = photoSlotKey(marker.componentId, marker.elementName, marker.occurrenceIndex);
+      markPhotoPending(index, slotKey, true);
+      void resolvePhotoForSlot(prompt, hint || subject)
+        .then((resolved) => {
+          if (!resolved) return;
+          const patched = patchHeroImage(slideUiAt(index) ?? getUi(), marker, resolved.url, resolved.extra) as Record<string, unknown>;
+          setUi(patched);
+          dispatch(updateSlideUi({ index, ui: patched }));
+        })
+        // Clear the skeleton whether the photo landed or not — a failed job
+        // must not leave a slot shimmering forever.
+        .finally(() => markPhotoPending(index, slotKey, false));
     };
 
     // Kicks off a photo generation for the hero slot AND every secondary
@@ -1382,10 +1433,33 @@ export default function EditorReactClient({
      *  the slide's photos are keyed in the verify payload's `photos` list and
      *  in any "kind":"image" issue the reviewer flags. */
     const photoSlotName = (marker: HeroImageMarker): string => `${marker.elementName}#${marker.occurrenceIndex}`;
+    /** Findings accumulated across this slide's passes, for the activity log. */
+    const recordIssues = (slideIndex: number, found: SlideReviewIssue[]) => {
+      if (found.length === 0) return;
+      setSlideProgress((prev) => ({
+        ...prev,
+        [slideIndex]: {
+          phase: prev[slideIndex]?.phase ?? "reviewing",
+          issues: [...(prev[slideIndex]?.issues ?? []), ...found],
+        },
+      }));
+    };
+    const setSlidePhase = (slideIndex: number, phase: SlideProgress["phase"]) => {
+      setSlideProgress((prev) => ({
+        ...prev,
+        [slideIndex]: { phase, issues: prev[slideIndex]?.issues ?? [] },
+      }));
+    };
+
     const reviewSlide = async (slideIndex: number) => {
       const manifestLine = slideManifestLines.get(slideIndex);
-      if (!manifestLine) return;
-      setSlideReviewStatus((prev) => ({ ...prev, [slideIndex]: "reviewing" }));
+      // Nothing to review against — still mark it done, or the progress bar
+      // would wait on a slide that is never going to report back.
+      if (!manifestLine) {
+        setSlidePhase(slideIndex, "done");
+        return;
+      }
+      setSlidePhase(slideIndex, "reviewing");
       try {
         const layout = layoutPicker.getLayoutById(manifestLine.layout_id);
         const textFills = manifestLine.fills
@@ -1448,13 +1522,22 @@ export default function EditorReactClient({
           if (resizeIssues.length > 0) {
             setGenerationStatus(`Enlarging text on slide ${slideIndex + 1}…`);
             const base = slideUiAt(slideIndex);
-            if (base) {
-              const boosted = applyFontBoostToUi(base, resizeIssues.map((i) => i.slot));
-              if (boosted.changed) {
-                dispatch(updateSlideUi({ index: slideIndex, ui: boosted.ui }));
-                appliedFix = true;
-              }
+            const boosted = base
+              ? applyFontBoostToUi(base, resizeIssues.map((i) => i.slot))
+              : null;
+            if (boosted?.changed) {
+              dispatch(updateSlideUi({ index: slideIndex, ui: boosted.ui }));
+              appliedFix = true;
             }
+            recordIssues(
+              slideIndex,
+              resizeIssues.map((issue) => ({
+                slot: issue.slot,
+                problem: issue.problem,
+                kind: "resize" as const,
+                action: boosted?.changed ? "enlarged the text" : null,
+              })),
+            );
           }
 
           if (imageIssues.length > 0) {
@@ -1462,17 +1545,28 @@ export default function EditorReactClient({
             await Promise.all(
               imageIssues.map(async (issue) => {
                 const marker = photoMarkers.find((m) => photoSlotName(m) === issue.slot);
-                if (!marker) return;
-                const prompt = issue.suggestedPhotoPrompt
-                  ? `${issue.suggestedPhotoPrompt}. ${heroStyle}`
-                  : `${issue.problem}. ${heroStyle}`;
-                const resolved = await resolvePhotoForSlot(prompt, issue.suggestedPhotoPrompt || genTopic);
-                if (!resolved) return;
-                const base = slideUiAt(slideIndex);
-                if (!base) return;
-                const patched = patchHeroImage(base, marker, resolved.url, resolved.extra) as Record<string, unknown>;
-                dispatch(updateSlideUi({ index: slideIndex, ui: patched }));
-                appliedFix = true;
+                let replaced = false;
+                if (marker) {
+                  const prompt = issue.suggestedPhotoPrompt
+                    ? `${issue.suggestedPhotoPrompt}. ${heroStyle}`
+                    : `${issue.problem}. ${heroStyle}`;
+                  const resolved = await resolvePhotoForSlot(prompt, issue.suggestedPhotoPrompt || genTopic);
+                  const base = resolved ? slideUiAt(slideIndex) : null;
+                  if (resolved && base) {
+                    const patched = patchHeroImage(base, marker, resolved.url, resolved.extra) as Record<string, unknown>;
+                    dispatch(updateSlideUi({ index: slideIndex, ui: patched }));
+                    appliedFix = true;
+                    replaced = true;
+                  }
+                }
+                recordIssues(slideIndex, [
+                  {
+                    slot: issue.slot,
+                    problem: issue.problem,
+                    kind: "image" as const,
+                    action: replaced ? "replaced the photo" : null,
+                  },
+                ]);
               }),
             );
           }
@@ -1498,6 +1592,18 @@ export default function EditorReactClient({
               dispatch(updateSlideUi({ index: slideIndex, ui: applyFillsToUi(base, repaired) }));
               appliedFix = true;
             }
+            const rewritten = new Set(
+              repaired.map((f: { name?: unknown }) => (typeof f.name === "string" ? f.name : "")),
+            );
+            recordIssues(
+              slideIndex,
+              textIssues.map((issue) => ({
+                slot: issue.slot,
+                problem: issue.problem,
+                kind: "text" as const,
+                action: rewritten.has(issue.slot) ? "rewrote the copy" : null,
+              })),
+            );
           }
 
           if (!appliedFix) break; // nothing to apply, stop
@@ -1506,11 +1612,21 @@ export default function EditorReactClient({
       } catch {
         // one slide's review failing must never abort the rest
       } finally {
-        setSlideReviewStatus((prev) => ({ ...prev, [slideIndex]: "completed" }));
+        setSlidePhase(slideIndex, "done");
       }
     };
     const enqueueReview = (slideIndex: number) => {
-      if (!withReview) return;
+      // With review off the slide is finished the moment it finalizes — mark
+      // it done here or the progress bar would never reach 100%.
+      if (!withReview) {
+        setSlidePhase(slideIndex, "done");
+        return;
+      }
+      // Leave "building" NOW, not when the chain reaches this slide: the slide
+      // is finalized, so its still-empty optional slots are legitimately empty
+      // and must stop shimmering even while it waits its turn behind earlier
+      // slides still being reviewed.
+      setSlidePhase(slideIndex, "reviewing");
       reviewChain = reviewChain.then(() => reviewSlide(slideIndex));
     };
 
@@ -1579,6 +1695,7 @@ export default function EditorReactClient({
         // page fill in as it streams instead of being pinned to the cover.
         setActiveIndex(index);
         setGenerationStatus(`Building slide ${index + 1}…`);
+        setSlidePhase(index, "building");
         pendingStream = { index, layoutId: start.layout_id, fills: [] };
         slidePhotoMarkers.set(index, { hero: empty.heroImage, secondary: empty.secondaryImages });
         // Photos start NOW — image generation is the slowest piece, and the
@@ -1694,6 +1811,14 @@ export default function EditorReactClient({
   ) => {
     setGenerationError(null);
     setGenerationStatus(null);
+    setSlideProgress({});
+    setPendingPhotos({});
+    // The /outline page hands over a serialized outline — one "## " heading per
+    // planned page — so the progress bar gets a real denominator before the
+    // first slide streams. A free-text prompt has none; the bar goes
+    // indeterminate rather than inventing a total.
+    const planned = (topic.match(/^##\s+\S/gm) ?? []).length;
+    setExpectedSlideCount(planned > 0 ? planned : null);
     setIsGenerating(true);
     generateDeckFromTopic(topic, language, model, withReview, providers, imageSource, pinnedThemeId)
       .catch((e) => {
@@ -2214,33 +2339,6 @@ export default function EditorReactClient({
               )}
             </span>
           )}
-          {slideReviewStatus[safeActive] && (
-            <span
-              title={
-                slideReviewStatus[safeActive] === "reviewing"
-                  ? "AI is reviewing this page"
-                  : "This page passed AI visual review"
-              }
-              className={cn(
-                "flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
-                slideReviewStatus[safeActive] === "completed"
-                  ? "bg-emerald-500/10 text-emerald-400"
-                  : "bg-[var(--bg-surface)] text-[var(--text-muted)]"
-              )}
-            >
-              {slideReviewStatus[safeActive] === "reviewing" ? (
-                <>
-                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                  Reviewing…
-                </>
-              ) : (
-                <>
-                  <Check className="h-2.5 w-2.5" />
-                  Completed
-                </>
-              )}
-            </span>
-          )}
         </div>
         <div className="flex items-center gap-1.5">
           <ToolButton
@@ -2378,6 +2476,15 @@ export default function EditorReactClient({
           </DropdownMenu>
         </div>
       </header>
+      {isGenerating && (
+        <GenerationProgress
+          stage={generationStatus}
+          slides={slideProgress}
+          expected={expectedSlideCount}
+          built={slides.length}
+          onSelectSlide={setActiveIndex}
+        />
+      )}
       <PdfExportCapture slides={pdfExportSlides} onCapture={handlePdfCaptured} />
       <SlideCaptureHost />
       <div className="flex flex-1 overflow-hidden">
@@ -2472,6 +2579,11 @@ export default function EditorReactClient({
                 // Transition tab's morph link editor needs the selected
                 // element and its patch.
                 onTemplateSelection={handleTemplateSelection}
+              />
+              <SlideBuildSkeleton
+                ui={activeUi as Record<string, unknown>}
+                pendingPhotos={pendingPhotos[safeActive] ?? EMPTY_PHOTO_SET}
+                building={slideProgress[safeActive]?.phase === "building"}
               />
             </div>
           ) : generationError ? (
@@ -2599,6 +2711,7 @@ export default function EditorReactClient({
         <SlideSidebar
           slides={slides}
           activeIndex={safeActive}
+          reviewBadges={isGenerating ? reviewBadges : undefined}
           onSelect={setActiveIndex}
           onAdd={handleAdd}
           onAddAt={handleAddAt}

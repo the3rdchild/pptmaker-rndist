@@ -118,6 +118,17 @@ body {
 	outline: 1px solid rgba(255, 255, 255, 0.07);
 }
 
+/* Indeterminate generation progress bar — used when the slide count isn't
+   known upfront (a free-text prompt rather than an edited outline). */
+@keyframes genprogress-slide {
+	0% {
+		transform: translateX(-100%);
+	}
+	100% {
+		transform: translateX(400%);
+	}
+}
+
 /* ── Slide transitions (Present Mode playback + panel previews) ─────────── */
 
 /* slide-right: incoming slide enters from the left, moving rightward.

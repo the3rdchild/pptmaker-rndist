@@ -17,11 +17,13 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
+  Check,
   ChevronUp,
   Copy,
   Eye,
   EyeOff,
   LayoutTemplate,
+  Loader2,
   Lock,
   Plus,
   Trash2,
@@ -41,6 +43,13 @@ const THUMB_H = 720 * THUMB_SCALE;
 
 type Layout = Record<string, unknown>;
 
+/** Per-slide AI review state for the thumbnail badges. Only populated while a
+ *  deck is being generated — absent entries render no badge at all. */
+export interface SlideReviewBadge {
+  phase: "building" | "reviewing" | "done";
+  issueCount: number;
+}
+
 export interface SlideSidebarProps {
   slides: {
     ui?: Record<string, unknown> | null | undefined;
@@ -48,6 +57,7 @@ export interface SlideSidebarProps {
     isHidden?: boolean;
   }[];
   activeIndex: number;
+  reviewBadges?: Record<number, SlideReviewBadge>;
   onSelect: (index: number) => void;
   onAdd: (layout: Record<string, unknown>) => void;
   onAddAt: (index: number, layout?: Record<string, unknown>) => void;
@@ -61,6 +71,7 @@ export interface SlideSidebarProps {
 export default function SlideSidebar({
   slides,
   activeIndex,
+  reviewBadges,
   onSelect,
   onAdd,
   onAddAt,
@@ -108,6 +119,7 @@ export default function SlideSidebar({
                     id={i}
                     slide={slide}
                     isActive={i === activeIndex}
+                    reviewBadge={reviewBadges?.[i]}
                     canDelete={slides.length > 1}
                     onSelect={() => onSelect(i)}
                     onDuplicate={() => onDuplicate(i)}
@@ -168,6 +180,7 @@ function SortableSlide({
   id,
   slide,
   isActive,
+  reviewBadge,
   canDelete,
   onSelect,
   onDuplicate,
@@ -182,6 +195,7 @@ function SortableSlide({
     isHidden?: boolean;
   };
   isActive: boolean;
+  reviewBadge?: SlideReviewBadge;
   canDelete: boolean;
   onSelect: () => void;
   onDuplicate: () => void;
@@ -241,6 +255,35 @@ function SortableSlide({
       >
         {id + 1}
       </span>
+      {reviewBadge && (
+        <span
+          className={cn(
+            "absolute left-1 top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-[3px] text-[9px] font-medium tabular-nums text-white",
+            reviewBadge.phase !== "done"
+              ? "bg-[var(--accent)]"
+              : reviewBadge.issueCount > 0
+                ? "bg-amber-500"
+                : "bg-emerald-500"
+          )}
+          title={
+            reviewBadge.phase === "building"
+              ? "Building this slide"
+              : reviewBadge.phase === "reviewing"
+                ? "AI is reviewing this slide"
+                : reviewBadge.issueCount > 0
+                  ? `AI fixed ${reviewBadge.issueCount} issue${reviewBadge.issueCount === 1 ? "" : "s"}`
+                  : "Passed AI review"
+          }
+        >
+          {reviewBadge.phase !== "done" ? (
+            <Loader2 size={8} className="animate-spin" />
+          ) : reviewBadge.issueCount > 0 ? (
+            reviewBadge.issueCount
+          ) : (
+            <Check size={8} />
+          )}
+        </span>
+      )}
       {(isLocked || isHidden) && (
         <div className="absolute bottom-1 right-1 flex gap-0.5">
           {isLocked && (

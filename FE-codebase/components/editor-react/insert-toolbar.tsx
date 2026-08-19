@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import {
+  ArrowRightLeft,
   BarChart3,
   LayoutTemplate,
   PaintBucket,
@@ -20,6 +21,7 @@ import BackgroundPanel, {
   applyBackgroundStyle,
 } from "@/components/editor-react/background-panel";
 import ColorPalettePanel from "@/components/editor-react/color-palette-panel";
+import TransitionPanel from "@/components/editor-react/transition-panel";
 import {
   ChartTab,
   ElementsTab,
@@ -42,6 +44,7 @@ import {
   type BackgroundStyle,
 } from "@/components/slide-editor/surface/SlideBackground";
 import type { RawUi } from "@/components/slide-editor/model/core";
+import type { SlideTransition } from "@/store/presentationGeneration";
 import {
   EDITOR_STAGE_HEIGHT,
   EDITOR_STAGE_WIDTH,
@@ -99,6 +102,9 @@ export interface InsertToolbarProps {
    *  it collapses like every other panel instead of permanently occupying
    *  320px next to the canvas. */
   templatePanel?: React.ReactNode;
+  /** Entrance transition of the currently selected slide (undefined = none). */
+  activeTransition?: SlideTransition;
+  onSelectTransition?: (transition: SlideTransition) => void;
 }
 
 type TabId =
@@ -112,7 +118,8 @@ type TabId =
   | "media"
   | "magic-media"
   | "palette"
-  | "background";
+  | "background"
+  | "transition";
 
 const TABS: {
   id: TabId;
@@ -131,6 +138,7 @@ const TABS: {
   { id: "palette", label: "Palette", icon: Palette },
   { id: "magic-media", label: "Magic Media", icon: Sparkles },
   { id: "background", label: "Background", icon: PaintBucket },
+  { id: "transition", label: "Transition", icon: ArrowRightLeft },
 ];
 
 function backgroundSwatchStyle(style: BackgroundStyle): React.CSSProperties {
@@ -160,6 +168,8 @@ export default function InsertToolbar({
   onApplyColorToSelection,
   onApplyAllLayouts,
   templatePanel,
+  activeTransition,
+  onSelectTransition,
 }: InsertToolbarProps) {
   // The template tab only exists in the engine; the normal editor never sees it.
   const tabs = templatePanel
@@ -371,6 +381,12 @@ export default function InsertToolbar({
                 icon={<Sparkles size={20} />}
                 title="Magic Media"
                 description="Generate images and video with AI, right inside the editor. Coming soon."
+              />
+            )}
+            {openTab === "transition" && (
+              <TransitionPanel
+                value={activeTransition ?? "none"}
+                onSelect={(t) => onSelectTransition?.(t)}
               />
             )}
           </div>

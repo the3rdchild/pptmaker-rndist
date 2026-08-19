@@ -49,6 +49,7 @@ import {
   setSlideLocked,
   setSlideHidden,
   setSlideNotes,
+  setSlideTransition,
 } from "@/store/presentationGeneration";
 import type { SlideData } from "@/store/presentationGeneration";
 import { adaptDeckToPresentation } from "@/components/editor-react/deck-adapt";
@@ -114,6 +115,7 @@ import {
   parseStreamFillLine,
   isSlideEndLine,
   applyFillsToUi,
+  applyFontBoostToUi,
   buildEmptySlideUi,
   finalizeStreamedSlide,
   describeLayoutSlots,
@@ -336,6 +338,14 @@ export default function EditorReactClient({
   /** Sub-status during generation ("Reviewing slide 2 of 9…") shown under
    *  the spinner. */
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
+  /** Per-slide visual-review status, keyed by slide index — drives the header
+   *  pill ("AI reviewing this page…" → "Completed") for whichever slide the
+   *  user currently has open. Absent entries mean that slide hasn't been
+   *  through the review pipeline (e.g. review disabled, or an existing deck
+   *  opened without generation). */
+  const [slideReviewStatus, setSlideReviewStatus] = useState<
+    Record<number, "reviewing" | "completed">
+  >({});
   // Template mode only.
   const [themes, setThemes] = useState<TemplateTheme[]>([]);
   const [templateThemeId, setTemplateThemeId] = useState(
@@ -1269,6 +1279,7 @@ export default function EditorReactClient({
     const reviewSlide = async (slideIndex: number) => {
       const manifestLine = slideManifestLines.get(slideIndex);
       if (!manifestLine) return;
+      setSlideReviewStatus((prev) => ({ ...prev, [slideIndex]: "reviewing" }));
       try {
         const layout = layoutPicker.getLayoutById(manifestLine.layout_id);
         const textFills = manifestLine.fills
@@ -1324,8 +1335,21 @@ export default function EditorReactClient({
           if (issues.length === 0) break; // slide passed, no more passes needed
 
           const imageIssues = issues.filter((i) => i.kind === "image");
-          const textIssues = issues.filter((i) => i.kind !== "image");
+          const resizeIssues = issues.filter((i) => i.kind === "resize");
+          const textIssues = issues.filter((i) => i.kind !== "image" && i.kind !== "resize");
           let appliedFix = false;
+
+          if (resizeIssues.length > 0) {
+            setGenerationStatus(`Enlarging text on slide ${slideIndex + 1}…`);
+            const base = slideUiAt(slideIndex);
+            if (base) {
+              const boosted = applyFontBoostToUi(base, resizeIssues.map((i) => i.slot));
+              if (boosted.changed) {
+                dispatch(updateSlideUi({ index: slideIndex, ui: boosted.ui }));
+                appliedFix = true;
+              }
+            }
+          }
 
           if (imageIssues.length > 0) {
             setGenerationStatus(`Refreshing photo on slide ${slideIndex + 1}…`);
@@ -1375,6 +1399,8 @@ export default function EditorReactClient({
         }
       } catch {
         // one slide's review failing must never abort the rest
+      } finally {
+        setSlideReviewStatus((prev) => ({ ...prev, [slideIndex]: "completed" }));
       }
     };
     const enqueueReview = (slideIndex: number) => {
@@ -2082,6 +2108,33 @@ export default function EditorReactClient({
               )}
             </span>
           )}
+          {slideReviewStatus[safeActive] && (
+            <span
+              title={
+                slideReviewStatus[safeActive] === "reviewing"
+                  ? "AI is reviewing this page"
+                  : "This page passed AI visual review"
+              }
+              className={cn(
+                "flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+                slideReviewStatus[safeActive] === "completed"
+                  ? "bg-emerald-500/10 text-emerald-400"
+                  : "bg-[var(--bg-surface)] text-[var(--text-muted)]"
+              )}
+            >
+              {slideReviewStatus[safeActive] === "reviewing" ? (
+                <>
+                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                  Reviewing…
+                </>
+              ) : (
+                <>
+                  <Check className="h-2.5 w-2.5" />
+                  Completed
+                </>
+              )}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1.5">
           <ToolButton
@@ -2227,6 +2280,10 @@ export default function EditorReactClient({
           onInsert={handleInsert}
           onApplyColorToSelection={handleApplyColorToSelection}
           onApplyAllLayouts={handleApplyAllLayouts}
+          activeTransition={slides[safeActive]?.transition}
+          onSelectTransition={(transition) =>
+            dispatch(setSlideTransition({ index: safeActive, transition }))
+          }
           templatePanel={
             templateMode ? (
               <TemplateEnginePanel

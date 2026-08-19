@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { ChevronLeft, ChevronRight, MonitorPlay, X } from "lucide-react";
 import {
@@ -8,6 +8,7 @@ import {
   type PresenterPoint,
 } from "@/components/editor-react/presenter-sync";
 import { collectMediaOverlays } from "@/components/editor-react/present-media-overlay";
+import type { SlideTransition } from "@/store/presentationGeneration";
 
 const TemplateV2KonvaSlide = dynamic(
   () =>
@@ -30,6 +31,7 @@ export default function PresentMode({
   slides: {
     ui?: Record<string, unknown> | null | undefined;
     isHidden?: boolean;
+    transition?: SlideTransition;
   }[];
   startIndex: number;
   deckId?: string | null;
@@ -51,6 +53,25 @@ export default function PresentMode({
   };
   const [index, setIndex] = useState(resolveStart);
   const containerRef = useRef<HTMLDivElement>(null);
+  // Entrance-transition playback: navigating *to* a slide that carries a
+  // transition keeps the previous slide rendered underneath while the new
+  // one animates in (keyframes in globals.css). Set in useLayoutEffect so
+  // the animation class lands before the new slide paints.
+  const [anim, setAnim] = useState<{ from: number; type: SlideTransition } | null>(null);
+  const lastIndexRef = useRef(index);
+  useLayoutEffect(() => {
+    const from = lastIndexRef.current;
+    if (from === index) return;
+    lastIndexRef.current = index;
+    const type = slides[index]?.transition;
+    if (type && type !== "none" && slides[from]?.ui) {
+      setAnim({ from, type });
+      // 60ms animation delay + 450ms duration (see globals.css), plus slack.
+      const timer = window.setTimeout(() => setAnim(null), 560);
+      return () => window.clearTimeout(timer);
+    }
+    setAnim(null);
+  }, [index, slides]);
   const [scale, setScale] = useState(1);
   const [laser, setLaser] = useState<{ x: number; y: number } | null>(null);
   const [strokes, setStrokes] = useState<PresenterPoint[][]>([]);
@@ -170,56 +191,85 @@ export default function PresentMode({
           className="relative"
         >
           <div
-            className="relative origin-top-left"
+            className="relative origin-top-left overflow-hidden"
             style={{
               width: SLIDE_W,
               height: SLIDE_H,
               transform: `scale(${scale})`,
             }}
           >
-            <TemplateV2KonvaSlide
-              layout={ui as never}
-              isEditMode={false}
-              slideIndex={index}
-              fonts={fonts}
-            />
-            {/* Real media players overlaid on the Konva static stand-in.
-                Coordinates are in slide space (1280x720); the parent div's
-                CSS transform scales them down with the slide. */}
-            {collectMediaOverlays(ui).map((item) =>
-              item.media_type === "video" ? (
-                <video
-                  key={item.key}
-                  src={item.src}
-                  poster={item.poster ?? undefined}
-                  controls
-                  style={{
-                    position: "absolute",
-                    left: item.x,
-                    top: item.y,
-                    width: item.width,
-                    height: item.height,
-                    borderRadius: Math.min(item.width, item.height) * 0.06,
-                    background: "#000",
-                  }}
+            {/* Previous slide, kept underneath while the new one animates in. */}
+            {anim && slides[anim.from]?.ui ? (
+              <div className="absolute inset-0">
+                <TemplateV2KonvaSlide
+                  layout={slides[anim.from].ui as never}
+                  isEditMode={false}
+                  slideIndex={anim.from}
+                  fonts={fonts}
                 />
-              ) : (
-                <div
-                  key={item.key}
-                  style={{
-                    position: "absolute",
-                    left: item.x,
-                    top: item.y,
-                    width: item.width,
-                    height: item.height,
-                    display: "flex",
-                    alignItems: "center",
-                  }}
-                >
-                  <audio src={item.src} controls style={{ width: "100%" }} />
-                </div>
-              ),
-            )}
+              </div>
+            ) : null}
+            <div
+              className={
+                anim?.type === "slide-right"
+                  ? "relative slide-transition-slide-right"
+                  : anim?.type === "slide-left"
+                    ? "relative slide-transition-slide-left"
+                    : "relative"
+              }
+            >
+              <TemplateV2KonvaSlide
+                layout={ui as never}
+                isEditMode={false}
+                slideIndex={index}
+                fonts={fonts}
+              />
+              {/* Real media players overlaid on the Konva static stand-in.
+                  Coordinates are in slide space (1280x720); the parent div's
+                  CSS transform scales them down with the slide. */}
+              {collectMediaOverlays(ui).map((item) =>
+                item.media_type === "video" ? (
+                  <video
+                    key={item.key}
+                    src={item.src}
+                    poster={item.poster ?? undefined}
+                    controls
+                    style={{
+                      position: "absolute",
+                      left: item.x,
+                      top: item.y,
+                      width: item.width,
+                      height: item.height,
+                      borderRadius: Math.min(item.width, item.height) * 0.06,
+                      background: "#000",
+                    }}
+                  />
+                ) : (
+                  <div
+                    key={item.key}
+                    style={{
+                      position: "absolute",
+                      left: item.x,
+                      top: item.y,
+                      width: item.width,
+                      height: item.height,
+                      display: "flex",
+                      alignItems: "center",
+                    }}
+                  >
+                    <audio src={item.src} controls style={{ width: "100%" }} />
+                  </div>
+                ),
+              )}
+            </div>
+            {/* fade-white / fade-black: opaque cover over the new slide that
+                fades out to reveal it. */}
+            {anim?.type === "fade-white" || anim?.type === "fade-black" ? (
+              <div
+                className="slide-transition-fade-cover pointer-events-none absolute inset-0"
+                style={{ background: anim.type === "fade-white" ? "#fff" : "#000" }}
+              />
+            ) : null}
           </div>
 
           {/* Live tools overlay (#41): laser pointer + freehand annotations

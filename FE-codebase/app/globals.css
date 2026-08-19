@@ -117,3 +117,55 @@ body {
 	border-radius: 2px;
 	outline: 1px solid rgba(255, 255, 255, 0.07);
 }
+
+/* ── Slide transitions (Present Mode playback + panel previews) ─────────── */
+
+/* slide-right: incoming slide enters from the left, moving rightward.
+   translate3d (not translateX) keeps the layer on the GPU compositor —
+   a plain 2D translate over a big Konva canvas repaints on the CPU and
+   visibly stutters. */
+@keyframes slide-transition-right {
+	from {
+		transform: translate3d(-100%, 0, 0);
+	}
+	to {
+		transform: translate3d(0, 0, 0);
+	}
+}
+
+/* slide-left: incoming slide enters from the right, moving leftward */
+@keyframes slide-transition-left {
+	from {
+		transform: translate3d(100%, 0, 0);
+	}
+	to {
+		transform: translate3d(0, 0, 0);
+	}
+}
+
+/* fade-white / fade-black: opaque colored cover over the new slide fades out */
+@keyframes slide-transition-fade-cover {
+	from {
+		opacity: 1;
+	}
+	to {
+		opacity: 0;
+	}
+}
+
+/* The 60ms delay (with fill "backwards" holding the "from" state) gives the
+   incoming slide's Konva stage one beat to finish mounting/painting before
+   the motion starts — otherwise the mount work eats the first frames of the
+   animation and it reads as ~15fps. */
+.slide-transition-slide-right {
+	will-change: transform;
+	animation: slide-transition-right 450ms cubic-bezier(0.22, 1, 0.36, 1) 60ms backwards;
+}
+.slide-transition-slide-left {
+	will-change: transform;
+	animation: slide-transition-left 450ms cubic-bezier(0.22, 1, 0.36, 1) 60ms backwards;
+}
+.slide-transition-fade-cover {
+	will-change: opacity;
+	animation: slide-transition-fade-cover 450ms ease-out 60ms both;
+}

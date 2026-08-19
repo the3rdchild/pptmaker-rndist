@@ -2,6 +2,15 @@ import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 import { applyPaletteToUi } from "@/components/slide-editor/utils/ai-palette";
 import type { GeneratedPalette } from "@/components/slide-editor/utils/color-theory";
 
+/** Per-slide entrance transition, played in Present Mode when navigating
+ *  *to* the slide that carries it (PowerPoint-style semantics). */
+export type SlideTransition =
+  | "none"
+  | "slide-right"
+  | "slide-left"
+  | "fade-white"
+  | "fade-black";
+
 export interface SlideData {
   ui?: Record<string, unknown> | null;
   content?: unknown;
@@ -14,6 +23,7 @@ export interface SlideData {
   isLocked?: boolean;
   isHidden?: boolean;
   notes?: string;
+  transition?: SlideTransition;
 }
 
 export interface PresentationData {
@@ -183,6 +193,15 @@ interface PresentationGenerationState {
           state.presentationData.slides[index].notes = notes;
         }
       },
+      setSlideTransition: (
+        state,
+        action: PayloadAction<{ index: number; transition: SlideTransition }>
+      ) => {
+        const { index, transition } = action.payload;
+        if (state.presentationData?.slides[index]) {
+          state.presentationData.slides[index].transition = transition;
+        }
+      },
       applyAccentBackground: (state, action: PayloadAction<GeneratedPalette>) => {
         if (!state.presentationData) return;
         const palette = action.payload;
@@ -205,6 +224,7 @@ interface PresentationGenerationState {
     setSlideLocked,
     setSlideHidden,
     setSlideNotes,
+    setSlideTransition,
     applyAccentBackground,
   } = presentationSlice.actions;
 export default presentationSlice.reducer;

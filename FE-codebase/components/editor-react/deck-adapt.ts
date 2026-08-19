@@ -1,4 +1,7 @@
-import type { PresentationData } from "@/store/presentationGeneration";
+import type {
+  PresentationData,
+  SlideTransition,
+} from "@/store/presentationGeneration";
 
 // Shared between the main editor (editor-react-client.tsx) and Presenter
 // View (which re-fetches the deck independently in its own window rather
@@ -19,6 +22,7 @@ export function adaptDeckToPresentation(
         isLocked: rec.isLocked as boolean | undefined,
         isHidden: rec.isHidden as boolean | undefined,
         notes: rec.notes as string | undefined,
+        transition: rec.transition as SlideTransition | undefined,
       };
     })
     .filter((s) => s.ui);

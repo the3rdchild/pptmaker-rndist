@@ -9,7 +9,8 @@ export type SlideTransition =
   | "slide-right"
   | "slide-left"
   | "fade-white"
-  | "fade-black";
+  | "fade-black"
+  | "morph";
 
 export interface SlideData {
   ui?: Record<string, unknown> | null;
@@ -53,6 +54,7 @@ interface PresentationGenerationState {
     "slide-left",
     "fade-white",
     "fade-black",
+    "morph",
   ];
 
   /** A layout record coming from the template registry carries its entrance

@@ -169,3 +169,31 @@ body {
 	will-change: opacity;
 	animation: slide-transition-fade-cover 450ms ease-out 60ms both;
 }
+
+/* Morph: the outgoing slide's container fades while its matched elements fly
+   as DOM overlay snapshots (present-mode.tsx). */
+@keyframes slide-transition-morph-fade {
+	from {
+		opacity: 1;
+	}
+	to {
+		opacity: 0;
+	}
+}
+.slide-transition-morph-fade {
+	animation: slide-transition-morph-fade 600ms ease-out forwards;
+}
+
+/* Morph option preview in the Transition panel: a chip flying from the
+   bottom-left to the top-right while growing. */
+@keyframes slide-transition-morph-preview {
+	0% {
+		transform: translate(0, 260%) scale(0.55);
+		opacity: 0.35;
+	}
+	45%,
+	100% {
+		transform: translate(220%, 0) scale(1);
+		opacity: 1;
+	}
+}

@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
   type ChangeEvent as ReactChangeEvent,
+  type MutableRefObject,
   type Ref,
 } from "react";
 import type Konva from "konva";
@@ -299,6 +300,13 @@ type TemplateV2KonvaSlideProps = {
    * PDF export's stage.toDataURL()) without the component otherwise needing
    * to know its consumer cares about that. */
   stageRef?: Ref<Konva.Stage>;
+  /** Exposes the internal per-element Konva node map (key =
+   * keyForSelection(selection)) so a caller can read/animate individual
+   * nodes — the morph transition snapshots matched elements from the
+   * previous slide's stage through this. The map identity is stable for the
+   * life of the component; the ref is populated on mount and nulled on
+   * unmount. */
+  externalNodeRefs?: MutableRefObject<Map<string, Konva.Node> | null>;
   /** On-screen magnification of the stage (the editor's zoom). Drives scene
    * oversampling so a zoomed-in canvas is redrawn at the resolution it is
    * displayed at instead of being enlarged as a bitmap. Defaults to 1 for
@@ -333,6 +341,7 @@ function TemplateV2KonvaSlideComponent({
   fonts,
   themeId,
   stageRef,
+  externalNodeRefs,
   renderScale = 1,
   onTemplateSelection,
 }: TemplateV2KonvaSlideProps) {
@@ -341,6 +350,17 @@ function TemplateV2KonvaSlideComponent({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [rootElement, setRootElement] = useState<HTMLDivElement | null>(null);
   const nodeRefs = useRef(new Map<string, Konva.Node>());
+
+  // Hand the stable per-element node map to whoever asked for it (morph
+  // transition playback). The map's identity never changes; only its
+  // contents do as elements mount/unmount.
+  useEffect(() => {
+    if (!externalNodeRefs) return;
+    externalNodeRefs.current = nodeRefs.current;
+    return () => {
+      externalNodeRefs.current = null;
+    };
+  }, [externalNodeRefs]);
   const contentLayerRef = useRef<Konva.Layer | null>(null);
   const backgroundLayerRef = useRef<Konva.Layer | null>(null);
   const snapGuidesLayerRef = useRef<Konva.Layer | null>(null);

@@ -47,6 +47,34 @@ interface PresentationGenerationState {
     presentationData: null,
   };
 
+  const SLIDE_TRANSITIONS: readonly SlideTransition[] = [
+    "none",
+    "slide-right",
+    "slide-left",
+    "fade-white",
+    "fade-black",
+  ];
+
+  /** A layout record coming from the template registry carries its entrance
+   *  transition as a top-level `transition` key (see exportSlideAsLayout), but
+   *  a deck slide keeps it as a SlideData sibling of `ui` — that's where
+   *  Present Mode reads it. Splits the key off a ui record so every insertion
+   *  path (apply one, apply all, engine hydration) lands it in the same place. */
+  export function splitSlideTransition(ui: Record<string, unknown>): {
+    ui: Record<string, unknown>;
+    transition?: SlideTransition;
+  } {
+    const raw = ui.transition;
+    if (
+      typeof raw !== "string" ||
+      !SLIDE_TRANSITIONS.includes(raw as SlideTransition)
+    ) {
+      return { ui };
+    }
+    const { transition: _dropped, ...rest } = ui;
+    return { ui: rest, transition: raw as SlideTransition };
+  }
+
   function reindex(slides: SlideData[]): SlideData[] {
     return slides.map((s, i) => ({ ...s, index: i }));
   }
@@ -103,8 +131,12 @@ interface PresentationGenerationState {
       ) => {
         if (!state.presentationData) return;
         const { ui, atIndex } = action.payload;
+        const split = splitSlideTransition(ui);
         const insertAt = atIndex ?? state.presentationData.slides.length;
-        state.presentationData.slides.splice(insertAt, 0, { ui });
+        state.presentationData.slides.splice(insertAt, 0, {
+          ui: split.ui,
+          ...(split.transition ? { transition: split.transition } : {}),
+        });
         state.presentationData.slides = reindex(state.presentationData.slides);
       },
       /** Bulk insert — "Apply all N pages" adds a whole theme at once, and
@@ -123,7 +155,13 @@ interface PresentationGenerationState {
         if (!state.presentationData) return;
         const { uis, atIndex, replaceAll } = action.payload;
         if (uis.length === 0) return;
-        const slides = uis.map((ui) => ({ ui }));
+        const slides = uis.map((ui) => {
+          const split = splitSlideTransition(ui);
+          return {
+            ui: split.ui,
+            ...(split.transition ? { transition: split.transition } : {}),
+          };
+        });
         if (replaceAll) {
           state.presentationData.slides = reindex(slides);
           return;

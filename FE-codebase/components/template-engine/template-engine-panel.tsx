@@ -33,6 +33,7 @@ import {
   type ExportWarning,
 } from "@/components/slide-editor/templates/template-v2-export";
 import type { TemplateTheme } from "@/lib/templates/themes";
+import type { SlideTransition } from "@/store/presentationGeneration";
 import {
   buildElementOutline,
   sameAddress,
@@ -108,7 +109,9 @@ export function TemplateEnginePanel({
   onThemeChange,
   activeIndex,
   activeUi,
+  activeTransition,
   pageUis,
+  pageTransitions,
   selection,
   onSaved,
   onPagesPersisted,
@@ -126,8 +129,13 @@ export function TemplateEnginePanel({
   onThemeChange: (themeId: string) => void;
   activeIndex: number;
   activeUi: Rec | null;
+  /** Entrance transition of the active page (a SlideData sibling of `ui`, set
+   *  via the Transition rail tab) — saved into the layout record. */
+  activeTransition?: SlideTransition;
   /** Every page on the canvas, in order — what the Theme scope's save writes. */
   pageUis: (Rec | null)[];
+  /** Per-page transitions, index-aligned with pageUis, for the batch save. */
+  pageTransitions?: (SlideTransition | undefined)[];
   selection: TemplateSelectionPayload | null;
   onSaved: (layoutId: string) => void;
   /** Writes the identity a save assigned back onto the pages themselves. This
@@ -303,6 +311,7 @@ export function TemplateEnginePanel({
       name: draft.name,
       description: draft.description,
       meta: draft.meta,
+      transition: activeTransition,
       existingIds,
     });
 
@@ -340,6 +349,7 @@ export function TemplateEnginePanel({
   }, [
     activeIndex,
     activeUi,
+    activeTransition,
     draft,
     existingIds,
     onPagesPersisted,
@@ -390,6 +400,7 @@ export function TemplateEnginePanel({
         name: pageDraft.name,
         description: pageDraft.description,
         meta: pageDraft.meta,
+        transition: pageTransitions?.[index],
         existingIds: allocatedIds,
       });
       collected.push(
@@ -495,6 +506,7 @@ export function TemplateEnginePanel({
     onPagesPersisted,
     onSaved,
     originThemeId,
+    pageTransitions,
     pageUis,
     themeId,
     themeLabel,

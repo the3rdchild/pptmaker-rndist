@@ -50,6 +50,7 @@ import {
   setSlideHidden,
   setSlideNotes,
   setSlideTransition,
+  splitSlideTransition,
 } from "@/store/presentationGeneration";
 import type { SlideData } from "@/store/presentationGeneration";
 import { adaptDeckToPresentation } from "@/components/editor-react/deck-adapt";
@@ -539,7 +540,15 @@ export default function EditorReactClient({
           ...(Object.keys(mergedFonts).length > 0 ? { fonts: mergedFonts } : {}),
           slides:
             pages.length > 0
-              ? pages.map((ui) => ({ ui }))
+              ? pages.map((ui) => {
+                  // A saved layout stores its transition inside the record;
+                  // on the canvas it's a SlideData sibling of ui instead.
+                  const split = splitSlideTransition(ui);
+                  return {
+                    ui: split.ui,
+                    ...(split.transition ? { transition: split.transition } : {}),
+                  };
+                })
               : [{ ui: blankTemplateLayout() }],
         } as never)
       );
@@ -907,7 +916,14 @@ export default function EditorReactClient({
     [presentationData?.title],
   );
   const handleInsert = (ui: Record<string, unknown>) => {
-    dispatch(updateSlideUi({ index: safeActive, ui }));
+    // Applying a template layout onto the active slide: the layout record
+    // carries its transition as a top-level key — lift it onto the slide so
+    // Present Mode picks it up, and keep it out of the ui record.
+    const split = splitSlideTransition(ui);
+    if (split.transition) {
+      dispatch(setSlideTransition({ index: safeActive, transition: split.transition }));
+    }
+    dispatch(updateSlideUi({ index: safeActive, ui: split.ui }));
   };
 
   // Held in refs so the paste listener is registered once instead of on every
@@ -2292,7 +2308,9 @@ export default function EditorReactClient({
                 onThemeChange={setTemplateThemeId}
                 activeIndex={safeActive}
                 activeUi={activeUi as Record<string, unknown> | null}
+                activeTransition={slides[safeActive]?.transition}
                 pageUis={templatePageUis}
+                pageTransitions={slides.map((slide) => slide?.transition)}
                 selection={templateSelection}
                 onSaved={handleTemplateSaved}
                 onPagesPersisted={handleTemplatePagesPersisted}

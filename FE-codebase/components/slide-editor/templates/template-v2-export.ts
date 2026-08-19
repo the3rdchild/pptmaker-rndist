@@ -14,6 +14,7 @@ import {
   parseSlotMeta,
   type LayoutMeta,
 } from "@/components/slide-editor/templates/slot-meta";
+import type { SlideTransition } from "@/store/presentationGeneration";
 
 type Rec = Record<string, unknown>;
 
@@ -34,6 +35,10 @@ export type ExportedLayout = Rec & {
   name?: string;
   description: string;
   meta?: LayoutMeta;
+  /** Entrance transition picked in the Transition tab; top-level (not in
+   *  `meta`) so it survives the schemaless layout JSON untouched and can be
+   *  lifted back onto the slide when the layout is applied to a deck. */
+  transition?: SlideTransition;
   components: Rec[];
 };
 
@@ -224,6 +229,9 @@ export function exportSlideAsLayout(
     name: string;
     description: string;
     meta?: LayoutMeta | null;
+    /** Slide-level entrance transition; a sibling of `ui` on SlideData, so it
+     *  never reaches this function inside the ui record itself. */
+    transition?: SlideTransition;
     existingIds?: string[];
   },
 ): ExportResult {
@@ -272,6 +280,10 @@ export function exportSlideAsLayout(
     ...(options.name.trim() ? { name: options.name.trim() } : {}),
     description: options.description.trim(),
     ...(meta ? { meta } : {}),
+    // "none" is the default — writing it would just be noise in the JSON.
+    ...(options.transition && options.transition !== "none"
+      ? { transition: options.transition }
+      : {}),
     components,
   };
 

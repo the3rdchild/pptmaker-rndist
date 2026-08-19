@@ -227,14 +227,16 @@ export function PromptInput() {
 				/>
 				{/* Non-AI entry points, kept next to each other: start from an
 				    empty deck, or from an existing .pptx. /editor-react already
-				    creates a blank deck and redirects into it, so this just goes
-				    there rather than duplicating the createDeck call. */}
+				    creates the deck and redirects into it, so this just goes
+				    there rather than duplicating the createDeck call. `blank=1`
+				    is what skips the default-theme starter slide a new deck
+				    otherwise opens on. */}
 				<Button
 					variant="subtle"
 					size="sm"
 					disabled={importing || submitting}
-					onClick={() => router.push('/editor-react')}
-					title="Langsung buka editor dengan presentasi kosong, tanpa generate AI."
+					onClick={() => router.push('/editor-react?blank=1')}
+					title="Langsung buka editor dengan slide kosong, tanpa generate AI dan tanpa tema bawaan."
 				>
 					<FilePlus2 className="h-4 w-4" />
 					Presentasi Kosong

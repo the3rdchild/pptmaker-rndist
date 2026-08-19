@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Trash2, Upload } from "lucide-react";
-import { CUSTOM_ELEMENT_DRAG_MIME } from "@/components/editor-react/element-catalog";
+import {
+  CUSTOM_ELEMENT_DRAG_MIME,
+  makeDragGhost,
+} from "@/components/editor-react/element-catalog";
 
 export type CustomElementItem = {
   id: string;
@@ -235,18 +238,21 @@ export function CustomElementsSection({
                   }),
                 );
                 e.dataTransfer.effectAllowed = "copy";
-                // The default ghost snapshots the whole card — dark tile,
-                // border, and the delete badge that hover puts in the corner.
-                // Dragging the <img> on its own keeps the artwork's own
-                // transparency, so what follows the cursor is the element
-                // rather than a screenshot of the panel.
-                const preview = e.currentTarget.querySelector("img");
-                if (preview) {
-                  const rect = preview.getBoundingClientRect();
+                // Same preview as the catalog cards below. Pointing
+                // setDragImage at the live <img> was not enough: the snapshot
+                // picks up the dark tile painted behind it, so even a fully
+                // transparent PNG came out on a grey rectangle. The shared
+                // helper copies the artwork somewhere with nothing behind it.
+                const ghost = makeDragGhost(
+                  e.currentTarget,
+                  e.clientX,
+                  e.clientY,
+                );
+                if (ghost) {
                   e.dataTransfer.setDragImage(
-                    preview,
-                    rect.width / 2,
-                    rect.height / 2,
+                    ghost.node,
+                    ghost.offsetX,
+                    ghost.offsetY,
                   );
                 }
               }}

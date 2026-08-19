@@ -31,10 +31,10 @@ import {
   ELEMENT_CATEGORY_LABELS,
   ELEMENT_DRAG_MIME,
   elementCategoryOrder,
+  makeDragGhost,
   renderCatalogIcon,
   type ElementCatalogEntry,
 } from "@/components/editor-react/element-catalog";
-import { SHAPE_INSERT_FILL } from "@/components/editor-react/shape-icons";
 import {
   createChartInsertElements,
   createCustomFormulaInsertElements,
@@ -74,58 +74,6 @@ const EAGER_TEMPLATE_CARDS = 6;
 
 function matches(label: string, search: string) {
   return !search || label.toLowerCase().includes(search.toLowerCase());
-}
-
-const DRAG_GHOST_SIZE = 88;
-
-/** Drag preview for an Elements card: the entry's own artwork, enlarged.
- *
- *  The browser's default is a snapshot of whatever element started the drag —
- *  here the card — so its dark tile and label came along and read as a grey box
- *  floating over the white canvas instead of the thing being inserted.
- *
- *  Two things make this fiddlier than it looks:
- *
- *  - The artwork is not always an `<svg>`. FramePreview draws frames whose
- *    outline is a CSS clip-path as a plain `<div>` with a background image, so
- *    the lookup takes whatever element sits inside the icon box and the resize
- *    goes through inline styles (which win over an svg's width/height
- *    attributes) rather than attributes (which a div ignores).
- *  - It has to be a clone, because the card renders its icon at 22px and
- *    setDragImage snapshots an element exactly as rendered. Cloning keeps the
- *    paint synchronous — inline SVG and an already-decoded background image
- *    both draw immediately, unlike a fresh <img> pointed at a data URI.
- *
- *  The clone is mounted under the cursor rather than off-screen: Chrome will
- *  not snapshot an element outside the viewport, and it silently falls back to
- *  the default drag image when that happens. Sitting exactly where the drag
- *  image is about to appear, the one frame it exists for is invisible. */
-function makeDragGhost(
-  card: HTMLElement,
-  clientX: number,
-  clientY: number,
-): HTMLElement | null {
-  const artwork = card.querySelector("span")?.firstElementChild;
-  if (!artwork) return null;
-  const clone = artwork.cloneNode(true) as HTMLElement;
-  clone.style.width = `${DRAG_GHOST_SIZE}px`;
-  clone.style.height = `${DRAG_GHOST_SIZE}px`;
-  const host = document.createElement("div");
-  host.style.cssText = [
-    "position:fixed",
-    `top:${clientY - DRAG_GHOST_SIZE / 2}px`,
-    `left:${clientX - DRAG_GHOST_SIZE / 2}px`,
-    `width:${DRAG_GHOST_SIZE}px`,
-    `height:${DRAG_GHOST_SIZE}px`,
-    // What `currentColor` in a shape icon resolves against — the same fill the
-    // shape is inserted with, so the preview matches what lands on the canvas.
-    `color:${SHAPE_INSERT_FILL}`,
-    "pointer-events:none",
-  ].join(";");
-  host.appendChild(clone);
-  document.body.appendChild(host);
-  window.setTimeout(() => host.remove(), 0);
-  return host;
 }
 
 /* ------------------------------- Templates ------------------------------ */
@@ -359,11 +307,7 @@ export function ElementsTab({
         e.dataTransfer.effectAllowed = "copy";
         const ghost = makeDragGhost(e.currentTarget, e.clientX, e.clientY);
         if (ghost) {
-          e.dataTransfer.setDragImage(
-            ghost,
-            DRAG_GHOST_SIZE / 2,
-            DRAG_GHOST_SIZE / 2,
-          );
+          e.dataTransfer.setDragImage(ghost.node, ghost.offsetX, ghost.offsetY);
         }
       }}
       className="cursor-grab active:cursor-grabbing"

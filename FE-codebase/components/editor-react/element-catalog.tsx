@@ -9,7 +9,12 @@ import {
   type LucideProps,
 } from "lucide-react";
 import { createElementInsertElements } from "@/components/slide-editor/insert/insert-elements";
-import { ShapePreview, shapeDataUri, type ShapeKind } from "@/components/editor-react/shape-icons";
+import {
+  SHAPE_INSERT_FILL,
+  ShapePreview,
+  shapeDataUri,
+  type ShapeKind,
+} from "@/components/editor-react/shape-icons";
 import {
   IMAGE_FRAMES,
   buildFrameElement,
@@ -41,6 +46,78 @@ export const ELEMENT_DRAG_MIME = "application/x-pptmaker-element";
 /** Same idea for "My elements", which are uploads rather than catalog entries
  *  and so have no key to look up — the payload carries the item itself. */
 export const CUSTOM_ELEMENT_DRAG_MIME = "application/x-pptmaker-custom-element";
+
+/** Longest side of a drag preview, in CSS pixels. */
+const DRAG_GHOST_SIZE = 88;
+
+/** Drag preview for any Elements-tab card: the card's own artwork, enlarged and
+ *  isolated.
+ *
+ *  Left alone the browser snapshots whatever element started the drag, so a
+ *  card dragged its dark tile (and label) along and read as a grey box floating
+ *  over the white canvas. Handing it the artwork node directly is not enough
+ *  either — an `<img>` of a transparent PNG still came out on a dark rectangle,
+ *  because the snapshot picks up the tile painted behind it. Only a copy with
+ *  nothing behind it renders as just the artwork.
+ *
+ *  Three details this has to get right:
+ *
+ *  - The artwork is not always an `<svg>`. Uploads are `<img>`, and
+ *    FramePreview draws frames whose outline is a CSS clip-path as a `<div>`
+ *    with a background image. Sizing therefore goes through inline styles,
+ *    which a div honours and which also outrank an svg's width/height
+ *    attributes.
+ *  - The copy is scaled by its longest side rather than forced square, so a
+ *    landscape upload keeps its proportions.
+ *  - It is mounted under the cursor, not off-screen: Chrome declines to
+ *    snapshot an element outside the viewport and silently falls back to the
+ *    default. Sitting where the drag image is about to appear, the single frame
+ *    it exists for is invisible.
+ *
+ *  Cloning keeps the paint synchronous — inline SVG, an already-decoded
+ *  background image and an already-decoded `<img>` all draw immediately, unlike
+ *  a fresh element pointed at a URL the browser has yet to fetch. */
+export function makeDragGhost(
+  card: HTMLElement,
+  clientX: number,
+  clientY: number,
+): { node: HTMLElement; offsetX: number; offsetY: number } | null {
+  const artwork = card.querySelector(
+    "img, svg, div[style*='background-image']",
+  );
+  if (!artwork) return null;
+  const rect = artwork.getBoundingClientRect();
+  const longest = Math.max(rect.width, rect.height);
+  if (!(longest > 0)) return null;
+  const scale = DRAG_GHOST_SIZE / longest;
+  const width = Math.max(1, Math.round(rect.width * scale));
+  const height = Math.max(1, Math.round(rect.height * scale));
+
+  const clone = artwork.cloneNode(true) as HTMLElement;
+  clone.style.width = `${width}px`;
+  clone.style.height = `${height}px`;
+  // The card constrains its artwork with max-w/max-h; the clone is already
+  // sized exactly, and those would only fight it.
+  clone.style.maxWidth = "none";
+  clone.style.maxHeight = "none";
+
+  const host = document.createElement("div");
+  host.style.cssText = [
+    "position:fixed",
+    `top:${clientY - height / 2}px`,
+    `left:${clientX - width / 2}px`,
+    `width:${width}px`,
+    `height:${height}px`,
+    // What `currentColor` inside a shape icon resolves against — the same fill
+    // the shape is inserted with, so the preview matches what lands.
+    `color:${SHAPE_INSERT_FILL}`,
+    "pointer-events:none",
+  ].join(";");
+  host.appendChild(clone);
+  document.body.appendChild(host);
+  window.setTimeout(() => host.remove(), 0);
+  return { node: host, offsetX: width / 2, offsetY: height / 2 };
+}
 
 export type CustomElementDragPayload = {
   src: string;

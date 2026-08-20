@@ -2,11 +2,12 @@
 
 import {
   forwardRef,
+  useState,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
   type ReactNode,
 } from "react";
-import { Search } from "lucide-react";
+import { ChevronRight, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -236,6 +237,69 @@ export function GridCard({
         </span>
       )}
     </button>
+  );
+}
+
+/**
+ * Collapsible catalog section (Canva-style): shows one row of `columns`
+ * items with a "See all" link and a trailing chevron; clicking either
+ * expands to a full wrapped grid of every item. Renders nothing when there
+ * are no items, and skips the toggle entirely when everything already fits
+ * in one row.
+ */
+export function ExpandableSection({
+  label,
+  columns,
+  items,
+}: {
+  label: string;
+  columns: number;
+  items: ReactNode[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+  if (items.length === 0) return null;
+  const canCollapse = items.length > columns;
+  const showAll = expanded || !canCollapse;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between px-2.5 pb-1 pt-2">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+          {label}
+        </p>
+        {canCollapse && (
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className="text-[11px] font-medium text-[var(--text-muted)] transition-colors hover:text-[var(--accent-light)]"
+          >
+            {expanded ? "Show less" : "See all"}
+          </button>
+        )}
+      </div>
+      {showAll ? (
+        <div
+          className="grid gap-2.5 px-2.5 pb-2"
+          style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+        >
+          {items}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2.5 px-2.5 pb-2">
+          {items.slice(0, columns).map((item, i) => (
+            <div key={i} className="min-w-0 flex-1">
+              {item}
+            </div>
+          ))}
+          <button
+            onClick={() => setExpanded(true)}
+            title="See all"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border-strong)] text-[var(--text-muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent-light)]"
+          >
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

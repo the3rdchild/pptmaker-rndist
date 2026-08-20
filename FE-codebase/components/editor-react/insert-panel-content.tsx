@@ -18,6 +18,7 @@ import {
   PieChart,
   Quote,
   Sigma,
+  Sparkles,
   Table as TableIcon,
   Type,
   Video,
@@ -25,7 +26,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { notify } from "@/components/ui/sonner";
-import { EmptyState, GridCard, PanelLabel } from "@/components/editor-react/ui";
+import {
+  EmptyState,
+  ExpandableSection,
+  GridCard,
+  PanelLabel,
+} from "@/components/editor-react/ui";
 import {
   ELEMENT_CATALOG,
   ELEMENT_CATEGORY_LABELS,
@@ -275,12 +281,22 @@ export function ElementsTab({
   onInsertElements,
   onInsertIcon,
   onInsertCustomElement,
+  onInsertContent,
+  uploads,
+  onUploaded,
+  onInsertImage,
 }: {
   search: string;
   recentKeys: string[];
   onInsertElements: (entry: ElementCatalogEntry) => void;
   onInsertIcon: (iconUrl: string) => void;
   onInsertCustomElement: (item: CustomElementItem) => void;
+  /** Chart/media inserts, which build raw elements rather than looking up a
+   *  catalog entry — kept distinct from `onInsertElements` above. */
+  onInsertContent: (elements: SlideElement[]) => void;
+  uploads: UploadedAsset[];
+  onUploaded: (asset: UploadedAsset) => void;
+  onInsertImage: (url: string) => void;
 }) {
   const catalogByKey = new Map(ELEMENT_CATALOG.map((entry) => [entry.key, entry]));
   const recent = recentKeys
@@ -344,12 +360,12 @@ export function ElementsTab({
         </>
       )}
       {categories.map(({ category, entries }) => (
-        <div key={category}>
-          <PanelLabel>{ELEMENT_CATEGORY_LABELS[category]}</PanelLabel>
-          <div className="grid grid-cols-4 gap-2.5 px-2.5 pb-2">
-            {entries.map((entry) => renderEntryCard(entry, entry.key))}
-          </div>
-        </div>
+        <ExpandableSection
+          key={category}
+          label={ELEMENT_CATEGORY_LABELS[category]}
+          columns={4}
+          items={entries.map((entry) => renderEntryCard(entry, entry.key))}
+        />
       ))}
       {categories.length === 0 && (
         <EmptyState
@@ -358,6 +374,15 @@ export function ElementsTab({
           description={`Nothing matches "${search}".`}
         />
       )}
+      <ChartSection search={search} onInsertElements={onInsertContent} />
+      <MediaSection
+        search={search}
+        onInsertElements={onInsertContent}
+        uploads={uploads}
+        onUploaded={onUploaded}
+        onInsertImage={onInsertImage}
+      />
+      <MagicMediaSection search={search} />
     </div>
   );
 }
@@ -430,6 +455,9 @@ export function TextTab({
           </p>
         )}
       </div>
+
+      <TableSection search={search} onInsertElements={onInsertElements} />
+      <FormulaSection search={search} onInsertElements={onInsertElements} />
     </div>
   );
 }
@@ -445,7 +473,7 @@ const CHART_KINDS: { kind: string; label: string; icon: typeof BarChart3 }[] = [
   { kind: "radar", label: "Radar", icon: CircleDot },
 ];
 
-export function ChartTab({
+function ChartSection({
   search,
   onInsertElements,
 }: {
@@ -454,34 +482,36 @@ export function ChartTab({
 }) {
   const filtered = CHART_KINDS.filter((c) => matches(c.label, search));
   return (
-    <div className="p-1.5">
-      <PanelLabel>Chart</PanelLabel>
-      <div className="grid grid-cols-3 gap-2.5 px-2.5 pb-2">
-        {filtered.map((chart) => (
-          <GridCard
-            key={chart.kind}
-            label={chart.label}
-            onClick={() => onInsertElements(createChartInsertElements(chart.kind))}
-          >
-            <chart.icon size={22} />
-          </GridCard>
-        ))}
-      </div>
-    </div>
+    <ExpandableSection
+      label="Chart"
+      columns={3}
+      items={filtered.map((chart) => (
+        <GridCard
+          key={chart.kind}
+          label={chart.label}
+          onClick={() => onInsertElements(createChartInsertElements(chart.kind))}
+        >
+          <chart.icon size={22} />
+        </GridCard>
+      ))}
+    />
   );
 }
 
 /* --------------------------------- Table --------------------------------- */
 
-export function TableTab({
+function TableSection({
+  search,
   onInsertElements,
 }: {
+  search: string;
   onInsertElements: (elements: SlideElement[]) => void;
 }) {
+  if (!matches("Simple table", search)) return null;
   return (
-    <div className="p-2.5">
+    <div>
       <PanelLabel>Table</PanelLabel>
-      <div className="px-2.5">
+      <div className="px-2.5 pb-2">
         <GridCard
           label="Simple table"
           aspect="wide"
@@ -570,7 +600,7 @@ function FormulaPasteBox({
   );
 }
 
-export function FormulaTab({
+function FormulaSection({
   search,
   onInsertElements,
 }: {
@@ -579,7 +609,7 @@ export function FormulaTab({
 }) {
   const filtered = FORMULA_KINDS.filter((formula) => matches(formula.label, search));
   return (
-    <div className="p-1.5">
+    <div>
       <div className="px-2.5">
         <FormulaPasteBox onInsertElements={onInsertElements} />
       </div>
@@ -602,7 +632,7 @@ export function FormulaTab({
   );
 }
 
-export function MediaTab({
+function MediaSection({
   search,
   onInsertElements,
   uploads,
@@ -687,7 +717,7 @@ export function MediaTab({
   };
 
   return (
-    <div className="p-1.5">
+    <div>
       <div className="px-2.5">
         <input
           ref={fileInputRef}
@@ -807,51 +837,76 @@ export function MediaTab({
           </button>
         </div>
       </div>
-      <PanelLabel>Quick add</PanelLabel>
-      <div className="grid grid-cols-2 gap-2.5 px-2.5 pb-2">
-        <GridCard
-          label="Video"
-          aspect="wide"
-          onClick={() =>
-            onInsertElements(
-              createMediaInsertElements("video", "https://example.com/clip.mp4"),
-            )
-          }
-        >
-          <Video size={22} />
-        </GridCard>
-        <GridCard
-          label="Audio"
-          aspect="wide"
-          onClick={() =>
-            onInsertElements(
-              createMediaInsertElements("audio", "https://example.com/track.mp3"),
-            )
-          }
-        >
-          <Music size={22} />
-        </GridCard>
+      <ExpandableSection
+        label="Quick add"
+        columns={2}
+        items={[
+          <GridCard
+            key="video"
+            label="Video"
+            aspect="wide"
+            onClick={() =>
+              onInsertElements(
+                createMediaInsertElements("video", "https://example.com/clip.mp4"),
+              )
+            }
+          >
+            <Video size={22} />
+          </GridCard>,
+          <GridCard
+            key="audio"
+            label="Audio"
+            aspect="wide"
+            onClick={() =>
+              onInsertElements(
+                createMediaInsertElements("audio", "https://example.com/track.mp3"),
+              )
+            }
+          >
+            <Music size={22} />
+          </GridCard>,
+        ]}
+      />
+      <ExpandableSection
+        label="Recently uploaded images"
+        columns={3}
+        items={filteredUploads.map((asset, i) => (
+          <GridCard
+            key={`${asset.url}-${i}`}
+            label={asset.name}
+            onClick={() => onInsertImage(asset.url)}
+          >
+            <img
+              src={asset.url}
+              alt={asset.name}
+              className="h-full w-full object-cover"
+            />
+          </GridCard>
+        ))}
+      />
+    </div>
+  );
+}
+
+/** Compact "coming soon" row for the Magic Media section merged into
+ *  Elements — unlike the catalog sections above it has nothing to list, so
+ *  it skips the See-all/expand affordance entirely. */
+function MagicMediaSection({ search }: { search: string }) {
+  if (!matches("Magic Media", search)) return null;
+  return (
+    <div>
+      <PanelLabel>Magic Media</PanelLabel>
+      <div className="mx-2.5 mb-2 flex items-center gap-2.5 rounded-lg border border-dashed border-[var(--border-strong)] px-3 py-3">
+        <Sparkles size={16} className="shrink-0 text-[var(--text-muted)]" />
+        <div>
+          <p className="text-xs font-medium text-[var(--text-primary)]">
+            Generate images and video with AI
+          </p>
+          <p className="text-[11px] text-[var(--text-muted)]">
+            Coming soon, right inside the editor.
+          </p>
+        </div>
       </div>
-      {filteredUploads.length > 0 ? (
-        <>
-          <PanelLabel>Recently uploaded images</PanelLabel>
-          <div className="grid grid-cols-3 gap-2.5 px-2.5 pb-2">
-            {filteredUploads.map((asset, i) => (
-              <GridCard
-                key={`${asset.url}-${i}`}
-                label={asset.name}
-                onClick={() => onInsertImage(asset.url)}
-              >
-                <img
-                  src={asset.url}
-                  alt={asset.name}
-                  className="h-full w-full object-cover"
-                />
-              </GridCard>
-            ))}
-          </div>
-        </>
-      ) : null}
     </div>
   );
 }
@@ -859,17 +914,3 @@ export function MediaTab({
 /* -------------------------------- Uploads -------------------------------- */
 
 export type UploadedAsset = { url: string; name: string };
-
-/* ------------------------------- Placeholder ------------------------------ */
-
-export function PlaceholderTab({
-  icon,
-  title,
-  description,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-}) {
-  return <EmptyState icon={icon} title={title} description={description} />;
-}

@@ -3,18 +3,13 @@
 import { useState } from "react";
 import {
   ArrowRightLeft,
-  BarChart3,
   Clapperboard,
   LayoutTemplate,
   PaintBucket,
   Palette,
   Shapes,
-  Sigma,
-  Sparkles,
-  Table as TableIcon,
   Tag,
   Type,
-  Video,
   X,
 } from "lucide-react";
 import { PanelLabel, RailTabButton, SearchField } from "@/components/editor-react/ui";
@@ -25,12 +20,7 @@ import BackgroundPanel, {
 import ColorPalettePanel from "@/components/editor-react/color-palette-panel";
 import TransitionPanel from "@/components/editor-react/transition-panel";
 import {
-  ChartTab,
   ElementsTab,
-  FormulaTab,
-  MediaTab,
-  PlaceholderTab,
-  TableTab,
   TemplatesTab,
   TextTab,
   type UploadedAsset,
@@ -124,11 +114,6 @@ type TabId =
   | "templates"
   | "elements"
   | "text"
-  | "chart"
-  | "table"
-  | "formula"
-  | "media"
-  | "magic-media"
   | "palette"
   | "background"
   | "animation"
@@ -142,14 +127,9 @@ const TABS: {
 }[] = [
   { id: "template-engine", label: "Template", icon: Tag },
   { id: "templates", label: "Templates", icon: LayoutTemplate, searchPlaceholder: "Search templates" },
-  { id: "elements", label: "Elements", icon: Shapes, searchPlaceholder: "Search elements" },
-  { id: "text", label: "Text", icon: Type, searchPlaceholder: "Search text styles" },
-  { id: "chart", label: "Chart", icon: BarChart3, searchPlaceholder: "Search charts" },
-  { id: "table", label: "Table", icon: TableIcon },
-  { id: "formula", label: "Formula", icon: Sigma, searchPlaceholder: "Search formulas" },
-  { id: "media", label: "Media", icon: Video, searchPlaceholder: "Upload or paste a URL" },
+  { id: "elements", label: "Elements", icon: Shapes, searchPlaceholder: "Search elements, charts, media" },
+  { id: "text", label: "Text", icon: Type, searchPlaceholder: "Search text, tables, formulas" },
   { id: "palette", label: "Palette", icon: Palette },
-  { id: "magic-media", label: "Magic Media", icon: Sparkles },
   { id: "background", label: "Background", icon: PaintBucket },
   { id: "animation", label: "Animation", icon: Clapperboard },
   { id: "transition", label: "Transition", icon: ArrowRightLeft },
@@ -333,23 +313,13 @@ export default function InsertToolbar({
                 onInsertElements={handleElementInsert}
                 onInsertIcon={handleInsertIcon}
                 onInsertCustomElement={handleInsertCustomElement}
-              />
-            )}
-            {openTab === "text" && <TextTab search={search} onInsertElements={runInsert} />}
-            {openTab === "chart" && <ChartTab search={search} onInsertElements={runInsert} />}
-            {openTab === "table" && <TableTab onInsertElements={runInsert} />}
-            {openTab === "formula" && (
-              <FormulaTab search={search} onInsertElements={runInsert} />
-            )}
-            {openTab === "media" && (
-              <MediaTab
-                search={search}
-                onInsertElements={runInsert}
+                onInsertContent={runInsert}
                 uploads={uploads}
                 onUploaded={(asset) => setUploads((prev) => [asset, ...prev].slice(0, 24))}
                 onInsertImage={handleInsertUploadedImage}
               />
             )}
+            {openTab === "text" && <TextTab search={search} onInsertElements={runInsert} />}
             {openTab === "palette" && (
               <ColorPalettePanel
                 onApplyColorToSelection={onApplyColorToSelection}
@@ -379,13 +349,6 @@ export default function InsertToolbar({
                 )}
                 <BackgroundPanel activeUi={activeUi} onApply={handleBackgroundApply} />
               </div>
-            )}
-            {openTab === "magic-media" && (
-              <PlaceholderTab
-                icon={<Sparkles size={20} />}
-                title="Magic Media"
-                description="Generate images and video with AI, right inside the editor. Coming soon."
-              />
             )}
             {openTab === "animation" && (
               <AnimationPanel

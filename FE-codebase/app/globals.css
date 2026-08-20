@@ -236,3 +236,645 @@ body {
 		opacity: 1;
 	}
 }
+
+/* ── Element animations (Animation panel + raster-flight playback) ─────────
+   Consumed by animation-player.tsx: one class per effect carries the
+   animation-name, fill-mode and will-change; the PLAYER sets duration, delay
+   and timing-function inline per step. Fill-mode matters:
+   - entrance "backwards" holds the from-state through animation-delay;
+   - exit "forwards" keeps the element hidden after it finishes (the class
+     stays on until the overlay is torn down);
+   - emphasis "both" (ends at identity, so dropping the class later is safe).
+   will-change rides on the class on purpose: the player releases it by
+   swapping the class off when a group finishes — a permanently promoted layer
+   per animated element is a slow leak on the GPU.
+   Same hard rules as the transition section: transform/opacity only, always
+   translate3d. The one exception is the wipe effects, which use clip-path
+   inset — not guaranteed compositor-only on every GPU, but it never touches a
+   canvas texture, so even a main-thread clip update stays off the 15fps cliff.
+   `--anim-travel` (px) is set inline by the player per flight so slide
+   effects start fully off the slide edge; the fallback is only for the
+   preview cards. */
+
+@keyframes anim-kf-fade-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+@keyframes anim-kf-rise {
+	from {
+		opacity: 0;
+		transform: translate3d(0, 40px, 0);
+	}
+	to {
+		opacity: 1;
+		transform: translate3d(0, 0, 0);
+	}
+}
+@keyframes anim-kf-slide-in-left {
+	from {
+		transform: translate3d(calc(-1 * var(--anim-travel, 120px)), 0, 0);
+	}
+	to {
+		transform: translate3d(0, 0, 0);
+	}
+}
+@keyframes anim-kf-slide-in-right {
+	from {
+		transform: translate3d(var(--anim-travel, 120px), 0, 0);
+	}
+	to {
+		transform: translate3d(0, 0, 0);
+	}
+}
+@keyframes anim-kf-slide-in-up {
+	from {
+		transform: translate3d(0, var(--anim-travel, 120px), 0);
+	}
+	to {
+		transform: translate3d(0, 0, 0);
+	}
+}
+@keyframes anim-kf-slide-in-down {
+	from {
+		transform: translate3d(0, calc(-1 * var(--anim-travel, 120px)), 0);
+	}
+	to {
+		transform: translate3d(0, 0, 0);
+	}
+}
+@keyframes anim-kf-zoom-in {
+	from {
+		opacity: 0;
+		transform: translate3d(0, 0, 0) scale(0.6);
+	}
+	to {
+		opacity: 1;
+		transform: translate3d(0, 0, 0) scale(1);
+	}
+}
+@keyframes anim-kf-pop {
+	0% {
+		opacity: 0;
+		transform: translate3d(0, 0, 0) scale(0.5);
+	}
+	70% {
+		opacity: 1;
+		transform: translate3d(0, 0, 0) scale(1.08);
+	}
+	100% {
+		opacity: 1;
+		transform: translate3d(0, 0, 0) scale(1);
+	}
+}
+@keyframes anim-kf-wipe-in {
+	from {
+		clip-path: inset(0 100% 0 0);
+	}
+	to {
+		clip-path: inset(0);
+	}
+}
+
+@keyframes anim-kf-pulse {
+	0%,
+	100% {
+		transform: translate3d(0, 0, 0) scale(1);
+	}
+	50% {
+		transform: translate3d(0, 0, 0) scale(1.06);
+	}
+}
+@keyframes anim-kf-shake {
+	0%,
+	100% {
+		transform: translate3d(0, 0, 0);
+	}
+	20% {
+		transform: translate3d(-9px, 0, 0);
+	}
+	40% {
+		transform: translate3d(9px, 0, 0);
+	}
+	60% {
+		transform: translate3d(-5px, 0, 0);
+	}
+	80% {
+		transform: translate3d(5px, 0, 0);
+	}
+}
+@keyframes anim-kf-spin {
+	from {
+		transform: translate3d(0, 0, 0) rotate(0deg);
+	}
+	to {
+		transform: translate3d(0, 0, 0) rotate(360deg);
+	}
+}
+@keyframes anim-kf-grow {
+	0%,
+	100% {
+		transform: translate3d(0, 0, 0) scale(1);
+	}
+	45% {
+		transform: translate3d(0, 0, 0) scale(1.25);
+	}
+}
+@keyframes anim-kf-bounce {
+	0%,
+	55%,
+	100% {
+		transform: translate3d(0, 0, 0);
+	}
+	30% {
+		transform: translate3d(0, -16px, 0);
+	}
+	75% {
+		transform: translate3d(0, -7px, 0);
+	}
+}
+
+@keyframes anim-kf-fade-out {
+	from {
+		opacity: 1;
+	}
+	to {
+		opacity: 0;
+	}
+}
+@keyframes anim-kf-sink {
+	from {
+		opacity: 1;
+		transform: translate3d(0, 0, 0);
+	}
+	to {
+		opacity: 0;
+		transform: translate3d(0, 40px, 0);
+	}
+}
+@keyframes anim-kf-slide-out-left {
+	from {
+		transform: translate3d(0, 0, 0);
+	}
+	to {
+		transform: translate3d(calc(-1 * var(--anim-travel, 120px)), 0, 0);
+	}
+}
+@keyframes anim-kf-slide-out-right {
+	from {
+		transform: translate3d(0, 0, 0);
+	}
+	to {
+		transform: translate3d(var(--anim-travel, 120px), 0, 0);
+	}
+}
+@keyframes anim-kf-slide-out-up {
+	from {
+		transform: translate3d(0, 0, 0);
+	}
+	to {
+		transform: translate3d(0, calc(-1 * var(--anim-travel, 120px)), 0);
+	}
+}
+@keyframes anim-kf-slide-out-down {
+	from {
+		transform: translate3d(0, 0, 0);
+	}
+	to {
+		transform: translate3d(0, var(--anim-travel, 120px), 0);
+	}
+}
+@keyframes anim-kf-zoom-out {
+	from {
+		opacity: 1;
+		transform: translate3d(0, 0, 0) scale(1);
+	}
+	to {
+		opacity: 0;
+		transform: translate3d(0, 0, 0) scale(0.6);
+	}
+}
+@keyframes anim-kf-wipe-out {
+	from {
+		clip-path: inset(0);
+	}
+	to {
+		clip-path: inset(0 100% 0 0);
+	}
+}
+
+.anim-fade-in {
+	will-change: opacity;
+	animation-name: anim-kf-fade-in;
+	animation-fill-mode: backwards;
+}
+.anim-rise {
+	will-change: transform, opacity;
+	animation-name: anim-kf-rise;
+	animation-fill-mode: backwards;
+}
+.anim-slide-in-left,
+.anim-slide-in-right,
+.anim-slide-in-up,
+.anim-slide-in-down {
+	will-change: transform;
+	animation-fill-mode: backwards;
+}
+.anim-slide-in-left {
+	animation-name: anim-kf-slide-in-left;
+}
+.anim-slide-in-right {
+	animation-name: anim-kf-slide-in-right;
+}
+.anim-slide-in-up {
+	animation-name: anim-kf-slide-in-up;
+}
+.anim-slide-in-down {
+	animation-name: anim-kf-slide-in-down;
+}
+.anim-zoom-in,
+.anim-pop {
+	will-change: transform, opacity;
+	animation-fill-mode: backwards;
+}
+.anim-zoom-in {
+	animation-name: anim-kf-zoom-in;
+}
+.anim-pop {
+	animation-name: anim-kf-pop;
+}
+.anim-wipe-in {
+	will-change: clip-path;
+	animation-name: anim-kf-wipe-in;
+	animation-fill-mode: backwards;
+}
+
+.anim-pulse,
+.anim-shake,
+.anim-spin,
+.anim-grow,
+.anim-bounce {
+	will-change: transform;
+	animation-fill-mode: both;
+}
+.anim-pulse {
+	animation-name: anim-kf-pulse;
+}
+.anim-shake {
+	animation-name: anim-kf-shake;
+}
+.anim-spin {
+	animation-name: anim-kf-spin;
+}
+.anim-grow {
+	animation-name: anim-kf-grow;
+}
+.anim-bounce {
+	animation-name: anim-kf-bounce;
+}
+
+.anim-fade-out {
+	will-change: opacity;
+	animation-name: anim-kf-fade-out;
+	animation-fill-mode: forwards;
+}
+.anim-sink {
+	will-change: transform, opacity;
+	animation-name: anim-kf-sink;
+	animation-fill-mode: forwards;
+}
+.anim-slide-out-left,
+.anim-slide-out-right,
+.anim-slide-out-up,
+.anim-slide-out-down {
+	will-change: transform;
+	animation-fill-mode: forwards;
+}
+.anim-slide-out-left {
+	animation-name: anim-kf-slide-out-left;
+}
+.anim-slide-out-right {
+	animation-name: anim-kf-slide-out-right;
+}
+.anim-slide-out-up {
+	animation-name: anim-kf-slide-out-up;
+}
+.anim-slide-out-down {
+	animation-name: anim-kf-slide-out-down;
+}
+.anim-zoom-out {
+	will-change: transform, opacity;
+	animation-name: anim-kf-zoom-out;
+	animation-fill-mode: forwards;
+}
+.anim-wipe-out {
+	will-change: clip-path;
+	animation-name: anim-kf-wipe-out;
+	animation-fill-mode: forwards;
+}
+
+/* Effect preview cards (Animation panel). Separate looping keyframes rather
+   than the playback ones: a preview needs a visible HOLD after the action and
+   a quick settle-back so the loop restart reads as a demo, not a glitch. The
+   panel applies these inline with `animation: anim-preview-<effect> 1.8s
+   ease-out infinite`. */
+@keyframes anim-preview-fade-in {
+	0% {
+		opacity: 0;
+	}
+	45%,
+	80% {
+		opacity: 1;
+	}
+	100% {
+		opacity: 0;
+	}
+}
+@keyframes anim-preview-rise {
+	0% {
+		opacity: 0;
+		transform: translate3d(0, 10px, 0);
+	}
+	45%,
+	80% {
+		opacity: 1;
+		transform: translate3d(0, 0, 0);
+	}
+	100% {
+		opacity: 0;
+		transform: translate3d(0, 10px, 0);
+	}
+}
+@keyframes anim-preview-slide-in-left {
+	0% {
+		transform: translate3d(-190%, 0, 0);
+	}
+	45%,
+	80% {
+		transform: translate3d(0, 0, 0);
+	}
+	100% {
+		transform: translate3d(-190%, 0, 0);
+	}
+}
+@keyframes anim-preview-slide-in-right {
+	0% {
+		transform: translate3d(190%, 0, 0);
+	}
+	45%,
+	80% {
+		transform: translate3d(0, 0, 0);
+	}
+	100% {
+		transform: translate3d(190%, 0, 0);
+	}
+}
+@keyframes anim-preview-slide-in-up {
+	0% {
+		transform: translate3d(0, 320%, 0);
+	}
+	45%,
+	80% {
+		transform: translate3d(0, 0, 0);
+	}
+	100% {
+		transform: translate3d(0, 320%, 0);
+	}
+}
+@keyframes anim-preview-slide-in-down {
+	0% {
+		transform: translate3d(0, -320%, 0);
+	}
+	45%,
+	80% {
+		transform: translate3d(0, 0, 0);
+	}
+	100% {
+		transform: translate3d(0, -320%, 0);
+	}
+}
+@keyframes anim-preview-zoom-in {
+	0% {
+		opacity: 0;
+		transform: translate3d(0, 0, 0) scale(0.4);
+	}
+	45%,
+	80% {
+		opacity: 1;
+		transform: translate3d(0, 0, 0) scale(1);
+	}
+	100% {
+		opacity: 0;
+		transform: translate3d(0, 0, 0) scale(0.4);
+	}
+}
+@keyframes anim-preview-pop {
+	0% {
+		opacity: 0;
+		transform: translate3d(0, 0, 0) scale(0.4);
+	}
+	35% {
+		opacity: 1;
+		transform: translate3d(0, 0, 0) scale(1.18);
+	}
+	60%,
+	85% {
+		opacity: 1;
+		transform: translate3d(0, 0, 0) scale(1);
+	}
+	100% {
+		opacity: 0;
+		transform: translate3d(0, 0, 0) scale(0.4);
+	}
+}
+@keyframes anim-preview-wipe-in {
+	0% {
+		clip-path: inset(0 100% 0 0);
+	}
+	45%,
+	80% {
+		clip-path: inset(0);
+	}
+	100% {
+		clip-path: inset(0 100% 0 0);
+	}
+}
+@keyframes anim-preview-pulse {
+	0%,
+	100% {
+		transform: translate3d(0, 0, 0) scale(1);
+	}
+	30%,
+	70% {
+		transform: translate3d(0, 0, 0) scale(1.18);
+	}
+	50% {
+		transform: translate3d(0, 0, 0) scale(1);
+	}
+}
+@keyframes anim-preview-shake {
+	0%,
+	60%,
+	100% {
+		transform: translate3d(0, 0, 0);
+	}
+	15% {
+		transform: translate3d(-14%, 0, 0);
+	}
+	30% {
+		transform: translate3d(14%, 0, 0);
+	}
+	45% {
+		transform: translate3d(-7%, 0, 0);
+	}
+}
+@keyframes anim-preview-spin {
+	0% {
+		transform: translate3d(0, 0, 0) rotate(0deg);
+	}
+	55%,
+	100% {
+		transform: translate3d(0, 0, 0) rotate(360deg);
+	}
+}
+@keyframes anim-preview-grow {
+	0%,
+	100% {
+		transform: translate3d(0, 0, 0) scale(1);
+	}
+	35% {
+		transform: translate3d(0, 0, 0) scale(1.3);
+	}
+	65% {
+		transform: translate3d(0, 0, 0) scale(1);
+	}
+}
+@keyframes anim-preview-bounce {
+	0%,
+	50%,
+	100% {
+		transform: translate3d(0, 0, 0);
+	}
+	20% {
+		transform: translate3d(0, -170%, 0);
+	}
+	35% {
+		transform: translate3d(0, 0, 0);
+	}
+	42% {
+		transform: translate3d(0, -70%, 0);
+	}
+}
+@keyframes anim-preview-fade-out {
+	0%,
+	30% {
+		opacity: 1;
+	}
+	60%,
+	85% {
+		opacity: 0;
+	}
+	100% {
+		opacity: 1;
+	}
+}
+@keyframes anim-preview-sink {
+	0%,
+	30% {
+		opacity: 1;
+		transform: translate3d(0, 0, 0);
+	}
+	60%,
+	85% {
+		opacity: 0;
+		transform: translate3d(0, 10px, 0);
+	}
+	100% {
+		opacity: 1;
+		transform: translate3d(0, 0, 0);
+	}
+}
+@keyframes anim-preview-slide-out-left {
+	0%,
+	30% {
+		transform: translate3d(0, 0, 0);
+	}
+	60%,
+	85% {
+		transform: translate3d(-190%, 0, 0);
+	}
+	100% {
+		transform: translate3d(0, 0, 0);
+	}
+}
+@keyframes anim-preview-slide-out-right {
+	0%,
+	30% {
+		transform: translate3d(0, 0, 0);
+	}
+	60%,
+	85% {
+		transform: translate3d(190%, 0, 0);
+	}
+	100% {
+		transform: translate3d(0, 0, 0);
+	}
+}
+@keyframes anim-preview-slide-out-up {
+	0%,
+	30% {
+		transform: translate3d(0, 0, 0);
+	}
+	60%,
+	85% {
+		transform: translate3d(0, -320%, 0);
+	}
+	100% {
+		transform: translate3d(0, 0, 0);
+	}
+}
+@keyframes anim-preview-slide-out-down {
+	0%,
+	30% {
+		transform: translate3d(0, 0, 0);
+	}
+	60%,
+	85% {
+		transform: translate3d(0, 320%, 0);
+	}
+	100% {
+		transform: translate3d(0, 0, 0);
+	}
+}
+@keyframes anim-preview-zoom-out {
+	0%,
+	30% {
+		opacity: 1;
+		transform: translate3d(0, 0, 0) scale(1);
+	}
+	60%,
+	85% {
+		opacity: 0;
+		transform: translate3d(0, 0, 0) scale(0.4);
+	}
+	100% {
+		opacity: 1;
+		transform: translate3d(0, 0, 0) scale(1);
+	}
+}
+@keyframes anim-preview-wipe-out {
+	0%,
+	30% {
+		clip-path: inset(0);
+	}
+	60%,
+	85% {
+		clip-path: inset(0 100% 0 0);
+	}
+	100% {
+		clip-path: inset(0);
+	}
+}

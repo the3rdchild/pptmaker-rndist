@@ -149,7 +149,7 @@ function Segmented<T extends string>({
   );
 }
 
-function ImageUploadField({
+export function ImageUploadField({
   imageUrl,
   onUpload,
   onRemove,

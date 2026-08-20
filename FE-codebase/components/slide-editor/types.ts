@@ -96,6 +96,60 @@ export type Fill = {
   opacity?: number | null;
 };
 
+/** Rectangle-only fill variants — deliberately NOT folded into `Fill` (used
+ *  as-is by text/container/ellipse/table, which stay solid-color-only) so
+ *  extending backgrounds doesn't ripple into every other fillable element.
+ *  `type` is optional on the solid variant so every already-saved layout's
+ *  plain `{color, opacity}` fill (no `type` field at all) keeps reading as
+ *  solid with zero migration. */
+export type ShapeFillSolid = {
+  type?: "solid";
+  color: string;
+  opacity?: number | null;
+};
+
+/** Alternating 2-color squares (checkerboard). */
+export type ShapeFillCheckered = {
+  type: "checkered";
+  color: string;
+  background_color?: string | null;
+  opacity?: number | null;
+};
+
+/** The same "Diagonal" look as the general editor's Background panel,
+ *  applied to one element's box instead of the whole stage — including that
+ *  panel's exact behavior of auto-deriving the (subtle, low-alpha) line
+ *  color from `background_color`'s luminance rather than taking an explicit
+ *  ink color, so it reads identically to the existing pattern. */
+export type ShapeFillLines = {
+  type: "lines";
+  background_color: string;
+  opacity?: number | null;
+};
+
+export type ShapeFillGradient = {
+  type: "gradient";
+  shape?: "linear" | "radial";
+  from: string;
+  to: string;
+  /** Linear only; degrees, 0 = left→right, 90 = top→bottom. */
+  angle?: number | null;
+  opacity?: number | null;
+};
+
+export type ShapeFillImage = {
+  type: "image";
+  url: string;
+  opacity?: number | null;
+};
+
+export type ShapeFill =
+  | ShapeFillSolid
+  | ShapeFillCheckered
+  | ShapeFillLines
+  | ShapeFillGradient
+  | ShapeFillImage;
+
 export type Stroke = {
   color: string;
   opacity?: number | null;
@@ -284,7 +338,7 @@ export type TableElement = ElementBase & {
 
 export type RectangleElement = ElementBase & {
   type: "rectangle";
-  fill?: Fill | null;
+  fill?: ShapeFill | null;
   stroke?: Stroke | null;
   border_radius?: BorderRadius | null;
 };

@@ -94,6 +94,8 @@ import {
 } from "@/components/editor-react/element-catalog";
 import { appendInsertedContent } from "@/components/slide-editor/model/inserted-content";
 import type { RawUi } from "@/components/slide-editor/model/core";
+import { isBackgroundComponent } from "@/components/slide-editor/model/model";
+import { defaultBackgroundComponent } from "@/components/slide-editor/templates/template-v2-export";
 import {
   EDITOR_STAGE_HEIGHT,
   EDITOR_STAGE_WIDTH,
@@ -220,18 +222,32 @@ function zoomFraction(zoom: number): number {
 }
 
 /** An empty slide for the template engine. No id, so the first save mints one
- *  from the name the author types rather than overwriting something. */
+ *  from the name the author types rather than overwriting something. Every
+ *  page — including this starting point — is required to carry a background
+ *  component (see ensureBackgroundComponent), so this seeds one up front
+ *  rather than relying on the save-time safety net to add it invisibly. */
 function blankTemplateLayout(): Record<string, unknown> {
-  return { id: "", description: "", components: [], elements: [] };
+  return {
+    id: "",
+    description: "",
+    components: [defaultBackgroundComponent()],
+    elements: [],
+  };
 }
 
-/** True for a slide that still holds nothing the author put there. */
+/** True for a slide that still holds nothing the author put there — the
+ *  mandatory background component doesn't count as "content" here, or the
+ *  untouched starting page would stop registering as replaceable the moment
+ *  it grew one. */
 function isBlankTemplateUi(ui: unknown): boolean {
   if (!ui || typeof ui !== "object") return true;
   const record = ui as Record<string, unknown>;
   const components = Array.isArray(record.components) ? record.components : [];
   const elements = Array.isArray(record.elements) ? record.elements : [];
-  return components.length === 0 && elements.length === 0;
+  const hasRealComponent = components.some(
+    (component) => !isBackgroundComponent(component as never),
+  );
+  return !hasRealComponent && elements.length === 0;
 }
 
 const STOCK_QUERY_STOPWORDS = new Set([

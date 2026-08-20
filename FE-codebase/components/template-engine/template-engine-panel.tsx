@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import type { TemplateSelectionPayload } from "@/components/slide-editor/surface/TemplateV2KonvaSlide";
 import type { RawElement } from "@/components/slide-editor/model/core";
 import {
@@ -61,6 +62,7 @@ import { setPresentationData } from "@/store/slices/presentationGeneration";
 import { ThemePaletteEditor } from "@/components/template-engine/theme-palette-editor";
 import { SaveToLibraryDialog } from "@/components/editor-react/save-to-library-dialog";
 import type { PastedImage } from "@/components/editor-react/paste-image";
+import { ImageUploadField } from "@/components/editor-react/background-panel";
 
 type Rec = Record<string, unknown>;
 
@@ -2043,6 +2045,13 @@ function SlotSection({ selection }: { selection: TemplateSelectionPayload | null
         </label>
       )}
 
+      {type === "rectangle" && (
+        <BackgroundFillFields
+          fill={isRecord(element.fill) ? (element.fill as Rec) : null}
+          onChange={(fill) => patchElement({ fill })}
+        />
+      )}
+
       {(isFrame || element.decorative !== true) && (
         <>
           {!isFrame && (
@@ -2167,6 +2176,202 @@ function SlotSection({ selection }: { selection: TemplateSelectionPayload | null
         </>
       )}
     </Section>
+  );
+}
+
+const SHAPE_FILL_TYPES: { id: string; label: string }[] = [
+  { id: "solid", label: "Solid color" },
+  { id: "checkered", label: "Checkered" },
+  { id: "lines", label: "Decorative lines" },
+  { id: "gradient", label: "Gradient" },
+  { id: "image", label: "Image" },
+];
+
+/** Fill-type controls for a background rectangle — solid / checkered /
+ *  decorative lines / gradient / image, replacing the old plain-color-only
+ *  fill with the same variants ShapeFillRect (surface/shape-fill.tsx) knows
+ *  how to render. Switching type seeds sensible defaults rather than
+ *  carrying over fields the new type doesn't use. */
+function BackgroundFillFields({
+  fill,
+  onChange,
+}: {
+  fill: Rec | null;
+  onChange: (fill: Rec) => void;
+}) {
+  const type = typeof fill?.type === "string" ? fill.type : "solid";
+  const colorOf = (key: string, fallback: string) =>
+    typeof fill?.[key] === "string" && (fill[key] as string).trim()
+      ? (fill[key] as string)
+      : fallback;
+
+  const setType = (nextType: string) => {
+    if (nextType === "solid") {
+      onChange({ type: "solid", color: colorOf("color", "#FFFFFF"), opacity: 1 });
+    } else if (nextType === "checkered") {
+      onChange({
+        type: "checkered",
+        color: colorOf("color", "#E4E4E7"),
+        background_color: colorOf("background_color", "#FFFFFF"),
+        opacity: 1,
+      });
+    } else if (nextType === "lines") {
+      onChange({
+        type: "lines",
+        background_color: colorOf("background_color", colorOf("color", "#FFFFFF")),
+        opacity: 1,
+      });
+    } else if (nextType === "gradient") {
+      onChange({
+        type: "gradient",
+        shape: typeof fill?.shape === "string" ? fill.shape : "linear",
+        from: colorOf("from", colorOf("color", "#6C5CE7")),
+        to: colorOf("to", "#FFFFFF"),
+        angle: typeof fill?.angle === "number" ? fill.angle : 90,
+        opacity: 1,
+      });
+    } else if (nextType === "image") {
+      onChange({ type: "image", url: colorOf("url", ""), opacity: 1 });
+    }
+  };
+
+  return (
+    <Field label="Background fill">
+      <select
+        value={type}
+        onChange={(event) => setType(event.target.value)}
+        className={inputClass}
+      >
+        {SHAPE_FILL_TYPES.map((option) => (
+          <option key={option.id} value={option.id}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+
+      <div className="mt-2 space-y-2">
+        {type === "solid" && (
+          <ColorRow
+            label="Color"
+            value={colorOf("color", "#FFFFFF")}
+            onChange={(color) => onChange({ ...fill, type: "solid", color })}
+          />
+        )}
+
+        {type === "checkered" && (
+          <>
+            <ColorRow
+              label="Color A"
+              value={colorOf("color", "#E4E4E7")}
+              onChange={(color) => onChange({ ...fill, type: "checkered", color })}
+            />
+            <ColorRow
+              label="Color B"
+              value={colorOf("background_color", "#FFFFFF")}
+              onChange={(color) =>
+                onChange({ ...fill, type: "checkered", background_color: color })
+              }
+            />
+          </>
+        )}
+
+        {type === "lines" && (
+          <>
+            <ColorRow
+              label="Base color"
+              value={colorOf("background_color", "#FFFFFF")}
+              onChange={(color) =>
+                onChange({ ...fill, type: "lines", background_color: color })
+              }
+            />
+            <p className="text-[10px] leading-snug text-[var(--text-muted)]">
+              The diagonal line color is derived automatically from the base
+              color, same as the Background panel&apos;s Diagonal pattern.
+            </p>
+          </>
+        )}
+
+        {type === "gradient" && (
+          <>
+            <div className="flex rounded-lg bg-[var(--bg-base)] p-0.5">
+              {(["linear", "radial"] as const).map((shape) => (
+                <button
+                  key={shape}
+                  onClick={() => onChange({ ...fill, type: "gradient", shape })}
+                  className={cn(
+                    "flex-1 rounded-md px-2 py-1 text-[11px] font-medium capitalize transition-colors",
+                    (typeof fill?.shape === "string" ? fill.shape : "linear") === shape
+                      ? "bg-[var(--accent)] text-white"
+                      : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  )}
+                >
+                  {shape}
+                </button>
+              ))}
+            </div>
+            <ColorRow
+              label="From"
+              value={colorOf("from", "#6C5CE7")}
+              onChange={(color) => onChange({ ...fill, type: "gradient", from: color })}
+            />
+            <ColorRow
+              label="To"
+              value={colorOf("to", "#FFFFFF")}
+              onChange={(color) => onChange({ ...fill, type: "gradient", to: color })}
+            />
+            {(typeof fill?.shape === "string" ? fill.shape : "linear") === "linear" && (
+              <label className="flex items-center justify-between gap-2">
+                <span className="text-[11px] text-[var(--text-secondary)]">Angle</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={360}
+                  value={typeof fill?.angle === "number" ? fill.angle : 90}
+                  onChange={(event) =>
+                    onChange({ ...fill, type: "gradient", angle: Number(event.target.value) })
+                  }
+                  className="flex-1"
+                />
+              </label>
+            )}
+          </>
+        )}
+
+        {type === "image" && (
+          <ImageUploadField
+            imageUrl={typeof fill?.url === "string" && fill.url ? fill.url : undefined}
+            onUpload={(url) => onChange({ type: "image", url, opacity: 1 })}
+            onRemove={() => onChange({ type: "image", url: "", opacity: 1 })}
+          />
+        )}
+      </div>
+    </Field>
+  );
+}
+
+function ColorRow({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (color: string) => void;
+}) {
+  const hex = value.startsWith("#") ? value : `#${value}`;
+  return (
+    <label className="flex items-center justify-between gap-2">
+      <span className="text-[11px] text-[var(--text-secondary)]">{label}</span>
+      <span className="relative inline-flex h-6 w-10 cursor-pointer overflow-hidden rounded-md ring-1 ring-[var(--border-strong)]">
+        <span className="flex-1" style={{ backgroundColor: hex }} />
+        <input
+          type="color"
+          value={hex}
+          onChange={(event) => onChange(event.target.value)}
+          className="absolute inset-0 cursor-pointer opacity-0"
+        />
+      </span>
+    </label>
   );
 }
 

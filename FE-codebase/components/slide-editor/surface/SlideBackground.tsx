@@ -70,7 +70,7 @@ export function readBackgroundStyle(ui: RawUi): BackgroundStyle {
   return { type: "solid", from: backgroundColor(ui) ?? "#FFFFFF", pattern: "none" };
 }
 
-function hexLuminance(hex: string): number {
+export function hexLuminance(hex: string): number {
   const value = hex.replace("#", "");
   const full =
     value.length === 3
@@ -116,7 +116,7 @@ function makePatternCanvas(
  * motion Canva layers behind a deck. Drawn once at stage size and painted as a
  * single non-tiled image, so the curves read as one continuous composition
  * rather than a repeated tile. `color` already carries its (low) alpha. */
-function makeStagePatternCanvas(
+export function makeStagePatternCanvas(
   kind: "waves" | "diagonal" | "arcs" | "blobs",
   color: string,
   width: number,
@@ -188,7 +188,7 @@ function makeStagePatternCanvas(
 }
 
 /** Konva `crop` rect (in image-space) that achieves object-fit: cover for boxW x boxH. */
-function coverCrop(imgW: number, imgH: number, boxW: number, boxH: number) {
+export function coverCrop(imgW: number, imgH: number, boxW: number, boxH: number) {
   const imgRatio = imgW / imgH;
   const boxRatio = boxW / boxH;
   if (imgRatio > boxRatio) {
@@ -199,7 +199,7 @@ function coverCrop(imgW: number, imgH: number, boxW: number, boxH: number) {
   return { x: 0, y: (imgH - cropHeight) / 2, width: imgW, height: cropHeight };
 }
 
-function useLoadedImage(src: string | undefined): HTMLImageElement | null {
+export function useLoadedImage(src: string | undefined): HTMLImageElement | null {
   const [loaded, setLoaded] = useState<HTMLImageElement | null>(null);
 
   useEffect(() => {

@@ -89,7 +89,15 @@ export function ShapeToolbar({
 }) {
   const [openPanel, setOpenPanel] = useState<ShapePanel>(null);
   const box = elementBox(element);
-  const fill = element.fill ?? { color: "#FFFFFF", opacity: 1 };
+  // This toolbar only ever offers a flat color swatch — it has no UI for the
+  // gradient/pattern/image variants a rectangle's fill can carry via the
+  // Template Engine's background slot, so a rectangle currently set to one of
+  // those falls back to a plain white display here (committing through this
+  // swatch always writes back a solid fill; see onCommit below).
+  const fill =
+    element.fill && "color" in element.fill
+      ? element.fill
+      : { color: "#FFFFFF", opacity: 1 };
   const stroke = element.stroke ?? {
     color: "#1A1A1A",
     opacity: 1,
@@ -163,7 +171,9 @@ export function ShapeToolbar({
             <ColorField
               label="Fill color"
               color={fill.color}
-              onCommit={(color) => update({ fill: { ...fill, color } })}
+              onCommit={(color) =>
+                update({ fill: { type: "solid", color, opacity: fill.opacity } })
+              }
             />
             <SliderField
               label="Fill opacity"
@@ -173,7 +183,7 @@ export function ShapeToolbar({
               step={0.01}
               formatValue={(value) => `${Math.round(value * 100)}%`}
               onCommit={(opacity) =>
-                update({ fill: { ...fill, opacity } })
+                update({ fill: { type: "solid", color: fill.color, opacity } })
               }
             />
           </Panel>

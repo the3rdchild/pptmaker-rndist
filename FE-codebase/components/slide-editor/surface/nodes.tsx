@@ -50,6 +50,7 @@ import {
   type TableSelectModifiers,
 } from "@/components/slide-editor/tables/TemplateV2TableElement";
 import { transformSvgMarkup } from "@/lib/svg-color";
+import { ShapeFillRect } from "@/components/slide-editor/surface/shape-fill";
 import {
   asRecord,
   borderRadius,
@@ -935,6 +936,29 @@ function RawElementVisual({
   void fontRevision;
   const type = readString(element.type);
   if (isBoxVisualType(type)) {
+    const fillType = asRecord(element.fill)?.type;
+    // Only rectangles ever carry a non-solid ShapeFill (the Template Engine
+    // slot panel is the only author of one) — container/flex/grid/card share
+    // this render branch but always stay on the plain solid path.
+    if (type === "rectangle" && typeof fillType === "string" && fillType !== "solid") {
+      const stroke = colorWithOpacity(
+        strokeColor(element.stroke),
+        strokeOpacity(element.stroke),
+      );
+      return (
+        <ShapeFillRect
+          fill={element.fill as never}
+          width={width}
+          height={height}
+          stroke={stroke}
+          strokeWidth={strokeWidth(element.stroke)}
+          dash={strokeDash(element.stroke)}
+          cornerRadius={borderRadius(element)}
+          shadowProps={shadowProps(element)}
+          listening={interactive}
+        />
+      );
+    }
     const fill = colorWithOpacity(
       fillColor(element.fill),
       fillOpacity(element.fill),

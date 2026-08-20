@@ -15,6 +15,12 @@ import {
   type LayoutMeta,
 } from "@/components/slide-editor/templates/slot-meta";
 import type { SlideTransition } from "@/store/presentationGeneration";
+import {
+  isBackgroundComponent,
+  STAGE_HEIGHT,
+  STAGE_WIDTH,
+  type RawComponent,
+} from "@/components/slide-editor/model/model";
 
 type Rec = Record<string, unknown>;
 
@@ -221,6 +227,47 @@ export function extractUiElements(ui: Rec): Rec[] {
   return [];
 }
 
+const DEFAULT_BACKGROUND_COLOR = "#FFFFFF";
+
+/** A full-bleed white rectangle, decorative and named "background" —
+ *  matching exactly what the .pptx importer already synthesizes for a slide
+ *  with no explicit background fill (see slideBackground/backgroundRect in
+ *  pptx-import.ts), so every code path that produces a background element
+ *  agrees on its shape. */
+export function defaultBackgroundComponent(): Rec {
+  return {
+    id: "background",
+    position: { x: 0, y: 0 },
+    size: { width: STAGE_WIDTH, height: STAGE_HEIGHT },
+    elements: [
+      {
+        type: "rectangle",
+        name: "background",
+        decorative: true,
+        position: { x: 0, y: 0 },
+        size: { width: STAGE_WIDTH, height: STAGE_HEIGHT },
+        fill: { type: "solid", color: DEFAULT_BACKGROUND_COLOR, opacity: 1 },
+      },
+    ],
+  };
+}
+
+/** Every saved layout gets a background component, whether the author added
+ *  one or not — a page with no background renders on bare white, which
+ *  reads as visibly broken the moment the theme uses a dark canvas. Reuses
+ *  isBackgroundComponent's geometric definition (full-bleed, no text/table/
+ *  chart content) so this recognizes a background regardless of whether the
+ *  author named it "background", used a rectangle vs an image, etc. —
+ *  matching what the general editor's own Background panel already treats
+ *  as "the" background. Inserted first (painted behind everything else)
+ *  only when nothing already qualifies. */
+export function ensureBackgroundComponent(components: Rec[]): Rec[] {
+  const hasBackground = components.some((component) =>
+    isBackgroundComponent(component as RawComponent),
+  );
+  return hasBackground ? components : [defaultBackgroundComponent(), ...components];
+}
+
 export function exportSlideAsLayout(
   ui: Rec,
   options: {
@@ -261,6 +308,10 @@ export function exportSlideAsLayout(
       message: "The slide has no exportable content.",
     });
   }
+
+  // After the emptiness check, not before — a page with only a background
+  // still has no real content, and should still warn about that.
+  components = ensureBackgroundComponent(components);
 
   const meta = parseLayoutMeta(options.meta ?? null);
   if (!meta?.slide_role) {

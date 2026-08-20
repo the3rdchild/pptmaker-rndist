@@ -1525,10 +1525,10 @@ function invisibleFallbackElement(): SlideElement {
 
 function backgroundFromElements(elements: SlideElement[]) {
   const background = findBackgroundRectangle(elements, 0, 0);
-
-  return background?.type === "rectangle" && background.fill?.color
-    ? background.fill.color
-    : "FFFFFF";
+  const fill = background?.type === "rectangle" ? background.fill : null;
+  // Only the flat-color fill variants (solid/checkered/lines) have a single
+  // representative color; gradient/image have no one hex to fall back to.
+  return fill && "color" in fill && fill.color ? fill.color : "FFFFFF";
 }
 
 function findBackgroundRectangle(
@@ -1545,7 +1545,9 @@ function findBackgroundRectangle(
       y === 0 &&
       element.size?.width === EDITOR_STAGE_WIDTH &&
       element.size?.height === EDITOR_STAGE_HEIGHT &&
-      element.fill?.color
+      element.fill &&
+      "color" in element.fill &&
+      element.fill.color
     ) {
       return element;
     }

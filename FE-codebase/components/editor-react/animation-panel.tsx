@@ -534,9 +534,15 @@ export default function AnimationPanel({
   // grids of effect cards plus the build list — scrolls between them. Two
   // stickies at opposite edges rather than stacked at the top, so neither has
   // to know how tall the other one happens to be.
+  // Three tones off the existing surface ramp so the pinned chrome reads as
+  // chrome and the scrolling middle as the well it is: surface (header) over
+  // base (middle) under panel (footer). Flat --bg-panel everywhere left the
+  // effect cards, which are themselves --bg-surface, only a few points away
+  // from what they sat on. min-h-full + flex-1 on the middle so its darker
+  // tone still reaches the footer when a slide has almost nothing on it.
   return (
-    <div className="flex flex-col pb-2">
-      <div className="sticky top-0 z-20 flex flex-col gap-1.5 border-b border-[var(--border)] bg-[var(--bg-panel)] px-2.5 pb-2.5 pt-2.5">
+    <div className="flex min-h-full flex-col">
+      <div className="sticky top-0 z-20 flex flex-col gap-1.5 border-b border-[var(--border)] bg-[var(--bg-surface)] px-2.5 pb-2.5 pt-2.5">
         {onPreviewAnimation && (
           <button
             onClick={onPreviewAnimation}
@@ -606,7 +612,7 @@ export default function AnimationPanel({
         </div>
       </div>
 
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-1 flex-col gap-3 bg-[var(--bg-base)] pb-3">
       {canEdit ? (
         <>
           <PanelLabel>Selected element</PanelLabel>
@@ -692,7 +698,7 @@ export default function AnimationPanel({
           because the panel's own height is content-driven inside the scroll
           container and a percentage max-height would resolve to none. */}
       {canEdit && steps.length > 0 && (
-        <div className="sticky bottom-0 z-20 mt-3 max-h-[38vh] overflow-y-auto border-t border-[var(--border)] bg-[var(--bg-panel)] px-2.5 pb-2.5 pt-2">
+        <div className="sticky bottom-0 z-20 max-h-[38vh] overflow-y-auto border-t border-[var(--border)] bg-[var(--bg-panel)] px-2.5 pb-2.5 pt-2">
           <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
             Step timing
           </span>

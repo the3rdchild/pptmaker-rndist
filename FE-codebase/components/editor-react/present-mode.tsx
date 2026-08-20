@@ -599,7 +599,18 @@ export default function PresentMode({
     (groupIndex: number) => {
       const animRun = animationRunRef.current;
       if (!animRun || animRun.activeGroup !== groupIndex) return;
-      if (groupIndex + 1 >= animRun.plan.groups.length) finishAnimationRun();
+      if (groupIndex + 1 < animRun.plan.groups.length) return;
+      if (animRun.plan.hasLoop) {
+        // A looping emphasis runs until the slide is left, and handing the
+        // slide back to the live stage is exactly where it would stop dead —
+        // the loop lives on the raster. So the overlay stays up; only the
+        // transition bookkeeping is closed out, or the next navigation would
+        // read this as still mid-flight and cut without its transition.
+        // goTo restores everything on the way out.
+        runRef.current = null;
+        return;
+      }
+      finishAnimationRun();
     },
     [finishAnimationRun],
   );

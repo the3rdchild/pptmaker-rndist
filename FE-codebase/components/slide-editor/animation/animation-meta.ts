@@ -78,6 +78,11 @@ export type AnimationStep = {
   /** ms, on top of whatever the trigger implies */
   delay: number;
   easing: AnimationEasing;
+  /** Emphasis only: repeat until the slide is left instead of beating once.
+   *  The build still moves on after ONE iteration — an after-previous step
+   *  behind a looping one would otherwise never start — so this changes how
+   *  long the element keeps moving, not the sequence. */
+  loop?: boolean;
 };
 
 const EFFECT_KINDS = new Map<AnimationEffect, AnimationKind>(
@@ -158,6 +163,10 @@ export function parseElementAnimations(raw: unknown): AnimationStep[] | null {
     if (!kind || byKind.has(kind)) continue;
     byKind.set(kind, {
       effect,
+      // Looping an entrance or an exit would mean an element that never
+      // finishes arriving or leaving, so the flag is dropped for those kinds
+      // rather than honoured.
+      ...(kind === "emphasis" && item.loop === true ? { loop: true } : {}),
       trigger:
         typeof item.trigger === "string" && TRIGGER_IDS.has(item.trigger)
           ? (item.trigger as AnimationTrigger)

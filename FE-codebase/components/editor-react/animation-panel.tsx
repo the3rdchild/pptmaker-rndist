@@ -222,6 +222,21 @@ function StepControls({
           />
         </label>
       </div>
+      {animationEffectKind(step.effect) === "emphasis" && (
+        <label className="flex items-start gap-2">
+          <input
+            type="checkbox"
+            checked={step.loop === true}
+            onChange={(e) => onCommit({ loop: e.target.checked || undefined })}
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[var(--accent)]"
+          />
+          <span className="text-[10px] leading-relaxed text-[var(--text-muted)]">
+            <span className="text-[var(--text-secondary)]">Loop</span> — keep
+            beating until the slide is left. The build still moves on after the
+            first pass, so anything set to follow this step still runs.
+          </span>
+        </label>
+      )}
     </div>
   );
 }

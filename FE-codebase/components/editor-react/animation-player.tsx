@@ -212,7 +212,6 @@ export function AnimationOverlay({
         const entranceGroup = steps[0]?.groupIndex ?? -1;
         const startsHidden =
           plan.hiddenAtStart.includes(flight.key) && activeGroup < entranceGroup;
-        const running = steps.filter((s) => s.groupIndex === activeGroup);
         // Every step the element has REACHED, not just the running ones. The
         // list has to grow monotonically: CSS matches animations to the
         // animation-name list by index, so dropping a finished step shifts the
@@ -263,12 +262,21 @@ export function AnimationOverlay({
                       FILL_MODE[animationEffectKind(s.planned.step.effect)!],
                   )
                   .join(", "),
+                animationIterationCount: active
+                  .map((s) => (s.planned.step.loop ? "infinite" : "1"))
+                  .join(", "),
                 // Dropped the moment the group finishes (running empties and
                 // only the forwards-filling exits keep values at all) — a
                 // permanently promoted layer per animated element is a slow
-                // GPU leak.
+                // GPU leak. A looping step is the exception: it is still
+                // moving after its group, so it keeps its promotion.
                 willChange: willChangeFor(
-                  running.map((s) => s.planned.step.effect),
+                  active
+                    .filter(
+                      (s) =>
+                        s.groupIndex === activeGroup || s.planned.step.loop,
+                    )
+                    .map((s) => s.planned.step.effect),
                 ),
               }
             : {}),

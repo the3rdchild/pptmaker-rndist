@@ -52,6 +52,10 @@ export interface AnimationPlan {
   /** Every element touched by any step — these are cut out of the base bitmap
    *  and re-rendered as their own rasters. */
   animatedKeys: string[];
+  /** Some emphasis step repeats until the slide is left. The overlay then has
+   *  to stay up after the last group instead of handing the slide back to the
+   *  live stage, which is where the looping element would stop dead. */
+  hasLoop: boolean;
 }
 
 const EMPTY_PLAN: AnimationPlan = {
@@ -59,6 +63,7 @@ const EMPTY_PLAN: AnimationPlan = {
   hiddenAtStart: [],
   hiddenAtEnd: [],
   animatedKeys: [],
+  hasLoop: false,
 };
 
 /** One step as the panel's build list shows it: the step plus enough context
@@ -272,6 +277,9 @@ export function buildAnimationPlan(
     if (steps.length === 0) return;
     groups.push({
       steps,
+      // A looping step counts for ONE iteration here on purpose: the group has
+      // to be able to finish, or an after-previous step behind a loop would
+      // never start and the build would stall forever.
       durationMs: Math.max(
         ...steps.map(({ step, startAt }) => startAt + step.delay + step.duration),
       ),
@@ -324,5 +332,6 @@ export function buildAnimationPlan(
       .filter((entry) => kindOf(entry) === "exit")
       .map((entry) => entry.key),
     animatedKeys: [...new Set(entries.map((entry) => entry.key))],
+    hasLoop: entries.some((entry) => entry.step.loop === true),
   };
 }

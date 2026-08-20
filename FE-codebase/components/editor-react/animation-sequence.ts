@@ -8,6 +8,7 @@
 
 import { walkSlideElements } from "@/components/editor-react/morph";
 import {
+  MAX_ANIMATION_FLIGHTS,
   animationEffectKind,
   parseElementAnimations,
   type AnimationEffect,
@@ -19,12 +20,10 @@ import {
 } from "@/components/slide-editor/model/model";
 import type { ElementSelection, RawUi } from "@/components/slide-editor/model/core";
 
-/** Each flight is one composited layer for the whole time the overlay is up
- *  (not just while moving), so an unbounded plan is a VRAM bomb on weak GPUs.
- *  Steps past this budget are dropped from the back of the build order and
- *  their elements simply render statically — same policy as morph's
- *  MAX_MORPH_FLIGHTS. */
-export const MAX_ANIMATION_FLIGHTS = 40;
+/** Re-exported for the consumers already reaching for it here; the budget
+ *  itself is defined next to the step schema. Steps past it are dropped from
+ *  the back of the build order and their elements render statically. */
+export { MAX_ANIMATION_FLIGHTS };
 
 export interface PlannedStep {
   /** keyForSelection(selection) — also the lookup key in Konva nodeRefs. */

@@ -21,8 +21,10 @@ import {
   STAGE_WIDTH,
   type RawComponent,
 } from "@/components/slide-editor/model/model";
-import { parseElementAnimations } from "@/components/slide-editor/animation/animation-meta";
-import { MAX_ANIMATION_FLIGHTS } from "@/components/editor-react/animation-sequence";
+import {
+  MAX_ANIMATION_FLIGHTS,
+  parseElementAnimations,
+} from "@/components/slide-editor/animation/animation-meta";
 
 type Rec = Record<string, unknown>;
 
@@ -388,7 +390,10 @@ function auditSlots(components: Rec[]): ExportWarning[] {
 function auditAnimations(components: Rec[]): ExportWarning[] {
   const warnings: ExportWarning[] = [];
   let decorative = 0;
-  let total = 0;
+  // The playback budget counts ELEMENTS, not steps — one element running an
+  // entrance and an exit is still a single flight — so this has to count the
+  // same thing or the warning fires on layouts that play back fine.
+  let animated = 0;
   // order → how many DISTINCT elements chain an after-previous step at that
   // position. Shared values there are legal but their sequence falls back to
   // element order, which is rarely what the author meant.
@@ -401,9 +406,9 @@ function auditAnimations(components: Rec[]): ExportWarning[] {
       typeof element.name === "string" && element.name.trim()
         ? element.name
         : String(element.type ?? "element");
+    animated += 1;
     if (element.decorative === true) decorative += 1;
     for (const step of steps) {
-      total += 1;
       if (step.trigger !== "after-previous") continue;
       const names = chainedByOrder.get(step.order) ?? new Set<string>();
       names.add(name);
@@ -427,10 +432,10 @@ function auditAnimations(components: Rec[]): ExportWarning[] {
       message: `${ambiguous} animation order value${ambiguous === 1 ? " is" : "s are"} shared by several after-previous steps — their sequence falls back to element order, not authoring.`,
     });
   }
-  if (total > MAX_ANIMATION_FLIGHTS) {
+  if (animated > MAX_ANIMATION_FLIGHTS) {
     warnings.push({
       level: "warning",
-      message: `${total} animation steps on one layout — playback caps at ${MAX_ANIMATION_FLIGHTS}; the rest render statically.`,
+      message: `${animated} animated elements on one layout — playback caps at ${MAX_ANIMATION_FLIGHTS}; the rest render statically.`,
     });
   }
   return warnings;

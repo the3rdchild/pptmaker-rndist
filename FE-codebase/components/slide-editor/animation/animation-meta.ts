@@ -13,6 +13,13 @@
  *  temporary beat that returns the element to rest. */
 export type AnimationKind = "entrance" | "emphasis" | "exit";
 
+/** How many distinct ELEMENTS one slide may animate. Each one becomes a
+ *  composited layer for the whole time the overlay is up (not just while it
+ *  moves), so an unbounded plan is a VRAM bomb on weak GPUs — same policy as
+ *  morph's flight cap. Lives here rather than next to the planner so the
+ *  template exporter can warn against it without importing the editor. */
+export const MAX_ANIMATION_FLIGHTS = 40;
+
 export type AnimationEffect =
   // entrance
   | "fade-in" | "rise" | "slide-in-left" | "slide-in-right"

@@ -347,11 +347,15 @@ export default function PresentMode({
       const opacities = captured.sources.map(
         (node) => [node, node.opacity()] as const,
       );
-      // "none" + animations still runs the prepare pipeline (the animation
-      // overlay needs the frozen base bitmap), but with no transition there
-      // is no outgoing frame to freeze.
+      // The backdrop has a second job besides being the thing a transition
+      // animates: it covers the incoming slide while it rebuilds. A "none"
+      // transition with animations needs that cover too — without it the new
+      // slide appears complete, and then the elements about to animate in
+      // visibly pop OUT as the capture hides them. So freeze the outgoing
+      // frame whenever there is a prepare phase at all; with no transition to
+      // play it is simply dropped (no fade) once the build starts.
       let backdrop: HTMLCanvasElement | null = null;
-      if (type !== "none") {
+      if (type !== "none" || hasAnimation) {
         if (opacities.length > 0) {
           opacities.forEach(([node]) => node.opacity(0));
           stageRef.current?.getLayers().forEach((layer) => layer.draw());
@@ -773,6 +777,14 @@ export default function PresentMode({
   // drawing into its canvases either way) — only hidden, so the compositor has
   // one flat layer to move instead of five live ones.
   const frozenIncoming = transition?.incoming ?? null;
+  // The opening slide's run has no outgoing frame to hide behind (there is no
+  // previous slide), so the live stage has to step aside on its own until the
+  // freeze is ready — otherwise the deck opens showing every element and then
+  // the animated ones blink out. A beat of the black backdrop is the right
+  // thing to show there; every other run covers this phase with a backdrop.
+  const hideLiveStage =
+    Boolean(frozenIncoming) ||
+    (transition?.stage === "preparing" && !transition.backdrop);
 
   return (
     <div
@@ -806,7 +818,7 @@ export default function PresentMode({
               className={`relative ${frozenIncoming ? "" : slideAnimation}`}
               style={{
                 zIndex: 1,
-                visibility: frozenIncoming ? "hidden" : "visible",
+                visibility: hideLiveStage ? "hidden" : "visible",
               }}
             >
               {/* One live Konva surface for the whole presentation. Slide

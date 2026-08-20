@@ -863,13 +863,40 @@ export default function PresentMode({
             </div>
 
             {/* The arriving slide, frozen the moment its scene settled. This
-                is the thing that actually slides/fades in. */}
+                is the thing that actually slides/fades in — and the element
+                flights ride along INSIDE it, because they were cut out of that
+                bitmap and are part of the same slide. Animating the bitmap on
+                its own left an exit- or emphasis-only element (nothing hides
+                those before their group starts) pinned in place while the rest
+                of its slide travelled in behind it.
+
+                The wrapper's z-index also puts the flights where they belong
+                during a morph: under the outgoing backdrop (z3) while it is
+                still crossfading, rather than on top of the slide being left.
+                It makes a stacking context, so the flights' own z-index only
+                has to out-rank the bitmap beneath them. */}
             {frozenIncoming ? (
-              <CanvasHost
-                canvas={frozenIncoming}
+              <div
                 className={`pointer-events-none absolute inset-0 ${slideAnimation}`}
                 style={{ zIndex: 1 }}
-              />
+              >
+                <CanvasHost
+                  canvas={frozenIncoming}
+                  className="pointer-events-none absolute inset-0"
+                />
+                {/* Element animation flights: cut from the settled incoming
+                    stage before it was frozen, so the bitmap underneath never
+                    contained them. Group 0 starts only after the transition
+                    finished. */}
+                {animationRun ? (
+                  <AnimationOverlay
+                    flights={animationRun.flights}
+                    plan={animationRun.plan}
+                    activeGroup={animationRun.activeGroup}
+                    onGroupDone={onAnimationGroupDone}
+                  />
+                ) : null}
+              </div>
             ) : null}
 
             {/* The slide being left, frozen to a bitmap. Nothing repaints it,
@@ -925,18 +952,6 @@ export default function PresentMode({
                 />
               );
             })}
-
-            {/* Element animation flights: cut from the settled incoming stage
-                before it was frozen, so the bitmap underneath never contained
-                them. Group 0 starts only after the transition finished. */}
-            {animationRun && frozenIncoming ? (
-              <AnimationOverlay
-                flights={animationRun.flights}
-                plan={animationRun.plan}
-                activeGroup={animationRun.activeGroup}
-                onGroupDone={onAnimationGroupDone}
-              />
-            ) : null}
 
             {/* fade-white / fade-black: opaque cover over the new slide that
                 fades out to reveal it. */}

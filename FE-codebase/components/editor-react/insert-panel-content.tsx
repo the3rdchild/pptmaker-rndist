@@ -36,11 +36,11 @@ import {
   ELEMENT_CATALOG,
   ELEMENT_CATEGORY_LABELS,
   ELEMENT_DRAG_MIME,
-  elementCategoryOrder,
   insertedBoxSize,
   makeDragGhost,
   renderCatalogIcon,
   type ElementCatalogEntry,
+  type ElementCategory,
 } from "@/components/editor-react/element-catalog";
 import {
   createChartInsertElements,
@@ -275,6 +275,20 @@ function useDebouncedValue<T>(value: T, delay: number): T {
   return debounced;
 }
 
+/** Lines/basic/polygons/stars/arrows/flowchart are all plain shape
+ *  primitives inserted the same way, so they render as one flat "Shape"
+ *  catalog section. Frames (image containers) and infographics (composed
+ *  motifs) stay separate — different kind of content, not just a different
+ *  label. */
+const SHAPE_CATEGORIES: ElementCategory[] = [
+  "lines",
+  "basic",
+  "polygons",
+  "stars",
+  "arrows",
+  "flowchart",
+];
+
 export function ElementsTab({
   search,
   recentKeys,
@@ -303,14 +317,19 @@ export function ElementsTab({
     .map((key) => catalogByKey.get(key))
     .filter((entry): entry is ElementCatalogEntry => Boolean(entry));
 
-  const categories = elementCategoryOrder()
-    .map((category) => ({
-      category,
-      entries: ELEMENT_CATALOG.filter(
-        (entry) => entry.category === category && matches(entry.label, search)
-      ),
-    }))
-    .filter((group) => group.entries.length > 0);
+  const frameEntries = ELEMENT_CATALOG.filter(
+    (entry) => entry.category === "frames" && matches(entry.label, search),
+  );
+  const infographicEntries = ELEMENT_CATALOG.filter(
+    (entry) => entry.category === "infographics" && matches(entry.label, search),
+  );
+  const shapeEntries = ELEMENT_CATALOG.filter(
+    (entry) => SHAPE_CATEGORIES.includes(entry.category) && matches(entry.label, search),
+  );
+  const noShapesFound =
+    frameEntries.length === 0 &&
+    infographicEntries.length === 0 &&
+    shapeEntries.length === 0;
 
   // Cards double as drag sources: dragging one onto the canvas drops the
   // element at that spot (handled by the canvas's drop handler), clicking
@@ -359,15 +378,22 @@ export function ElementsTab({
           </div>
         </>
       )}
-      {categories.map(({ category, entries }) => (
-        <ExpandableSection
-          key={category}
-          label={ELEMENT_CATEGORY_LABELS[category]}
-          columns={4}
-          items={entries.map((entry) => renderEntryCard(entry, entry.key))}
-        />
-      ))}
-      {categories.length === 0 && (
+      <ExpandableSection
+        label={ELEMENT_CATEGORY_LABELS.frames}
+        columns={4}
+        items={frameEntries.map((entry) => renderEntryCard(entry, entry.key))}
+      />
+      <ExpandableSection
+        label={ELEMENT_CATEGORY_LABELS.infographics}
+        columns={4}
+        items={infographicEntries.map((entry) => renderEntryCard(entry, entry.key))}
+      />
+      <ExpandableSection
+        label="Shape"
+        columns={4}
+        items={shapeEntries.map((entry) => renderEntryCard(entry, entry.key))}
+      />
+      {noShapesFound && (
         <EmptyState
           icon={<LayoutGrid size={20} />}
           title="No shapes found"

@@ -463,10 +463,6 @@ export const ELEMENT_CATALOG: ElementCatalogEntry[] = [
   },
 ];
 
-export function elementCategoryOrder(): ElementCategory[] {
-  return ["frames", "infographics", "lines", "basic", "polygons", "stars", "arrows", "flowchart"];
-}
-
 export function renderCatalogIcon(entry: ElementCatalogEntry, size = 22) {
   if (entry.icon.kind === "shape") {
     return <ShapePreview kind={entry.icon.shape} size={size} />;

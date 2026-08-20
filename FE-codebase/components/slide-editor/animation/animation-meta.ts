@@ -76,6 +76,12 @@ export type AnimationStep = {
 const EFFECT_KINDS = new Map<AnimationEffect, AnimationKind>(
   ANIMATION_EFFECTS.map((effect) => [effect.id, effect.kind]),
 );
+
+export function animationEffectKind(
+  effect: AnimationEffect,
+): AnimationKind | undefined {
+  return EFFECT_KINDS.get(effect);
+}
 const TRIGGER_IDS = new Set<string>(["on-click", "with-previous", "after-previous"]);
 const EASING_IDS = new Set<string>(["ease-out", "ease-in", "ease-in-out", "linear"]);
 

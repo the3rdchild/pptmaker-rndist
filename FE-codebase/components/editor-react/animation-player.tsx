@@ -206,7 +206,7 @@ export function AnimationOverlay({
 
   return (
     <>
-      {flights.map((flight) => {
+      {flights.map((flight, paintIndex) => {
         const steps = stepsByKey.get(flight.key) ?? [];
         // The element's first step (build order) decides when it may appear.
         const entranceGroup = steps[0]?.groupIndex ?? -1;
@@ -229,9 +229,14 @@ export function AnimationOverlay({
           top: flight.box.y,
           width: flight.box.width,
           height: flight.box.height,
-          // 4 keeps the flights under Present Mode's fade cover (5) so a
-          // fade-white/black transition still fades over them.
-          zIndex: 4,
+          // The flights arrive in the slide's paint order (see the plan's
+          // animatedKeys), so their index IS their layer. Stacking them by
+          // build order instead is what let a decoration that animates late
+          // cover a photo frame sitting above it on the slide. Only relative
+          // order matters: both hosts put this overlay inside a positioned,
+          // z-indexed wrapper, so these values never escape to compete with
+          // Present Mode's fade cover.
+          zIndex: 1 + paintIndex,
           transformOrigin: "center",
           opacity: startsHidden ? 0 : 1,
           // Travel distances so the slide effects start fully off the slide

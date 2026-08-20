@@ -56,7 +56,10 @@ export interface AnimationPlan {
   /** Elements that must END hidden (their last step is an exit). */
   hiddenAtEnd: string[];
   /** Every element touched by any step — these are cut out of the base bitmap
-   *  and re-rendered as their own rasters. */
+   *  and re-rendered as their own rasters. **In the slide's paint order**, not
+   *  build order: the flights are stacked in this order, so it is what keeps a
+   *  photo frame above the decoration it overlaps even when the decoration
+   *  animates later. */
   animatedKeys: string[];
   /** Some emphasis step repeats until the slide is left. The overlay then has
    *  to stay up after the last group instead of handing the slide back to the
@@ -329,10 +332,16 @@ export function buildAnimationPlan(
   // the order the panel's sequence list shows.
   type Entry = { key: string; selection: ElementSelection; step: AnimationStep };
   const entries: Entry[] = [];
+  // walkSlideElements is pre-order over components then elements then
+  // children, which is exactly the order Konva paints them — so this doubles
+  // as the slide's layering, recorded here because the plan is the only thing
+  // that still knows it by the time the flights are stacked.
+  const paintOrder: string[] = [];
   for (const ref of walkSlideElements(ui)) {
     if (excludeKeys?.has(ref.key)) continue;
     const steps = parseElementAnimations(ref.element.animations);
     if (!steps) continue;
+    paintOrder.push(ref.key);
     for (const step of steps) {
       entries.push({ key: ref.key, selection: ref.selection, step });
     }
@@ -405,6 +414,7 @@ export function buildAnimationPlan(
     lastByKindOrder.set(entry.key, entry);
   }
   const kindOf = (entry: Entry) => animationEffectKind(entry.step.effect);
+  const budgeted = new Set(entries.map((entry) => entry.key));
 
   return {
     groups,
@@ -414,7 +424,12 @@ export function buildAnimationPlan(
     hiddenAtEnd: [...lastByKindOrder.values()]
       .filter((entry) => kindOf(entry) === "exit")
       .map((entry) => entry.key),
-    animatedKeys: [...new Set(entries.map((entry) => entry.key))],
+    // Paint order, NOT build order. The flights are stacked in the order this
+    // list gives them, so ordering it by when each element animates put a
+    // late-building decoration on top of a photo frame that sits above it on
+    // the slide. Filtered against the budgeted entries so a dropped element
+    // does not reserve a slot.
+    animatedKeys: paintOrder.filter((key) => budgeted.has(key)),
     hasLoop: entries.some((entry) => entry.step.loop === true),
   };
 }

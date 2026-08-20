@@ -20,7 +20,11 @@ import {
   absoluteBoxForSelection,
   isBackgroundComponent,
 } from "@/components/slide-editor/model/model";
-import type { ElementSelection, RawUi } from "@/components/slide-editor/model/core";
+import {
+  ROOT_ELEMENTS_COMPONENT_INDEX,
+  type ElementSelection,
+  type RawUi,
+} from "@/components/slide-editor/model/core";
 
 /** Re-exported for the consumers already reaching for it here; the budget
  *  itself is defined next to the step schema. Steps past it are dropped from
@@ -180,7 +184,7 @@ export function applyAnimateAllPreset(
         prefix.path.every((value, index) => path[index] === value),
     );
 
-  const ranked: { key: string; band: number; x: number }[] = [];
+  const ranked: { key: string; beat: string; band: number; x: number }[] = [];
   for (const ref of walkSlideElements(ui)) {
     if (backgroundComponents.has(ref.selection.componentIndex)) continue;
     if (underAccepted(ref.selection.componentIndex, ref.selection.elementPath)) {
@@ -192,6 +196,7 @@ export function applyAnimateAllPreset(
     const box = absoluteBoxForSelection(ui as RawUi, ref.selection);
     ranked.push({
       key: ref.key,
+      beat: beatKey(ref.selection.componentIndex, ref.selection.elementPath),
       band: box ? Math.floor(box.y / ORDER_BAND_PX) : Number.MAX_SAFE_INTEGER,
       x: box?.x ?? 0,
     });
@@ -201,22 +206,50 @@ export function applyAnimateAllPreset(
     });
   }
 
-  ranked.sort((a, b) => a.band - b.band || a.x - b.x);
-  const assignment = new Map(
-    ranked
-      .slice(0, MAX_ANIMATION_FLIGHTS)
-      .map((entry, index) => [entry.key, index + 1]),
-  );
+  // Elements that share a component were grouped on the canvas (grouping
+  // merges the components into one), so they read as a single thing and have
+  // to move as one — animating a grouped card's icon, title and body one by
+  // one is what the beat exists to prevent. A beat is sorted by its
+  // topmost-leftmost member, and beats run in reading order between them.
+  const beats = new Map<string, typeof ranked>();
+  for (const entry of ranked) {
+    const members = beats.get(entry.beat) ?? [];
+    members.push(entry);
+    beats.set(entry.beat, members);
+  }
+  const readingOrder = (a: { band: number; x: number }, b: typeof a) =>
+    a.band - b.band || a.x - b.x;
+  const ordered = [...beats.values()]
+    .map((members) => [...members].sort(readingOrder))
+    .sort((a, b) => readingOrder(a[0], b[0]));
+
+  // The budget counts elements, so slice across the flattened beats rather
+  // than dropping whole ones — a half-animated beat still plays correctly,
+  // its remaining members just render statically.
+  const assignment = new Map<string, { order: number; first: boolean }>();
+  for (const members of ordered) {
+    members.forEach((member, indexInBeat) => {
+      if (assignment.size >= MAX_ANIMATION_FLIGHTS) return;
+      assignment.set(member.key, {
+        order: assignment.size + 1,
+        first: indexInBeat === 0,
+      });
+    });
+  }
   if (assignment.size === 0) return null;
 
   const next: Record<string, unknown> = JSON.parse(JSON.stringify(ui));
   for (const ref of walkSlideElements(next)) {
-    const order = assignment.get(ref.key);
-    if (order === undefined) continue;
+    const slot = assignment.get(ref.key);
+    if (!slot) continue;
     const step: AnimationStep = {
       effect,
-      trigger: timing.trigger,
-      order,
+      // Only the element opening a beat carries the chosen trigger; the rest
+      // ride along with it. with-previous is what makes them share a start
+      // time — the order values stay distinct so the build list can still
+      // show and reorder them individually.
+      trigger: slot.first ? timing.trigger : "with-previous",
+      order: slot.order,
       duration: timing.duration,
       delay: timing.delay,
       easing: timing.easing,
@@ -224,6 +257,16 @@ export function applyAnimateAllPreset(
     ref.element.animations = [step];
   }
   return next;
+}
+
+/** What counts as "one beat" for the preset. Elements inside the same
+ *  component were grouped together (groupComponentsInUi merges the selected
+ *  components into one, so a canvas group IS a component); root-level
+ *  elements have no such relationship, so each stands alone. */
+function beatKey(componentIndex: number, elementPath: number[]): string {
+  return componentIndex === ROOT_ELEMENTS_COMPONENT_INDEX
+    ? `root:${elementPath[0]}`
+    : `component:${componentIndex}`;
 }
 
 /** Retimes every step already on the slide without touching which effects

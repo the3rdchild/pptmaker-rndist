@@ -11,8 +11,10 @@ import {
   MAX_ANIMATION_FLIGHTS,
   animationEffectKind,
   parseElementAnimations,
+  type AnimationEasing,
   type AnimationEffect,
   type AnimationStep,
+  type AnimationTrigger,
 } from "@/components/slide-editor/animation/animation-meta";
 import {
   absoluteBoxForSelection,
@@ -127,9 +129,19 @@ export function rewriteAnimationOrders(
  *  left-to-right instead of by microscopic y jitter. */
 const ORDER_BAND_PX = 40;
 
+/** The timing every step of an "Animate all" pass gets, so the preset is a
+ *  choice of effect plus a choice of pacing rather than four hardcoded
+ *  numbers. `trigger` applies to the element that opens each beat. */
+export interface AnimateAllTiming {
+  trigger: AnimationTrigger;
+  duration: number;
+  delay: number;
+  easing: AnimationEasing;
+}
+
 /** "Animate all" preset: one entrance step for every meaningful element,
  *  ordered the way a reader scans (top-to-bottom in bands, then
- *  left-to-right), all after-previous so the stagger feels natural.
+ *  left-to-right).
  *
  *  Skip rules: decorative elements (their children stay candidates), whole
  *  background components, and the CHILDREN of an accepted element —
@@ -140,7 +152,7 @@ const ORDER_BAND_PX = 40;
 export function applyAnimateAllPreset(
   ui: Record<string, unknown> | null | undefined,
   effect: AnimationEffect,
-  duration: number,
+  timing: AnimateAllTiming,
 ): Record<string, unknown> | null {
   if (!ui) return null;
 
@@ -203,15 +215,43 @@ export function applyAnimateAllPreset(
     if (order === undefined) continue;
     const step: AnimationStep = {
       effect,
-      trigger: "after-previous",
+      trigger: timing.trigger,
       order,
-      duration,
-      delay: 0,
-      easing: "ease-out",
+      duration: timing.duration,
+      delay: timing.delay,
+      easing: timing.easing,
     };
     ref.element.animations = [step];
   }
   return next;
+}
+
+/** Retimes every step already on the slide without touching which effects
+ *  they are — the "apply to all" half of the timing controls, for a slide
+ *  whose animations are already the ones the author wants. Returns null when
+ *  there is nothing animated to retime. */
+export function applyTimingToAll(
+  ui: Record<string, unknown> | null | undefined,
+  timing: AnimateAllTiming,
+): Record<string, unknown> | null {
+  if (!ui) return null;
+  const next: Record<string, unknown> = JSON.parse(JSON.stringify(ui));
+  let touched = false;
+  for (const ref of walkSlideElements(next)) {
+    const steps = parseElementAnimations(ref.element.animations);
+    if (!steps) continue;
+    ref.element.animations = steps.map((step) => ({
+      ...step,
+      // `with-previous` is what binds a group's elements into one beat, so
+      // retiming must not flatten it back into a one-by-one chain.
+      trigger: step.trigger === "with-previous" ? step.trigger : timing.trigger,
+      duration: timing.duration,
+      delay: timing.delay,
+      easing: timing.easing,
+    }));
+    touched = true;
+  }
+  return touched ? next : null;
 }
 
 /** Strips every element's `animations` on a deep clone; null when there was

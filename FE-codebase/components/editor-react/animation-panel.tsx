@@ -15,7 +15,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Ban, GripVertical, Play, Square } from "lucide-react";
+import { Ban, GripVertical, Play, Square, Timer } from "lucide-react";
 import { PanelLabel } from "@/components/editor-react/ui";
 import { cn } from "@/lib/utils";
 import {
@@ -32,9 +32,11 @@ import {
 } from "@/components/slide-editor/animation/animation-meta";
 import {
   applyAnimateAllPreset,
+  applyTimingToAll,
   clearAllAnimations,
   collectSlideAnimationSteps,
   rewriteAnimationOrders,
+  type AnimateAllTiming,
 } from "@/components/editor-react/animation-sequence";
 import { keyForSelection } from "@/components/slide-editor/model/model";
 import type { TemplateSelectionPayload } from "@/components/slide-editor/surface/TemplateV2KonvaSlide";
@@ -244,18 +246,120 @@ function StepControls({
 const rowId = (key: string, effect: AnimationEffect) => `${key}|${effect}`;
 
 /** The preset patterns — one entrance effect each, applied to every
- *  meaningful element on the slide (replacing existing steps). */
+ *  meaningful element on the slide (replacing existing steps). Pacing comes
+ *  from the timing row next to them, not from the pattern. */
 const ANIMATE_ALL_PRESETS: {
   id: string;
   label: string;
   effect: AnimationEffect;
-  duration: number;
 }[] = [
-  { id: "fade", label: "Fade", effect: "fade-in", duration: 500 },
-  { id: "rise", label: "Rise", effect: "rise", duration: 550 },
-  { id: "slide", label: "Slide", effect: "slide-in-up", duration: 550 },
-  { id: "pop", label: "Pop", effect: "pop", duration: 450 },
+  { id: "fade", label: "Fade", effect: "fade-in" },
+  { id: "rise", label: "Rise", effect: "rise" },
+  { id: "slide", label: "Slide", effect: "slide-in-up" },
+  { id: "pop", label: "Pop", effect: "pop" },
 ];
+
+const DEFAULT_ANIMATE_ALL_TIMING: AnimateAllTiming = {
+  trigger: "after-previous",
+  duration: 500,
+  delay: 0,
+  easing: "ease-out",
+};
+
+/** Timing shared by every step an "Animate all" pass writes, and by the
+ *  "apply to all" button that retimes what is already there. Numbers commit
+ *  on blur like the per-step fields — but these only ever produce ONE ui
+ *  commit when a button is pressed, so the draft state stays local. */
+function AnimateAllTimingRow({
+  timing,
+  onChange,
+}: {
+  timing: AnimateAllTiming;
+  onChange: (next: AnimateAllTiming) => void;
+}) {
+  const [durationDraft, setDurationDraft] = useState(String(timing.duration));
+  const [delayDraft, setDelayDraft] = useState(String(timing.delay));
+
+  const fieldClass =
+    "h-8 w-full rounded-lg border border-[var(--border-strong)] bg-[var(--bg-base)] px-2 text-xs text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]/60";
+
+  return (
+    <div className="grid grid-cols-2 gap-1.5">
+      <label className="flex flex-col gap-1">
+        <span className="text-[10px] text-[var(--text-muted)]">Starts</span>
+        <select
+          className={fieldClass}
+          value={timing.trigger}
+          onChange={(e) =>
+            onChange({ ...timing, trigger: e.target.value as AnimationTrigger })
+          }
+        >
+          {TRIGGER_OPTIONS.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-[10px] text-[var(--text-muted)]">Easing</span>
+        <select
+          className={fieldClass}
+          value={timing.easing}
+          onChange={(e) =>
+            onChange({ ...timing, easing: e.target.value as AnimationEasing })
+          }
+        >
+          {EASING_OPTIONS.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-[10px] text-[var(--text-muted)]">Duration (ms)</span>
+        <input
+          type="number"
+          min={100}
+          max={4000}
+          step={50}
+          className={fieldClass}
+          value={durationDraft}
+          onChange={(e) => setDurationDraft(e.target.value)}
+          onBlur={() => {
+            const n = Math.min(
+              4000,
+              Math.max(100, Math.round(Number(durationDraft) || 500)),
+            );
+            setDurationDraft(String(n));
+            onChange({ ...timing, duration: n });
+          }}
+        />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-[10px] text-[var(--text-muted)]">Delay (ms)</span>
+        <input
+          type="number"
+          min={0}
+          max={10000}
+          step={50}
+          className={fieldClass}
+          value={delayDraft}
+          onChange={(e) => setDelayDraft(e.target.value)}
+          onBlur={() => {
+            const n = Math.min(
+              10000,
+              Math.max(0, Math.round(Number(delayDraft) || 0)),
+            );
+            setDelayDraft(String(n));
+            onChange({ ...timing, delay: n });
+          }}
+        />
+      </label>
+    </div>
+  );
+}
 
 const TRIGGER_BADGE: Record<AnimationTrigger, string> = {
   "on-click": "bg-[var(--accent-soft)] text-[var(--accent-light)]",
@@ -351,6 +455,9 @@ export default function AnimationPanel({
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+  );
+  const [animateAllTiming, setAnimateAllTiming] = useState<AnimateAllTiming>(
+    DEFAULT_ANIMATE_ALL_TIMING,
   );
 
   const element = elementSelection?.element ?? null;
@@ -513,6 +620,7 @@ export default function AnimationPanel({
       )}
       <PanelLabel>Animate all</PanelLabel>
       <div className="flex flex-col gap-1.5 px-2.5">
+        <AnimateAllTimingRow timing={animateAllTiming} onChange={setAnimateAllTiming} />
         <div className="grid grid-cols-4 gap-1.5">
           {ANIMATE_ALL_PRESETS.map((preset) => (
             <button
@@ -521,17 +629,29 @@ export default function AnimationPanel({
                 const next = applyAnimateAllPreset(
                   activeUi,
                   preset.effect,
-                  preset.duration,
+                  animateAllTiming,
                 );
                 if (next) onCommitUi(next);
               }}
-              title={`One ${preset.label.toLowerCase()} entrance per element, in reading order (replaces existing steps)`}
+              title={`One ${preset.label.toLowerCase()} entrance per element, in reading order, at the timing above (replaces existing steps)`}
               className="flex h-8 items-center justify-center rounded-lg text-[11px] ring-1 ring-[var(--border-strong)] transition-colors hover:bg-[var(--accent-soft)] hover:text-[var(--accent-light)] hover:ring-[var(--accent)]/50"
             >
               {preset.label}
             </button>
           ))}
         </div>
+        <button
+          onClick={() => {
+            const next = applyTimingToAll(activeUi, animateAllTiming);
+            if (next) onCommitUi(next);
+          }}
+          disabled={entries.length === 0}
+          title="Retime every step already on this slide, leaving the effects alone"
+          className="flex h-8 items-center justify-center gap-1.5 rounded-lg text-[11px] text-[var(--text-secondary)] ring-1 ring-[var(--border-strong)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Timer size={12} />
+          Apply timing to all
+        </button>
         <button
           onClick={() => {
             const next = clearAllAnimations(activeUi);

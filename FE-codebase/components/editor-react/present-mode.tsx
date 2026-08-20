@@ -271,7 +271,9 @@ export default function PresentMode({
     }
   }, []);
 
-  /** Puts back the elements a backward navigation left hidden. */
+  /** Puts back the elements left hidden on purpose for the slide being shown:
+   *  what a backward navigation parked in its final state, and what a finished
+   *  build's exit steps took away. Flushed at the start of every navigation. */
   const restoreExitedNodes = useCallback(() => {
     if (exitedRestoreRef.current.length === 0) return;
     exitedRestoreRef.current.forEach((restore) => restore());
@@ -581,7 +583,9 @@ export default function PresentMode({
     // slides, and an imperative opacity(0) left dangling here reappears as a
     // missing element on whatever slide inherits that node. goTo (and unmount)
     // flush this list before anything else touches the stage.
-    exitedRestoreRef.current.push(() => animRun.restore());
+    if (animRun.plan.hiddenAtEnd.length > 0) {
+      exitedRestoreRef.current.push(() => animRun.restore());
+    }
     animRun.restore({ keepExitedHidden: true });
     await nextFrame();
     runRef.current = null;

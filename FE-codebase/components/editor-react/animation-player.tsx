@@ -188,14 +188,21 @@ export function AnimationOverlay({
     return map;
   }, [plan]);
 
+  // Through a ref, so a caller that passes an inline callback (the editor
+  // preview does) can re-render without restarting the group timer. It used to
+  // sit in the dependency list, which meant any parent render pushed the
+  // "group finished" moment further away and could postpone it indefinitely.
+  const onGroupDoneRef = useRef(onGroupDone);
+  onGroupDoneRef.current = onGroupDone;
+
   useEffect(() => {
     if (activeGroup < 0 || activeGroup >= plan.groups.length) return;
     const timer = window.setTimeout(
-      () => onGroupDone(activeGroup),
+      () => onGroupDoneRef.current(activeGroup),
       plan.groups[activeGroup].durationMs + 60,
     );
     return () => window.clearTimeout(timer);
-  }, [activeGroup, plan, onGroupDone]);
+  }, [activeGroup, plan]);
 
   return (
     <>
@@ -308,6 +315,11 @@ export function AnimationPreviewLayer({
 
   useEffect(() => {
     let cancelled = false;
+    // React 18+ StrictMode mounts, tears down and re-mounts every effect in
+    // development. The teardown below flips doneRef, and a ref survives that
+    // remount — so without this reset the second (real) run started already
+    // "finished" and the preview could never stop itself.
+    doneRef.current = false;
     (async () => {
       const plan = buildAnimationPlan(ui);
       if (plan.animatedKeys.length === 0) {

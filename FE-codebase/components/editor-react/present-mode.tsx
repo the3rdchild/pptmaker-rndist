@@ -56,6 +56,9 @@ const SLIDE_DURATION = 450;
 // the animation window.
 /** Each flight is a composited layer of its own; cap what one morph can spawn. */
 const MAX_MORPH_FLIGHTS = 24;
+/** How long the first run waits for the dynamically imported surface to hand
+ *  over its stage before giving up and skipping the freeze. */
+const MAX_STAGE_WAIT_MS = 1500;
 
 interface MorphFlight {
   /** nodeRefs key of this element on the INCOMING slide. */
@@ -242,6 +245,16 @@ export default function PresentMode({
   const animationRunRef = useRef<AnimationRun | null>(null);
   const [animationRun, setAnimationRun] = useState<AnimationRun | null>(null);
 
+  /** The run is read from two places that cannot see the same value unless it
+   *  is written to both: the overlay renders from state, while Next and the
+   *  group-done guard run in callbacks that need the CURRENT group
+   *  synchronously. Updating only the state left the ref pinned at the staged
+   *  -1 forever, which silently killed every build past the first. */
+  const commitAnimationRun = useCallback((next: AnimationRun | null) => {
+    animationRunRef.current = next;
+    setAnimationRun(next);
+  }, []);
+
   /** Puts back the opacity of the incoming elements a morph flight covers, and
    *  repaints synchronously (not batchDraw's scheduled pass) so they are in the
    *  bitmap before the flying copies come down next frame — otherwise they
@@ -284,8 +297,7 @@ export default function PresentMode({
       // Full restore, exited elements included: the run is being abandoned,
       // and whichever slide ends up on screen must show every element.
       animationRunRef.current?.restore();
-      animationRunRef.current = null;
-      setAnimationRun(null);
+      commitAnimationRun(null);
       runRef.current = null;
 
       const type = list[target]?.transition ?? "none";
@@ -362,7 +374,7 @@ export default function PresentMode({
       setTransition(run);
       setIndex(target);
     },
-    [restoreMorphNodes, restoreExitedNodes],
+    [commitAnimationRun, restoreMorphNodes, restoreExitedNodes],
   );
 
   // Drives one transition end to end: wait out the incoming slide's rebuild
@@ -382,6 +394,15 @@ export default function PresentMode({
       );
 
     (async () => {
+      // The surface is a dynamic import that reports its stage through a
+      // callback ref, so the very first run (the slide the deck opens on) can
+      // arrive here before there is anything to freeze. Navigations find the
+      // stage already there and fall straight through.
+      const stageDeadline = performance.now() + MAX_STAGE_WAIT_MS;
+      while (!stageRef.current && performance.now() < stageDeadline && alive()) {
+        await nextFrame();
+      }
+      if (!alive()) return;
       await waitForSceneSettled(stageRef.current, () => !alive());
       if (!alive()) return;
 
@@ -422,14 +443,13 @@ export default function PresentMode({
       if (pendingPlan) {
         const captured = captureAnimationFlights(pendingPlan, refs);
         if (captured.flights.length > 0) {
-          animationRunRef.current = {
+          commitAnimationRun({
             id: runId,
             plan: pendingPlan,
             flights: captured.flights,
             activeGroup: -1,
             restore: captured.restore,
-          };
-          setAnimationRun(animationRunRef.current);
+          });
         } else {
           // Nothing survived capture (all nodes detached) — drop the run or
           // the overlay would wait forever on flights that don't exist.
@@ -455,14 +475,14 @@ export default function PresentMode({
       // finished — two sets of composited layers moving at once is exactly
       // the scenario that ran at 15fps before.
       const startAnimation = async () => {
+        if (animationRunRef.current?.id !== runId) return;
+        await nextFrame();
+        await nextFrame();
+        // Re-read after the wait: a navigation in between clears the run, and
+        // committing a stale copy would resurrect it.
         const animRun = animationRunRef.current;
-        if (!animRun || animRun.id !== runId) return;
-        await nextFrame();
-        await nextFrame();
-        if (!alive()) return;
-        setAnimationRun((current) =>
-          current && current.id === runId ? { ...current, activeGroup: 0 } : current,
-        );
+        if (!alive() || !animRun || animRun.id !== runId) return;
+        commitAnimationRun({ ...animRun, activeGroup: 0 });
         profileFlight(
           `animation group 0 (${animRun.flights.length} flights)`,
           animRun.plan.groups[0]?.durationMs ?? 0,
@@ -510,7 +530,35 @@ export default function PresentMode({
     return () => {
       cancelled = true;
     };
-  }, [runId, restoreMorphNodes]);
+  }, [runId, commitAnimationRun, restoreMorphNodes]);
+
+  // The slide the deck opens on never passes through goTo, so nothing would
+  // ever build its plan and its animations (on-click builds included) would be
+  // unreachable. Kick off a transition-less run for it once, on mount: the
+  // driver above waits for the surface to hand over its stage, and a "none"
+  // run with no animations is a no-op anyway.
+  const startedInitialRef = useRef(false);
+  useEffect(() => {
+    if (startedInitialRef.current) return;
+    startedInitialRef.current = true;
+    const initialUi = slidesRef.current[indexRef.current]?.ui;
+    if (!initialUi) return;
+    const plan = buildAnimationPlan(initialUi);
+    if (plan.animatedKeys.length === 0) return;
+    pendingAnimationRef.current = plan;
+    runIdRef.current += 1;
+    const run: TransitionRun = {
+      id: runIdRef.current,
+      type: "none",
+      backdrop: null,
+      incoming: null,
+      flights: [],
+      stage: "preparing",
+      finalHiddenKeys: [],
+    };
+    runRef.current = run;
+    setTransition(run);
+  }, []);
 
   /** Tears the animation run down once its last group has finished: put the
    *  morph targets back, keep exited elements hidden (they left for good),
@@ -519,8 +567,17 @@ export default function PresentMode({
   const finishAnimationRun = useCallback(async () => {
     const animRun = animationRunRef.current;
     if (!animRun) return;
+    // Ref first, state at the end: nulling the ref is what stops a second
+    // group-done or a Next from re-entering, but the overlay has to stay
+    // mounted until the restored nodes are painted underneath it.
     animationRunRef.current = null;
     restoreMorphNodes();
+    // The exited elements stay hidden for the rest of THIS slide, so their
+    // restore has to outlive the run — the surface reuses Konva nodes across
+    // slides, and an imperative opacity(0) left dangling here reappears as a
+    // missing element on whatever slide inherits that node. goTo (and unmount)
+    // flush this list before anything else touches the stage.
+    exitedRestoreRef.current.push(() => animRun.restore());
     animRun.restore({ keepExitedHidden: true });
     await nextFrame();
     runRef.current = null;
@@ -568,11 +625,7 @@ export default function PresentMode({
           const nextGroup = animRun.activeGroup + 1;
           if (nextGroup < animRun.plan.groups.length) {
             const group = animRun.plan.groups[nextGroup];
-            setAnimationRun((current) =>
-              current && current.id === animRun.id
-                ? { ...current, activeGroup: nextGroup }
-                : current,
-            );
+            commitAnimationRun({ ...animRun, activeGroup: nextGroup });
             profileFlight(
               `animation group ${nextGroup} (${animRun.flights.length} flights)`,
               group.durationMs,
@@ -592,7 +645,7 @@ export default function PresentMode({
       const target = visibleIndexes[nextPos];
       if (target !== undefined) goTo(target);
     },
-    [goTo, visibleIndexes],
+    [commitAnimationRun, goTo, visibleIndexes],
   );
   const next = useCallback(() => step(1), [step]);
   const prev = useCallback(() => step(-1), [step]);

@@ -86,7 +86,15 @@ RULES — violations break the deck:
    - "source" is optional — only when a real source is known.
 8. VOICE: write in the requested language. Each slot's role and hint tells you the register (a "label" is 1-3 words, a "cta" is an action, a "stat-value" is a bare figure). When the manifest states a theme_tone, write the whole deck in that register.
 9. QUOTES: never put a raw double-quote character (") inside your copy — it breaks the JSON. Use “ ” or ' instead.
-10. FORMAT: raw JSONL, one object per line, no markdown fences, no commentary. Every slide MUST be closed with {"type":"slide_end"} before the next slide_start."""
+10. FORMAT: raw JSONL, one object per line, no markdown fences, no commentary. Every slide MUST be closed with {"type":"slide_end"} before the next slide_start.
+11. SOURCE DOCUMENT: when the request carries one, it is the ONLY authority on facts. Write the copy from ITS content, ITS terminology and ITS findings — never substitute general knowledge for what it says, and never contradict it. If the document does not support a claim, leave the claim out.
+12. DOCUMENT ASSETS: a source document arrives with an inventory of REAL figures and tables lifted out of it, each with an id (fig-1, fig-2, tbl-1, ...). Put one on a slide by filling an IMAGE slot with an asset instead of text:
+    {"type":"fill","name":"<image slot name>","asset":"fig-3"}
+    - Only the ids listed in the inventory exist. NEVER invent one, never guess a number past the end of the list, and never reuse an id you already placed on an earlier slide.
+    - Only IMAGE slots take assets (a slot whose "kind" is "image"). Text slots take text; chart slots take chart data.
+    - Place the asset whose caption genuinely matches what the slide says. A figure on the wrong slide is worse than no figure — when nothing fits, omit the asset line and let the slide use a generated photo instead.
+    - One asset per image slot, at most two per slide.
+    - When the document's figures and tables carry the argument (architecture, results, comparisons), PREFER layouts that have an image slot: a table of results belongs on a slide able to show it."""
 
 
 def _compact_manifest(manifest: dict) -> dict:
@@ -208,6 +216,10 @@ def process(ctx: dict):
     provider = params.get("model") or params.get("llm_provider")
     manifest = params.get("manifest")
     compact = _compact_manifest(manifest) if isinstance(manifest, dict) else {}
+    # Trimmed prose + figure/table inventory of the document the user attached.
+    # Assembled client-side (the browser holds the actual image bytes, which
+    # never leave it) and passed through untouched, same as the manifest.
+    source = params.get("source") or ""
 
     use_manifest = bool(compact.get("layouts"))
     logger.info(
@@ -215,6 +227,13 @@ def process(ctx: dict):
         ctx["job_id"], language, provider,
         "manifest" if use_manifest else "legacy", len(compact.get("layouts", [])),
     )
+    if source:
+        logger.info("[deck_service] source document attached | chars=%d | job_id=%s", len(source), ctx["job_id"])
+
+    # The document goes AFTER the manifest: the manifest is instruction (what a
+    # slide can hold), the document is material (what goes in it), and the
+    # closing "generate now" sentence has to stay the last thing the model reads.
+    source_block = source + "\n\n" if source else ""
 
     if use_manifest:
         system_prompt = MANIFEST_SYSTEM_PROMPT
@@ -222,12 +241,14 @@ def process(ctx: dict):
             f"Language: {language}\n\n"
             f"Topic: {outline}\n\n"
             f"THEME MANIFEST:\n{json.dumps(compact, ensure_ascii=False)}\n\n"
+            f"{source_block}"
             "Choose the layouts and write the slot copy now."
         )
     else:
         system_prompt = LEGACY_SYSTEM_PROMPT
         user_msg = (
             f"Language: {language}\n\nOutline:\n{outline}\n\n"
+            f"{source_block}"
             "Generate the JSONL slides now."
         )
 

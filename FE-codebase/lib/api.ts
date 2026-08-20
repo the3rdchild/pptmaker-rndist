@@ -170,7 +170,17 @@ export async function streamAgent(
 
 export async function streamAipptDeck(
 	token: string,
-	body: { content: string; language?: string; style?: string; model?: string; manifest?: unknown },
+	body: {
+		content: string
+		language?: string
+		style?: string
+		model?: string
+		manifest?: unknown
+		/** Trimmed text of the user's attached document(s) plus the inventory of
+		 *  figures/tables the model may place. Kept separate from `content` so
+		 *  the topic stays a topic. */
+		source?: string
+	},
 ): Promise<{ state: -1; message: string } | Response> {
 	const res = await fetch(`${API_BASE}/api/v1/tools/aippt`, {
 		method: 'POST',
@@ -190,7 +200,7 @@ export async function streamAipptDeck(
  *  page-count hint from the /outline page's "6-10 Pages" pill. */
 export async function streamAipptOutline(
 	token: string,
-	body: { content: string; language?: string; model?: string; slideCount?: number },
+	body: { content: string; language?: string; model?: string; slideCount?: number; source?: string },
 ): Promise<{ state: -1; message: string } | Response> {
 	const res = await fetch(`${API_BASE}/api/v1/tools/aippt_outline`, {
 		method: 'POST',

@@ -141,6 +141,20 @@ import {
   type ManifestSlideLine,
   type SlotFill,
 } from "@/components/editor-react/ai-slot-fill";
+import {
+  applySourceAsset,
+  matchAssetsToSlides,
+  pickAssetSlot,
+  resolveAssetId,
+  type AssetMatchCandidate,
+} from "@/components/editor-react/source-asset-fill";
+import { buildSourceDigest } from "@/lib/source-docs/digest";
+import {
+  SOURCE_PARAM,
+  loadSourceDocs,
+  parseSourceIds,
+} from "@/lib/source-docs/store";
+import { sourceDocAssets, type SourceDoc } from "@/lib/source-docs/types";
 import { captureSlidePng } from "@/components/editor-react/slide-capture";
 import GenerationProgress, {
   type SlideProgress,
@@ -342,6 +356,11 @@ export default function EditorReactClient({
   const token = useSessionStore((s) => s.token);
   const searchParams = useSearchParams();
   const autoGenerateRan = useRef(false);
+  /** Documents attached before generation (?src=), restored from IndexedDB.
+   *  Their prose is prompt material; their figures and tables are what an
+   *  {"asset":"fig-3"} fill resolves against. */
+  const sourceDocsRef = useRef<SourceDoc[]>([]);
+  const [sourceDocsReady, setSourceDocsReady] = useState(false);
   /** The homepage's "Stock photos" toggle (?images=stock), captured once at
    *  generation time so regenerate_slide (a separate code path) can honour
    *  the same choice without re-parsing searchParams. */
@@ -1177,6 +1196,15 @@ export default function EditorReactClient({
     if (!token) return 0;
     imageSourceRef.current = imageSource;
     usedStockPhotoIdsRef.current = new Set(); // fresh deck — start with no photos "used"
+    // Attached documents, captured once for this run. The digest is prompt
+    // material (kept OUT of `topic`, which also feeds theme choice and prompt
+    // enhancement — neither should be reading a thesis); the documents
+    // themselves stay here to resolve whatever asset ids come back.
+    const sourceDocs = sourceDocsRef.current;
+    const sourceDigest = sourceDocs
+      .map((doc) => buildSourceDigest(doc))
+      .filter(Boolean)
+      .join("\n\n");
     // Resolve the theme FIRST and fetch its layout manifest — with the
     // manifest in the request body the worker switches to the slot-by-slot
     // contract (model fills NAMED slots under their authored budgets) instead
@@ -1243,7 +1271,13 @@ export default function EditorReactClient({
       );
     }
 
-    const res = await streamAipptDeck(token, { content: genTopic, language, model, manifest: manifest ?? undefined });
+    const res = await streamAipptDeck(token, {
+      content: genTopic,
+      language,
+      model,
+      manifest: manifest ?? undefined,
+      source: sourceDigest || undefined,
+    });
     if (!(res instanceof Response) || !res.body) {
       const message =
         res && typeof res === "object" && "message" in res
@@ -1302,6 +1336,26 @@ export default function EditorReactClient({
       reduxStore.getState().presentationGeneration.presentationData?.slides[index]
         ?.ui as Record<string, unknown> | undefined;
 
+    /** Photo slots taken over by a document figure or table, per slide.
+     *  Photo generation is kicked off at slide_start — before any fill line
+     *  arrives — so by the time the model says "put fig-3 here" a generated
+     *  image is already in flight for that exact slot. Claiming the slot is
+     *  how the in-flight job learns to drop its result instead of overwriting
+     *  the figure that landed while it was running. */
+    const assetClaimedSlots = new Map<number, Set<string>>();
+    const claimSlot = (index: number, key: string) => {
+      const claimed = assetClaimedSlots.get(index) ?? new Set<string>();
+      claimed.add(key);
+      assetClaimedSlots.set(index, claimed);
+    };
+    const isSlotClaimed = (index: number, key: string) =>
+      assetClaimedSlots.get(index)?.has(key) === true;
+    /** Tables trimmed to fit their slot, reported once at the end of the run. */
+    let truncatedTables = 0;
+    /** Document figures/tables actually placed — the fallback matcher below
+     *  only runs when this is still 0 after the whole stream. */
+    let assetsPlaced = 0;
+
     // One photo resolution — AI-generated or stock-searched depending on
     // imageSource — returning the URL to patch in, or null if nothing came
     // back. Factored out (awaitable) so both the fire-and-forget initial
@@ -1355,10 +1409,11 @@ export default function EditorReactClient({
         : `${subject} — related to ${genTopic}. ${heroStyle}`;
 
       const slotKey = photoSlotKey(marker.componentId, marker.elementName, marker.occurrenceIndex);
+      if (isSlotClaimed(index, slotKey)) return;
       markPhotoPending(index, slotKey, true);
       void resolvePhotoForSlot(prompt, hint || subject)
         .then((resolved) => {
-          if (!resolved) return;
+          if (!resolved || isSlotClaimed(index, slotKey)) return;
           const patched = patchHeroImage(slideUiAt(index) ?? getUi(), marker, resolved.url, resolved.extra) as Record<string, unknown>;
           setUi(patched);
           dispatch(updateSlideUi({ index, ui: patched }));
@@ -1388,6 +1443,39 @@ export default function EditorReactClient({
       for (const marker of secondaryImages) {
         requestPhotoForSlot(index, getUi, setUi, marker, subject);
       }
+    };
+
+    // {"type":"fill","name":"<image slot>","asset":"fig-3"} — the model wants a
+    // real figure or table from the attached document in that slot instead of
+    // a generated photo. Silently a no-op when the id doesn't resolve (the
+    // model invented it) or the layout has no free photo slot: the slide keeps
+    // its generated image, which is a worse slide but never a broken one.
+    const applyAssetFill = (index: number, slotName: string, assetId: string): boolean => {
+      const asset = resolveAssetId(sourceDocs, assetId);
+      if (!asset) return false;
+      const markers = slidePhotoMarkers.get(index);
+      if (!markers) return false;
+      const marker = pickAssetSlot(markers, slotName, (candidate) =>
+        isSlotClaimed(
+          index,
+          photoSlotKey(candidate.componentId, candidate.elementName, candidate.occurrenceIndex),
+        ),
+      );
+      if (!marker) return false;
+
+      const slotKey = photoSlotKey(marker.componentId, marker.elementName, marker.occurrenceIndex);
+      claimSlot(index, slotKey);
+      // The slot is resolved now, so stop it shimmering even though the photo
+      // job that started at slide_start is still running somewhere.
+      markPhotoPending(index, slotKey, false);
+
+      const base = slideUiAt(index);
+      if (!base) return false;
+      const applied = applySourceAsset(base, marker, asset);
+      if (applied.droppedRows > 0 || applied.droppedColumns > 0) truncatedTables += 1;
+      dispatch(updateSlideUi({ index, ui: applied.ui }));
+      assetsPlaced += 1;
+      return true;
     };
 
     const mapLine = async (
@@ -1799,6 +1887,12 @@ export default function EditorReactClient({
       const fill = parseStreamFillLine(t);
       if (fill) {
         if (!pendingStream) return; // a fill outside any slide — ignore
+        if (fill.asset) {
+          // Asset fills target IMAGE slots and are applied by their own path;
+          // they must not join `fills`, which applyFillsToUi walks as text.
+          applyAssetFill(pendingStream.index, fill.name, fill.asset);
+          return;
+        }
         pendingStream.fills.push(fill);
         const latest = slideUiAt(pendingStream.index);
         if (latest) {
@@ -1830,6 +1924,11 @@ export default function EditorReactClient({
         count++;
         setActiveIndex(index); // follow the newest slide as it's generated
         slidePhotoMarkers.set(index, { hero: filled.heroImage, secondary: filled.secondaryImages });
+        // Asset fills first: claiming their slots before the photo jobs start
+        // saves generating an image that would only be thrown away.
+        for (const assetFill of filled.manifestLine?.fills ?? []) {
+          if (assetFill.asset) applyAssetFill(index, assetFill.name, assetFill.asset);
+        }
         requestSlidePhotos(index, filled.ui, filled.heroImage, filled.secondaryImages, filled.subject);
       }
     };
@@ -1856,7 +1955,44 @@ export default function EditorReactClient({
 
     // Reviews pipeline behind generation — only the tail slides are still in
     // flight here; the earlier ones were reviewed WHILE later slides streamed.
+    // It is awaited BEFORE the asset fallback below because reviewSlide can
+    // regenerate a photo it judged mismatched, and a figure placed from the
+    // document has to be the last thing to touch that slot.
     await reviewChain;
+
+    // The model was shown the asset inventory and named nothing from it. Match
+    // the document's own figures/tables to slides on caption overlap rather
+    // than shipping a document-backed deck with no document content on it.
+    if (assetsPlaced === 0 && sourceDocs.length > 0) {
+      const assets = sourceDocs.flatMap((doc) => sourceDocAssets(doc));
+      const candidates: AssetMatchCandidate[] = [];
+      for (const [index, line] of slideManifestLines) {
+        const markers = slidePhotoMarkers.get(index);
+        if (!markers || (!markers.hero && markers.secondary.length === 0)) continue;
+        const text = line.fills
+          .map((f) => f.text ?? "")
+          .join(" ")
+          .trim();
+        if (text) candidates.push({ slideIndex: index, text });
+      }
+      for (const match of matchAssetsToSlides(assets, candidates)) {
+        applyAssetFill(match.slideIndex, "", match.asset.id);
+      }
+      if (assetsPlaced > 0) {
+        notify.info(
+          "Gambar dari dokumen dipasang otomatis",
+          `${assetsPlaced} gambar/tabel dari dokumen dicocokkan ke slide berdasarkan keterangannya. Cek dan geser kalau ada yang kurang pas.`,
+        );
+      }
+    }
+
+    if (truncatedTables > 0) {
+      notify.info(
+        "Tabel dipotong agar muat",
+        `${truncatedTables} tabel dari dokumen terlalu besar untuk slot slide dan hanya ditampilkan sebagian. Baris/kolom sisanya masih ada di dokumen aslinya.`,
+      );
+    }
+
     setGenerationStatus(null);
     return count;
   };
@@ -1871,8 +2007,30 @@ export default function EditorReactClient({
   // the homepage dropdowns; absent = the server applies its default.
   // ?images=stock switches photo slots from AI generation to stock-photo
   // search (falls back to AI per-slot if a search comes up empty).
+  // Attached documents load from IndexedDB before generation may start —
+  // starting without them would generate the deck from the topic string alone
+  // and quietly ignore the document the user attached.
   useEffect(() => {
-    if (autoGenerateRan.current || loading || !token) return;
+    const ids = parseSourceIds(searchParams.get(SOURCE_PARAM));
+    if (ids.length === 0) {
+      setSourceDocsReady(true);
+      return;
+    }
+    let cancelled = false;
+    loadSourceDocs(ids)
+      .then((docs) => {
+        if (!cancelled) sourceDocsRef.current = docs;
+      })
+      .finally(() => {
+        if (!cancelled) setSourceDocsReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (autoGenerateRan.current || loading || !token || !sourceDocsReady) return;
     const prompt = searchParams.get("prompt");
     if (!prompt) return;
     autoGenerateRan.current = true;
@@ -1886,7 +2044,7 @@ export default function EditorReactClient({
     const pinnedTheme = searchParams.get("theme");
     runGeneration(prompt, language, genProvider, withReview, { verify: verifyProvider, repair: repairProvider }, imageSource, pinnedTheme);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, token, searchParams]);
+  }, [loading, token, searchParams, sourceDocsReady]);
 
   // Shared by the auto-generate effect and the "Try Again" button — keeps
   // the original prompt text around on failure so retrying doesn't require

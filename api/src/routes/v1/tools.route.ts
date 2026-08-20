@@ -15,6 +15,10 @@ const outlineSchema = z.object({
 	// Optional slide-count hint for the outline (the /outline page's "6-10
 	// Pages" pill sends the range midpoint). The worker already reads this.
 	slideCount: z.number().int().min(1).max(30).optional(),
+	// Trimmed text of the user's attached .docx, plus the inventory of figures
+	// and tables it contains. Passed through untouched, same as `manifest` —
+	// the worker decides how it enters the prompt.
+	source: z.string().max(200_000).optional(),
 })
 const aipptSchema = z.object({
 	content: z.string(),
@@ -25,6 +29,9 @@ const aipptSchema = z.object({
 	// Theme layout manifest (slots + budgets) — presence switches the worker
 	// to the manifest-driven contract. Passed through untouched.
 	manifest: z.any().optional(),
+	// Attached-document digest + asset inventory; presence lets the model
+	// answer with {"asset":"fig-3"} fills the client resolves locally.
+	source: z.string().max(200_000).optional(),
 })
 const writingSchema = z.object({
 	content: z.string(),
@@ -195,7 +202,7 @@ tools.post('/aippt_outline', async (c) => {
 			job_id: jobId,
 			session_id: sessionId,
 			status: 'pending',
-			params: { type: 'outline', prompt: parsed.data.content, language: parsed.data.language, model: parsed.data.model, slideCount: parsed.data.slideCount, stream_mode: 'raw' },
+			params: { type: 'outline', prompt: parsed.data.content, language: parsed.data.language, model: parsed.data.model, slideCount: parsed.data.slideCount, source: parsed.data.source, stream_mode: 'raw' },
 		})
 		await QueueClient.enqueueJob(jobId, {
 			request_id: request.id,
@@ -205,6 +212,7 @@ tools.post('/aippt_outline', async (c) => {
 			language: parsed.data.language,
 			model: parsed.data.model,
 			slideCount: parsed.data.slideCount,
+			source: parsed.data.source,
 			stream_mode: 'raw',
 		})
 
@@ -245,6 +253,7 @@ tools.post('/aippt', async (c) => {
 				language: parsed.data.language,
 				model: parsed.data.model,
 				manifest: parsed.data.manifest,
+				source: parsed.data.source,
 				stream_mode: 'raw',
 			},
 		})
@@ -256,6 +265,7 @@ tools.post('/aippt', async (c) => {
 			language: parsed.data.language,
 			model: parsed.data.model,
 			manifest: parsed.data.manifest,
+			source: parsed.data.source,
 			stream_mode: 'raw',
 		})
 

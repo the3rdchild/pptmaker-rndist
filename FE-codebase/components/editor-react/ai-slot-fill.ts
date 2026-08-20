@@ -71,11 +71,16 @@ export interface ChartSpec {
 }
 
 /** One fill entry from the model: which named slot, what content. Text slots
- *  carry `text`; chart slots carry `chart`. */
+ *  carry `text`; chart slots carry `chart`; image slots carry `asset` when the
+ *  model wants a figure or table from the user's attached document there
+ *  instead of a generated photo. */
 export interface SlotFill {
   name: string;
   text?: string;
   chart?: ChartSpec;
+  /** Document asset id ("fig-3", "tbl-2"). Resolved by the caller against the
+   *  attached documents — this module never sees the document itself. */
+  asset?: string;
 }
 
 /** One slide's fills in the manifest contract. Assembled client-side from the
@@ -154,6 +159,11 @@ export function parseManifestSlideLine(line: string): ManifestSlideLine | null {
       fills.push({ name, text });
       continue;
     }
+    const asset = parseAssetId((f as Rec).asset);
+    if (asset) {
+      fills.push({ name, asset });
+      continue;
+    }
     const chart = parseChartSpec((f as Rec).chart);
     if (chart) fills.push({ name, chart });
   }
@@ -176,7 +186,17 @@ export function parseSlideStartLine(line: string): { layout_id: string } | null 
   return { layout_id: rec.layout_id };
 }
 
-/** Parses one streamed {"type":"fill","name":"...","text"|"chart":...} line. */
+/** Document asset ids are model output, so they are matched against a strict
+ *  shape rather than trusted: anything that is not "fig-N"/"tbl-N" cannot
+ *  resolve to a real asset anyway, and letting an arbitrary string through
+ *  would only produce a confusing miss later. */
+function parseAssetId(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const id = raw.trim().toLowerCase();
+  return /^(fig|tbl)-\d{1,3}$/.test(id) ? id : null;
+}
+
+/** Parses one streamed {"type":"fill","name":"...","text"|"chart"|"asset":...} line. */
 export function parseStreamFillLine(line: string): SlotFill | null {
   let parsed: unknown;
   try {
@@ -189,6 +209,8 @@ export function parseStreamFillLine(line: string): SlotFill | null {
   if (rec.type !== "fill") return null;
   if (typeof rec.name !== "string" || !rec.name) return null;
   if (typeof rec.text === "string") return { name: rec.name, text: rec.text };
+  const asset = parseAssetId(rec.asset);
+  if (asset) return { name: rec.name, asset };
   const chart = parseChartSpec(rec.chart);
   return chart ? { name: rec.name, chart } : null;
 }

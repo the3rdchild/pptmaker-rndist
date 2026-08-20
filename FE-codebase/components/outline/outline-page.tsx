@@ -43,6 +43,12 @@ import { LazyLayoutThumbnail } from "@/components/editor-react/lazy-layout-thumb
 import { OutlineChat } from "./outline-chat";
 import { Button } from "@/components/shared/button";
 import {
+  SourceDocAttach,
+  useSourceDocs,
+} from "@/components/shared/source-doc-attach";
+import { buildSourceDigest, withSourceDocument } from "@/lib/source-docs/digest";
+import { SOURCE_PARAM, parseSourceIds } from "@/lib/source-docs/store";
+import {
   parseOutline,
   serializeOutline,
   type Outline,
@@ -87,6 +93,16 @@ export function OutlinePage() {
   // chips in the chat and sent with the next message.
   const [selectedTexts, setSelectedTexts] = useState<string[]>([]);
 
+  // Documents attached on the homepage, restored from ?src=. Their prose is
+  // what the outline is written from; their figures/tables are placed later,
+  // during deck generation.
+  const [initialSourceIds] = useState(() =>
+    parseSourceIds(searchParams.get(SOURCE_PARAM)),
+  );
+  const sourceDocs = useSourceDocs(initialSourceIds);
+  const sourceDocsRef = useRef(sourceDocs.docs);
+  sourceDocsRef.current = sourceDocs.docs;
+
   const handleTextSelected = (text: string) => {
     setSelectedTexts((cur) =>
       cur.includes(text) || cur.length >= 5 ? cur : [...cur, text],
@@ -108,8 +124,16 @@ export function OutlinePage() {
     setStreaming(true);
     try {
       const slideCount = PAGE_COUNTS.find((c) => c.id === pageCountId)?.slideCount;
+      // Read through a ref, not a dependency: startOutline is also called from
+      // the retry button and the "Generate ulang" control, and rebuilding the
+      // callback whenever a document is attached would re-fire the auto-start
+      // effect that keys off it.
+      const digest = sourceDocsRef.current
+        .map((doc) => buildSourceDigest(doc))
+        .filter(Boolean)
+        .join("\n\n");
       const res = await streamAipptOutline(token, {
-        content: prompt.trim(),
+        content: withSourceDocument(prompt.trim(), digest),
         language,
         model: searchParams.get("gen") ?? undefined,
         slideCount,
@@ -142,6 +166,10 @@ export function OutlinePage() {
   // autoGenerateRan — React StrictMode double-invokes effects in dev.
   useEffect(() => {
     if (!sessionReady || !token || startedRef.current) return;
+    // Attached documents load from IndexedDB asynchronously. Starting before
+    // they arrive would write the outline from the topic string alone and
+    // silently ignore the document the user waited to have parsed.
+    if (sourceDocs.loading) return;
     if (!initialPrompt.trim()) {
       router.replace("/");
       return;
@@ -149,7 +177,7 @@ export function OutlinePage() {
     startedRef.current = true;
     void startOutline();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionReady, token]);
+  }, [sessionReady, token, sourceDocs.loading]);
 
   /* ---------------------------- outline editing ---------------------------- */
 
@@ -269,6 +297,9 @@ export function OutlinePage() {
         lang: language,
       });
       if (themeId) qs.set("theme", themeId);
+      // Carry the attached documents into the editor — deck generation needs
+      // them again, both for the prose and to resolve figure/table ids.
+      if (sourceDocs.ids) qs.set(SOURCE_PARAM, sourceDocs.ids);
       // Forward the homepage's provider/review/image choices untouched.
       for (const key of ["gen", "verify", "repair", "review", "images"]) {
         const v = searchParams.get(key);
@@ -341,6 +372,13 @@ export function OutlinePage() {
             selected={language}
             onSelect={setLanguage}
             disabled={streaming}
+          />
+          <SourceDocAttach
+            docs={sourceDocs.docs}
+            onAdd={sourceDocs.add}
+            onRemove={sourceDocs.remove}
+            disabled={streaming || generating}
+            size="xs"
           />
         </div>
 

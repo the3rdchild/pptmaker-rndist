@@ -8,8 +8,14 @@ import { createDeck, saveDeck } from '@/lib/api'
 import { Button } from '@/components/shared/button'
 import { importPptxFile, resolveUnresolvedFonts } from '@/components/slide-editor/importing/pptx-import'
 import { notify } from '@/components/ui/sonner'
+import { SourceDocAttach, useSourceDocs } from '@/components/shared/source-doc-attach'
+import { SOURCE_PARAM } from '@/lib/source-docs/store'
 
 const LANGUAGES = ['Bahasa Indonesia', 'English', 'Español', '中文', '日本語']
+
+/** Stable empty list — the homepage never restores documents from a URL, and a
+ *  fresh array each render would re-trigger the restore effect. */
+const NO_SOURCE_IDS: string[] = []
 
 interface ProviderOption {
 	id: string
@@ -112,15 +118,28 @@ export function PromptInput() {
 	const [importing, setImporting] = useState(false)
 	const [localError, setLocalError] = useState<string | null>(null)
 	const fileInputRef = useRef<HTMLInputElement | null>(null)
+	// Reference documents (.docx) whose text becomes the deck's material and
+	// whose figures/tables can be placed on slides. Nothing here is uploaded —
+	// see lib/source-docs/store.ts.
+	const sourceDocs = useSourceDocs(NO_SOURCE_IDS)
 
-	const canGenerate = prompt.trim().length > 0 && token !== null && sessionReady && !submitting && !importing
+	// An attached document is enough on its own — its title is a better topic
+	// than an empty box, and the whole point of attaching is that the material
+	// is already written.
+	const hasTopic = prompt.trim().length > 0 || sourceDocs.docs.length > 0
+	const canGenerate = hasTopic && token !== null && sessionReady && !submitting && !importing
 
 	const handleGenerate = async () => {
 		if (!token) {
 			setLocalError('Session belum siap. Tunggu sebentar...')
 			return
 		}
-		if (!prompt.trim()) return
+		const topic =
+			prompt.trim() ||
+			(sourceDocs.docs[0]
+				? `Presentasi ringkas dari dokumen "${sourceDocs.docs[0].title}"`
+				: '')
+		if (!topic) return
 
 		setSubmitting(true)
 		setLocalError(null)
@@ -129,9 +148,12 @@ export function PromptInput() {
 			// there; the deck itself is only created when they click "Generate
 			// Presentation" on that page (which then opens the editor).
 			const qs = new URLSearchParams({
-				prompt,
+				prompt: topic,
 				lang: language,
 			})
+			// Only the ids travel; the extracted text and figures stay in
+			// IndexedDB (they are megabytes, and a URL is not).
+			if (sourceDocs.ids) qs.set(SOURCE_PARAM, sourceDocs.ids)
 			// Provider choices travel as separate params so each section
 			// (generate/verify/repair) can be overridden independently.
 			// Absent param = the editor applies the server default.
@@ -251,6 +273,13 @@ export function PromptInput() {
 					{importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
 					{importing ? 'Mengimpor...' : 'Import .pptx'}
 				</Button>
+
+				<SourceDocAttach
+					docs={sourceDocs.docs}
+					onAdd={sourceDocs.add}
+					onRemove={sourceDocs.remove}
+					disabled={importing || submitting}
+				/>
 
 				<Dropdown label={language} options={LANGUAGES} onSelect={(v) => setLanguage(v)} />
 

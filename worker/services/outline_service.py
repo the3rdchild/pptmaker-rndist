@@ -34,7 +34,12 @@ Rules:
 - Each slide should have 3-5 bullet points.
 - Do NOT use ### subsections.
 - Write ALL content in the specified language.
-- Be specific and engaging, not generic."""
+- Be specific and engaging, not generic.
+
+When a SOURCE DOCUMENT is supplied, it replaces your own knowledge as the material:
+- Build the outline from the document's actual sections, terms and findings. Do not pad it with general background it does not contain, and never contradict it.
+- Follow the document's own argument order unless a clearly better presentation order exists.
+- The document lists its figures and tables as [FIGURE fig-N] / [TABLE tbl-N] markers. Do NOT copy those markers into the outline — they are placed later, when the slides are built. Instead, let them tell you which sections carry the visual evidence, and give those sections their own slide."""
 
 
 def process(ctx: dict):
@@ -47,9 +52,16 @@ def process(ctx: dict):
 
     logger.info("[outline_service] prompt=%r lang=%s stream=%s provider=%r", prompt[:80], language, stream_mode, provider)
 
+    # Trimmed text of the document the user attached, assembled client-side.
+    # The FE already folds it into `content` when it sends the outline job, so
+    # this only fires for callers that pass it as its own field.
+    source = params.get("source") or ""
+
     user_msg = f"Topic: {prompt}\nLanguage: {language}\n"
     if slide_count:
         user_msg += f"Generate approximately {slide_count} slides worth of content.\n"
+    if source:
+        user_msg += f"\n{source}\n"
     user_msg += "\nGenerate the outline now."
 
     messages = [

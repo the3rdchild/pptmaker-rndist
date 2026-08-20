@@ -31,6 +31,8 @@ import {
   type AnimationEasing,
 } from "@/components/slide-editor/animation/animation-meta";
 import {
+  applyAnimateAllPreset,
+  clearAllAnimations,
   collectSlideAnimationSteps,
   rewriteAnimationOrders,
 } from "@/components/editor-react/animation-sequence";
@@ -225,6 +227,20 @@ function StepControls({
 }
 
 const rowId = (key: string, effect: AnimationEffect) => `${key}|${effect}`;
+
+/** The preset patterns — one entrance effect each, applied to every
+ *  meaningful element on the slide (replacing existing steps). */
+const ANIMATE_ALL_PRESETS: {
+  id: string;
+  label: string;
+  effect: AnimationEffect;
+  duration: number;
+}[] = [
+  { id: "fade", label: "Fade", effect: "fade-in", duration: 500 },
+  { id: "rise", label: "Rise", effect: "rise", duration: 550 },
+  { id: "slide", label: "Slide", effect: "slide-in-up", duration: 550 },
+  { id: "pop", label: "Pop", effect: "pop", duration: 450 },
+];
 
 const TRIGGER_BADGE: Record<AnimationTrigger, string> = {
   "on-click": "bg-[var(--accent-soft)] text-[var(--accent-light)]",
@@ -480,6 +496,40 @@ export default function AnimationPanel({
           </DndContext>
         </div>
       )}
+      <PanelLabel>Animate all</PanelLabel>
+      <div className="flex flex-col gap-1.5 px-2.5">
+        <div className="grid grid-cols-4 gap-1.5">
+          {ANIMATE_ALL_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              onClick={() => {
+                const next = applyAnimateAllPreset(
+                  activeUi,
+                  preset.effect,
+                  preset.duration,
+                );
+                if (next) onCommitUi(next);
+              }}
+              title={`One ${preset.label.toLowerCase()} entrance per element, in reading order (replaces existing steps)`}
+              className="flex h-8 items-center justify-center rounded-lg text-[11px] ring-1 ring-[var(--border-strong)] transition-colors hover:bg-[var(--accent-soft)] hover:text-[var(--accent-light)] hover:ring-[var(--accent)]/50"
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => {
+            const next = clearAllAnimations(activeUi);
+            if (next) onCommitUi(next);
+          }}
+          disabled={entries.length === 0}
+          className="flex h-8 items-center justify-center gap-1.5 rounded-lg text-[11px] text-[var(--text-secondary)] ring-1 ring-[var(--border-strong)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Ban size={12} />
+          Clear all animations
+        </button>
+      </div>
+
       {onPreviewAnimation && (
         <div className="px-2.5">
           <button

@@ -13,7 +13,11 @@ import {
   type AnimationEffect,
   type AnimationStep,
 } from "@/components/slide-editor/animation/animation-meta";
-import type { ElementSelection } from "@/components/slide-editor/model/core";
+import {
+  absoluteBoxForSelection,
+  isBackgroundComponent,
+} from "@/components/slide-editor/model/model";
+import type { ElementSelection, RawUi } from "@/components/slide-editor/model/core";
 
 /** Each flight is one composited layer for the whole time the overlay is up
  *  (not just while moving), so an unbounded plan is a VRAM bomb on weak GPUs.
@@ -109,6 +113,115 @@ export function rewriteAnimationOrders(
       ...step,
       order: assignment.get(`${ref.key}|${step.effect}`) ?? step.order,
     }));
+    touched = true;
+  }
+  return touched ? next : null;
+}
+
+/** Height of the "same row" band the Animate-all ordering uses — elements
+ *  whose tops are within this many pixels read as one line and order
+ *  left-to-right instead of by microscopic y jitter. */
+const ORDER_BAND_PX = 40;
+
+/** "Animate all" preset: one entrance step for every meaningful element,
+ *  ordered the way a reader scans (top-to-bottom in bands, then
+ *  left-to-right), all after-previous so the stagger feels natural.
+ *
+ *  Skip rules: decorative elements (their children stay candidates), whole
+ *  background components, and the CHILDREN of an accepted element —
+ *  animating a container together with its contents double-transforms the
+ *  contents, so each subtree contributes its topmost animatable level only.
+ *  Existing steps on covered elements are replaced: a preset is a statement
+ *  about the whole slide, not a merge. */
+export function applyAnimateAllPreset(
+  ui: Record<string, unknown> | null | undefined,
+  effect: AnimationEffect,
+  duration: number,
+): Record<string, unknown> | null {
+  if (!ui) return null;
+
+  const backgroundComponents = new Set<number>();
+  if (Array.isArray(ui.components)) {
+    ui.components.forEach((component, index) => {
+      if (
+        component &&
+        typeof component === "object" &&
+        isBackgroundComponent(component as never)
+      ) {
+        backgroundComponents.add(index);
+      }
+    });
+  }
+
+  // walkSlideElements is pre-order (parent before children), so an accepted
+  // element's descendants can be recognised by path prefix and skipped.
+  const acceptedPrefixes: { componentIndex: number; path: number[] }[] = [];
+  const underAccepted = (componentIndex: number, path: number[]) =>
+    acceptedPrefixes.some(
+      (prefix) =>
+        prefix.componentIndex === componentIndex &&
+        path.length > prefix.path.length &&
+        prefix.path.every((value, index) => path[index] === value),
+    );
+
+  const ranked: { key: string; band: number; x: number }[] = [];
+  for (const ref of walkSlideElements(ui)) {
+    if (backgroundComponents.has(ref.selection.componentIndex)) continue;
+    if (underAccepted(ref.selection.componentIndex, ref.selection.elementPath)) {
+      continue;
+    }
+    // Decorative marks the element itself untouchable, not its subtree —
+    // content inside a decorative frame is still content.
+    if (ref.element.decorative === true) continue;
+    const box = absoluteBoxForSelection(ui as RawUi, ref.selection);
+    ranked.push({
+      key: ref.key,
+      band: box ? Math.floor(box.y / ORDER_BAND_PX) : Number.MAX_SAFE_INTEGER,
+      x: box?.x ?? 0,
+    });
+    acceptedPrefixes.push({
+      componentIndex: ref.selection.componentIndex,
+      path: ref.selection.elementPath,
+    });
+  }
+
+  ranked.sort((a, b) => a.band - b.band || a.x - b.x);
+  const assignment = new Map(
+    ranked
+      .slice(0, MAX_ANIMATION_FLIGHTS)
+      .map((entry, index) => [entry.key, index + 1]),
+  );
+  if (assignment.size === 0) return null;
+
+  const next: Record<string, unknown> = JSON.parse(JSON.stringify(ui));
+  for (const ref of walkSlideElements(next)) {
+    const order = assignment.get(ref.key);
+    if (order === undefined) continue;
+    const step: AnimationStep = {
+      effect,
+      trigger: "after-previous",
+      order,
+      duration,
+      delay: 0,
+      easing: "ease-out",
+    };
+    ref.element.animations = [step];
+  }
+  return next;
+}
+
+/** Strips every element's `animations` on a deep clone; null when there was
+ *  nothing to strip, so the caller can skip a pointless (selection-resetting)
+ *  commit. */
+export function clearAllAnimations(
+  ui: Record<string, unknown> | null | undefined,
+): Record<string, unknown> | null {
+  if (!ui) return null;
+  const next: Record<string, unknown> = JSON.parse(JSON.stringify(ui));
+  let touched = false;
+  for (const ref of walkSlideElements(next)) {
+    if (ref.element.animations === undefined) continue;
+    delete ref.element.animations;
     touched = true;
   }
   return touched ? next : null;

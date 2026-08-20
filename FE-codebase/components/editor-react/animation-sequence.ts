@@ -114,8 +114,14 @@ export function rewriteAnimationOrders(
   return touched ? next : null;
 }
 
+/** Steps of elements whose key is excluded are dropped entirely — the
+ *  element renders statically instead. Present Mode uses this for the
+ *  morph-wins rule: an element matched by a morph flight must not ALSO run
+ *  an entrance, and one element cannot both fly in from the previous slide
+ *  and fade in from nothing. */
 export function buildAnimationPlan(
   ui: Record<string, unknown> | null | undefined,
+  excludeKeys?: Set<string>,
 ): AnimationPlan {
   if (!ui) return EMPTY_PLAN;
 
@@ -124,6 +130,7 @@ export function buildAnimationPlan(
   type Entry = { key: string; selection: ElementSelection; step: AnimationStep };
   const entries: Entry[] = [];
   for (const ref of walkSlideElements(ui)) {
+    if (excludeKeys?.has(ref.key)) continue;
     const steps = parseElementAnimations(ref.element.animations);
     if (!steps) continue;
     for (const step of steps) {

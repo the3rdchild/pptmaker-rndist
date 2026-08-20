@@ -11,6 +11,15 @@ import {
 import { collectMediaOverlays } from "@/components/editor-react/present-media-overlay";
 import { matchMorphPairs, morphGeometry } from "@/components/editor-react/morph";
 import {
+  buildAnimationPlan,
+  type AnimationPlan,
+} from "@/components/editor-react/animation-sequence";
+import {
+  AnimationOverlay,
+  captureAnimationFlights,
+  type AnimationFlight,
+} from "@/components/editor-react/animation-player";
+import {
   CanvasHost,
   SLIDE_H,
   SLIDE_W,
@@ -56,11 +65,20 @@ interface MorphFlight {
   to: FlightRect;
 }
 
-type TransitionStage = "preparing" | "staged" | "playing";
+type TransitionStage =
+  | "preparing"
+  | "staged"
+  | "playing"
+  /** Transition finished; the animation overlay owns the slide until its
+   *  groups are done. Only set when the slide has an animation run. */
+  | "animating";
 
 interface TransitionRun {
   id: number;
-  type: Exclude<SlideTransition, "none">;
+  /** "none" is a real stage here: a slide with element animations but no
+   *  transition still runs the prepare/stage pipeline, because the animation
+   *  overlay needs the frozen base bitmap it produces. */
+  type: SlideTransition;
   /** Frozen bitmap of the slide we are leaving. */
   backdrop: HTMLCanvasElement | null;
   /** Frozen bitmap of the slide we are arriving at, captured once the scene
@@ -69,6 +87,18 @@ interface TransitionRun {
   incoming: HTMLCanvasElement | null;
   flights: MorphFlight[];
   stage: TransitionStage;
+}
+
+/** One navigation's element-animation run. The plan's flights are cut from
+ *  the settled incoming stage BEFORE `incoming` is frozen, so the base
+ *  bitmap never contains the animated elements. */
+interface AnimationRun {
+  id: number;
+  plan: AnimationPlan;
+  flights: AnimationFlight[];
+  /** -1 = staged, not started. Further groups advance on Next (#builds). */
+  activeGroup: number;
+  restore: (opts?: { keepExitedHidden?: boolean }) => void;
 }
 
 interface MorphCapture {
@@ -198,6 +228,12 @@ export default function PresentMode({
   const runRef = useRef<TransitionRun | null>(null);
   const morphRestoreRef = useRef<(() => void)[]>([]);
   const [transition, setTransition] = useState<TransitionRun | null>(null);
+  /** Plan for the slide being navigated TO, handed to the driver effect —
+   *  built here (not there) because the morph exclusion needs the OUTGOING
+   *  slide's ui, which the stage no longer holds once navigation commits. */
+  const pendingAnimationRef = useRef<AnimationPlan | null>(null);
+  const animationRunRef = useRef<AnimationRun | null>(null);
+  const [animationRun, setAnimationRun] = useState<AnimationRun | null>(null);
 
   /** Puts back the opacity of the incoming elements a morph flight covers, and
    *  repaints synchronously (not batchDraw's scheduled pass) so they are in the
@@ -225,15 +261,35 @@ export default function PresentMode({
       // full opacity before anything else reads the stage.
       const wasRunning = runRef.current !== null;
       restoreMorphNodes();
+      // Full restore, exited elements included: the run is being abandoned,
+      // and whichever slide ends up on screen must show every element.
+      animationRunRef.current?.restore();
+      animationRunRef.current = null;
+      setAnimationRun(null);
       runRef.current = null;
 
-      const type = list[target]?.transition;
+      const type = list[target]?.transition ?? "none";
+      const targetUi = list[target]?.ui;
+      // Morph wins over element animation: a matched element flies in from
+      // the previous slide, so it must not also run an entrance. Its animation
+      // steps are dropped from the plan; unmatched elements still animate.
+      const excludeMorph =
+        type === "morph" && list[current]?.ui && targetUi
+          ? new Set(
+              matchMorphPairs(list[current]?.ui, targetUi)
+                .pairs.map((pair) => pair.keyB),
+            )
+          : undefined;
+      const plan = targetUi ? buildAnimationPlan(targetUi, excludeMorph) : null;
+      const hasAnimation = Boolean(plan && plan.animatedKeys.length > 0);
+      pendingAnimationRef.current = hasAnimation ? plan : null;
+
       indexRef.current = target;
       // Navigating again mid-transition cuts straight to the target. The live
       // stage is either mid-rebuild or mid-flight at that point, so freezing it
       // as the next transition's backdrop would capture a half-drawn slide —
       // and someone spamming the arrow key wants the slides, not the animation.
-      if (wasRunning || !type || type === "none" || !list[current]?.ui) {
+      if (wasRunning || (type === "none" && !hasAnimation) || !list[current]?.ui) {
         setTransition(null);
         setIndex(target);
         return;
@@ -256,12 +312,18 @@ export default function PresentMode({
       const opacities = captured.sources.map(
         (node) => [node, node.opacity()] as const,
       );
-      if (opacities.length > 0) {
-        opacities.forEach(([node]) => node.opacity(0));
-        stageRef.current?.getLayers().forEach((layer) => layer.draw());
+      // "none" + animations still runs the prepare pipeline (the animation
+      // overlay needs the frozen base bitmap), but with no transition there
+      // is no outgoing frame to freeze.
+      let backdrop: HTMLCanvasElement | null = null;
+      if (type !== "none") {
+        if (opacities.length > 0) {
+          opacities.forEach(([node]) => node.opacity(0));
+          stageRef.current?.getLayers().forEach((layer) => layer.draw());
+        }
+        backdrop = rasterizeStage(stageRef.current);
+        opacities.forEach(([node, opacity]) => node.opacity(opacity));
       }
-      const backdrop = rasterizeStage(stageRef.current);
-      opacities.forEach(([node, opacity]) => node.opacity(opacity));
 
       runIdRef.current += 1;
       const run: TransitionRun = {
@@ -315,6 +377,29 @@ export default function PresentMode({
       if (morphRestoreRef.current.length > 0) {
         stageRef.current?.getLayers().forEach((layer) => layer.draw());
       }
+      // Cut the animated elements out too — order matters: morph sources
+      // first, then animation flights, and only then the base freeze, so the
+      // bitmap holds neither. The animation flights mount with `staged`, two
+      // frames before anything moves.
+      const pendingPlan = pendingAnimationRef.current;
+      if (pendingPlan) {
+        const captured = captureAnimationFlights(pendingPlan, refs);
+        if (captured.flights.length > 0) {
+          animationRunRef.current = {
+            id: runId,
+            plan: pendingPlan,
+            flights: captured.flights,
+            activeGroup: -1,
+            restore: captured.restore,
+          };
+          setAnimationRun(animationRunRef.current);
+        } else {
+          // Nothing survived capture (all nodes detached) — drop the run or
+          // the overlay would wait forever on flights that don't exist.
+          pendingAnimationRef.current = null;
+          captured.restore();
+        }
+      }
       // Freeze the incoming slide too, and animate THAT instead of the live
       // surface. A Konva stage is five full-size canvases; moving them means
       // the compositor blends five stacked 1280x720 layers every frame, and a
@@ -328,12 +413,47 @@ export default function PresentMode({
       await nextFrame();
       await nextFrame();
       if (!alive()) return;
+
+      // Group 0 of the animation starts only after the transition has fully
+      // finished — two sets of composited layers moving at once is exactly
+      // the scenario that ran at 15fps before.
+      const startAnimation = async () => {
+        const animRun = animationRunRef.current;
+        if (!animRun || animRun.id !== runId) return;
+        await nextFrame();
+        await nextFrame();
+        if (!alive()) return;
+        setAnimationRun((current) =>
+          current && current.id === runId ? { ...current, activeGroup: 0 } : current,
+        );
+        profileFlight(
+          `animation group 0 (${animRun.flights.length} flights)`,
+          animRun.plan.groups[0]?.durationMs ?? 0,
+        );
+      };
+
+      if (run.type === "none") {
+        // No transition to play — the staged bitmap simply replaces the live
+        // view (identical pixels) and the animation takes over immediately.
+        settle((current) => ({ ...current, stage: "animating" }));
+        startAnimation();
+        return;
+      }
+
       const duration = run.type === "morph" ? MORPH_DURATION : SLIDE_DURATION;
       settle((current) => ({ ...current, stage: "playing" }));
       profileFlight(`${run.type} (${run.flights.length} flights)`, duration);
 
       await sleep(duration + 60);
       if (!alive()) return;
+      if (animationRunRef.current) {
+        // The animation overlay takes over from the transition. The morph
+        // targets stay hidden (their flight bitmaps now rest at the final
+        // geometry on top of the frozen base) until the run finishes.
+        settle((current) => ({ ...current, stage: "animating" }));
+        startAnimation();
+        return;
+      }
       restoreMorphNodes();
       await nextFrame();
       if (!alive()) return;
@@ -346,7 +466,40 @@ export default function PresentMode({
     };
   }, [runId, restoreMorphNodes]);
 
-  useEffect(() => () => restoreMorphNodes(), [restoreMorphNodes]);
+  /** Tears the animation run down once its last group has finished: put the
+   *  morph targets back, keep exited elements hidden (they left for good),
+   *  repaint synchronously, and only THEN drop the overlay a frame later —
+   *  the reverse order blinks (same lesson as restoreMorphNodes). */
+  const finishAnimationRun = useCallback(async () => {
+    const animRun = animationRunRef.current;
+    if (!animRun) return;
+    animationRunRef.current = null;
+    restoreMorphNodes();
+    animRun.restore({ keepExitedHidden: true });
+    await nextFrame();
+    runRef.current = null;
+    setTransition(null);
+    setAnimationRun(null);
+  }, [restoreMorphNodes]);
+
+  /** Only the last group ends the run; earlier groups wait for Next (build
+   *  steps advance the group, not the slide). */
+  const onAnimationGroupDone = useCallback(
+    (groupIndex: number) => {
+      const animRun = animationRunRef.current;
+      if (!animRun || animRun.activeGroup !== groupIndex) return;
+      if (groupIndex + 1 >= animRun.plan.groups.length) finishAnimationRun();
+    },
+    [finishAnimationRun],
+  );
+
+  useEffect(
+    () => () => {
+      restoreMorphNodes();
+      animationRunRef.current?.restore();
+    },
+    [restoreMorphNodes],
+  );
 
   const [scale, setScale] = useState(1);
   const [laser, setLaser] = useState<{ x: number; y: number } | null>(null);
@@ -456,8 +609,15 @@ export default function PresentMode({
   // While preparing, the frozen slide sits on top of everything so the
   // incoming stage can rebuild unseen. Once playing, morph keeps it above the
   // new slide to crossfade over it; the others drop it underneath so the new
-  // slide can move across it.
-  const backdropZ = playing && transition?.type !== "morph" ? 0 : 3;
+  // slide can move across it — and stay under once the animation overlay
+  // takes over, or the dead backdrop would suddenly cover the slide again.
+  const backdropZ =
+    transition &&
+    (transition.type === "morph" ||
+      transition.stage === "preparing" ||
+      transition.stage === "staged")
+      ? 3
+      : 0;
   // Once the incoming slide is frozen, the live surface steps out of the way
   // entirely and its bitmap does the moving. It stays mounted (Konva keeps
   // drawing into its canvases either way) — only hidden, so the compositor has
@@ -563,12 +723,17 @@ export default function PresentMode({
             ) : null}
 
             {/* The slide being left, frozen to a bitmap. Nothing repaints it,
-                so animating it is compositor-only work. */}
+                so animating it is compositor-only work. The morph fade keeps
+                its class through "animating" — fill-mode forwards holds it at
+                opacity 0 once the crossfade ends, and dropping the class
+                early would snap it back over the animation overlay. */}
             {transition?.backdrop ? (
               <CanvasHost
                 canvas={transition.backdrop}
                 className={
-                  playing && transition.type === "morph"
+                  transition.type === "morph" &&
+                  (transition.stage === "playing" ||
+                    transition.stage === "animating")
                     ? "slide-transition-morph-fade pointer-events-none absolute inset-0"
                     : "pointer-events-none absolute inset-0"
                 }
@@ -578,13 +743,17 @@ export default function PresentMode({
 
             {/* Morph flights: the outgoing slide's matched elements travelling
                 to their new geometry (FLIP — laid out at the destination box,
-                animated in from the inverse transform). */}
+                animated in from the inverse transform). While the animation
+                overlay runs they rest at the final geometry, standing in for
+                their still-hidden live nodes. */}
             {transition?.flights.map((flight) => {
               const { from, to } = flight;
               const dx = from.x + from.width / 2 - (to.x + to.width / 2);
               const dy = from.y + from.height / 2 - (to.y + to.height / 2);
               const sx = from.width / Math.max(1, to.width);
               const sy = from.height / Math.max(1, to.height);
+              const atStart =
+                transition.stage === "preparing" || transition.stage === "staged";
               return (
                 <CanvasHost
                   key={flight.key}
@@ -598,14 +767,26 @@ export default function PresentMode({
                     height: to.height,
                     transformOrigin: "center",
                     willChange: "transform",
-                    transform: playing
-                      ? "translate3d(0, 0, 0) scale(1, 1)"
-                      : `translate3d(${dx}px, ${dy}px, 0) scale(${sx}, ${sy})`,
+                    transform: atStart
+                      ? `translate3d(${dx}px, ${dy}px, 0) scale(${sx}, ${sy})`
+                      : "translate3d(0, 0, 0) scale(1, 1)",
                     transition: `transform ${MORPH_DURATION}ms cubic-bezier(0.22, 1, 0.36, 1)`,
                   }}
                 />
               );
             })}
+
+            {/* Element animation flights: cut from the settled incoming stage
+                before it was frozen, so the bitmap underneath never contained
+                them. Group 0 starts only after the transition finished. */}
+            {animationRun && frozenIncoming ? (
+              <AnimationOverlay
+                flights={animationRun.flights}
+                plan={animationRun.plan}
+                activeGroup={animationRun.activeGroup}
+                onGroupDone={onAnimationGroupDone}
+              />
+            ) : null}
 
             {/* fade-white / fade-black: opaque cover over the new slide that
                 fades out to reveal it. */}

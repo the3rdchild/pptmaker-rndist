@@ -214,7 +214,9 @@ export function AnimationOverlay({
           top: flight.box.y,
           width: flight.box.width,
           height: flight.box.height,
-          zIndex: 6,
+          // 4 keeps the flights under Present Mode's fade cover (5) so a
+          // fade-white/black transition still fades over them.
+          zIndex: 4,
           transformOrigin: "center",
           opacity: startsHidden ? 0 : 1,
           // Travel distances so the slide effects start fully off the slide

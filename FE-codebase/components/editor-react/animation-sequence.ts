@@ -10,6 +10,7 @@ import { walkSlideElements } from "@/components/editor-react/morph";
 import {
   animationEffectKind,
   parseElementAnimations,
+  type AnimationEffect,
   type AnimationStep,
 } from "@/components/slide-editor/animation/animation-meta";
 import type { ElementSelection } from "@/components/slide-editor/model/core";
@@ -56,6 +57,62 @@ const EMPTY_PLAN: AnimationPlan = {
   hiddenAtEnd: [],
   animatedKeys: [],
 };
+
+/** One step as the panel's build list shows it: the step plus enough context
+ *  (which element, what to call it) to render and re-select it. */
+export interface SlideAnimationEntry {
+  key: string;
+  selection: ElementSelection;
+  elementName: string;
+  step: AnimationStep;
+}
+
+/** All animation steps on a slide in build order (order asc, walk order as
+ *  the stable tie-break — the same ordering buildAnimationPlan groups by). */
+export function collectSlideAnimationSteps(
+  ui: Record<string, unknown> | null | undefined,
+): SlideAnimationEntry[] {
+  const out: SlideAnimationEntry[] = [];
+  for (const ref of walkSlideElements(ui)) {
+    const steps = parseElementAnimations(ref.element.animations);
+    if (!steps) continue;
+    const name =
+      typeof ref.element.name === "string" && ref.element.name.trim()
+        ? ref.element.name
+        : String(ref.element.type ?? "element");
+    for (const step of steps) {
+      out.push({ key: ref.key, selection: ref.selection, elementName: name, step });
+    }
+  }
+  out.sort((a, b) => a.step.order - b.step.order);
+  return out;
+}
+
+/** Rewrites every step's `order` to match the given sequence (position + 1)
+ *  on a deep clone of the ui. Returns null when the slide has no animated
+ *  elements, so callers can skip a pointless commit. Reordering spans several
+ *  elements, which is why it writes a whole new ui instead of one patch. */
+export function rewriteAnimationOrders(
+  ui: Record<string, unknown> | null | undefined,
+  sequence: { key: string; effect: AnimationEffect }[],
+): Record<string, unknown> | null {
+  if (!ui) return null;
+  const assignment = new Map(
+    sequence.map((entry, index) => [`${entry.key}|${entry.effect}`, index + 1]),
+  );
+  const next: Record<string, unknown> = JSON.parse(JSON.stringify(ui));
+  let touched = false;
+  for (const ref of walkSlideElements(next)) {
+    const steps = parseElementAnimations(ref.element.animations);
+    if (!steps) continue;
+    ref.element.animations = steps.map((step) => ({
+      ...step,
+      order: assignment.get(`${ref.key}|${step.effect}`) ?? step.order,
+    }));
+    touched = true;
+  }
+  return touched ? next : null;
+}
 
 export function buildAnimationPlan(
   ui: Record<string, unknown> | null | undefined,

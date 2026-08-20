@@ -722,13 +722,13 @@ body {
 		transform: translate3d(0, 0, 0);
 	}
 	15% {
-		transform: translate3d(-14%, 0, 0);
+		transform: translate3d(-60%, 0, 0);
 	}
 	30% {
-		transform: translate3d(14%, 0, 0);
+		transform: translate3d(60%, 0, 0);
 	}
 	45% {
-		transform: translate3d(-7%, 0, 0);
+		transform: translate3d(-30%, 0, 0);
 	}
 }
 @keyframes anim-preview-spin {

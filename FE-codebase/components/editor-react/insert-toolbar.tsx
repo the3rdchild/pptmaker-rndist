@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   ArrowRightLeft,
   BarChart3,
+  Clapperboard,
   LayoutTemplate,
   PaintBucket,
   Palette,
@@ -17,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { PanelLabel, RailTabButton, SearchField } from "@/components/editor-react/ui";
+import AnimationPanel from "@/components/editor-react/animation-panel";
 import BackgroundPanel, {
   applyBackgroundStyle,
 } from "@/components/editor-react/background-panel";
@@ -126,6 +128,7 @@ type TabId =
   | "magic-media"
   | "palette"
   | "background"
+  | "animation"
   | "transition";
 
 const TABS: {
@@ -145,6 +148,7 @@ const TABS: {
   { id: "palette", label: "Palette", icon: Palette },
   { id: "magic-media", label: "Magic Media", icon: Sparkles },
   { id: "background", label: "Background", icon: PaintBucket },
+  { id: "animation", label: "Animation", icon: Clapperboard },
   { id: "transition", label: "Transition", icon: ArrowRightLeft },
 ];
 
@@ -376,6 +380,13 @@ export default function InsertToolbar({
                 icon={<Sparkles size={20} />}
                 title="Magic Media"
                 description="Generate images and video with AI, right inside the editor. Coming soon."
+              />
+            )}
+            {openTab === "animation" && (
+              <AnimationPanel
+                elementSelection={elementSelection}
+                activeUi={activeUi}
+                onCommitUi={onInsert}
               />
             )}
             {openTab === "transition" && (

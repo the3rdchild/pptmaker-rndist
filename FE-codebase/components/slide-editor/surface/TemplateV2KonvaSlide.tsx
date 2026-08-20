@@ -329,6 +329,11 @@ export type TemplateSelectionPayload = {
   componentIndex: number;
   element: RawElement | null;
   patch: ((updater: (element: RawElement) => RawElement) => void) | null;
+  /** Reverse direction of the bridge: lets a panel drive the canvas selection
+   *  (the Animation tab's build list clicks an element into view). Present on
+   *  every payload, including null-selection ones, so it survives the canvas
+   *  being deselected. */
+  selectElement?: (selection: ElementSelection) => void;
 };
 
 function TemplateV2KonvaSlideComponent({
@@ -1078,6 +1083,13 @@ function TemplateV2KonvaSlideComponent({
     [activateSurface, clearTableCellSelection],
   );
 
+  /** Handed out through every TemplateSelectionPayload so panels can select an
+   *  element on the canvas without a new callback prop threading down here. */
+  const selectElement = useCallback(
+    (target: ElementSelection) => select(target),
+    [select],
+  );
+
   // Drag-to-select: mousedown on empty canvas starts tracking a start point.
   // If the pointer moves past the threshold before mouseup, it's a marquee
   // drag — components overlapping the dragged rect become the selection.
@@ -1446,6 +1458,7 @@ function TemplateV2KonvaSlideComponent({
         componentIndex: elementSelection.componentIndex,
         element: selectedElement,
         patch: (updater) => updateElement(elementSelection, updater),
+        selectElement,
       });
       return;
     }
@@ -1473,6 +1486,7 @@ function TemplateV2KonvaSlideComponent({
           componentIndex: selection.componentIndex,
           element: only as RawElement,
           patch: (updater) => updateElement(target, updater),
+          selectElement,
         });
         return;
       }
@@ -1481,12 +1495,23 @@ function TemplateV2KonvaSlideComponent({
         componentIndex: selection.componentIndex,
         element: null,
         patch: null,
+        selectElement,
       });
       return;
     }
 
-    onTemplateSelection(null);
-  }, [onTemplateSelection, selectedElement, selection, uiDraft, updateElement]);
+    // Not `null` but a null-selection payload: `selectElement` must survive a
+    // deselected canvas, or the Animation tab's build list goes dead the
+    // moment the user clicks empty space. Existing consumers all optional-chain
+    // into element/patch, so this reads exactly like `null` to them.
+    onTemplateSelection({
+      selection: null,
+      componentIndex: -1,
+      element: null,
+      patch: null,
+      selectElement,
+    });
+  }, [onTemplateSelection, selectedElement, selection, uiDraft, updateElement, selectElement]);
 
   const closeChartEditor = useCallback(() => {
     setChartEditorSelection(null);

@@ -528,8 +528,85 @@ export default function AnimationPanel({
     if (updated) onCommitUi(updated);
   };
 
+  // Pinned to the flyout's scroll container (insert-toolbar's overflow-y-auto
+  // body), not to the panel: the whole-slide actions stay reachable at the top
+  // and the selected step's timing at the bottom while the long middle — three
+  // grids of effect cards plus the build list — scrolls between them. Two
+  // stickies at opposite edges rather than stacked at the top, so neither has
+  // to know how tall the other one happens to be.
   return (
-    <div className="flex flex-col gap-3 pb-2">
+    <div className="flex flex-col pb-2">
+      <div className="sticky top-0 z-20 flex flex-col gap-1.5 border-b border-[var(--border)] bg-[var(--bg-panel)] px-2.5 pb-2.5 pt-2.5">
+        {onPreviewAnimation && (
+          <button
+            onClick={onPreviewAnimation}
+            disabled={entries.length === 0 && !previewActive}
+            className={cn(
+              "flex h-9 w-full items-center justify-center gap-2 rounded-lg text-xs font-medium transition-colors",
+              previewActive
+                ? "bg-[var(--accent-soft)] text-[var(--accent-light)] ring-1 ring-[var(--accent)]/50"
+                : "bg-[var(--accent)] text-white hover:opacity-90",
+              entries.length === 0 &&
+                !previewActive && "cursor-not-allowed opacity-40",
+            )}
+          >
+            {previewActive ? <Square size={13} /> : <Play size={13} />}
+            {previewActive ? "Stop preview" : "Play preview"}
+          </button>
+        )}
+        <span className="pt-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+          Animate all
+        </span>
+        <AnimateAllTimingRow timing={animateAllTiming} onChange={setAnimateAllTiming} />
+        <div className="grid grid-cols-4 gap-1.5">
+          {ANIMATE_ALL_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              onClick={() => {
+                const next = applyAnimateAllPreset(
+                  activeUi,
+                  preset.effect,
+                  animateAllTiming,
+                );
+                if (next) onCommitUi(next);
+              }}
+              title={`One ${preset.label.toLowerCase()} entrance per element, in reading order, at the timing above (replaces existing steps)`}
+              className="flex h-8 items-center justify-center rounded-lg text-[11px] ring-1 ring-[var(--border-strong)] transition-colors hover:bg-[var(--accent-soft)] hover:text-[var(--accent-light)] hover:ring-[var(--accent)]/50"
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+        {/* Side by side: the header is pinned, so every row it keeps costs the
+            scrolling area below it. */}
+        <div className="grid grid-cols-2 gap-1.5">
+          <button
+            onClick={() => {
+              const next = applyTimingToAll(activeUi, animateAllTiming);
+              if (next) onCommitUi(next);
+            }}
+            disabled={entries.length === 0}
+            title="Retime every step already on this slide, leaving the effects alone"
+            className="flex h-8 items-center justify-center gap-1.5 rounded-lg text-[11px] text-[var(--text-secondary)] ring-1 ring-[var(--border-strong)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Timer size={12} />
+            Apply timing to all
+          </button>
+          <button
+            onClick={() => {
+              const next = clearAllAnimations(activeUi);
+              if (next) onCommitUi(next);
+            }}
+            disabled={entries.length === 0}
+            className="flex h-8 items-center justify-center gap-1.5 rounded-lg text-[11px] text-[var(--text-secondary)] ring-1 ring-[var(--border-strong)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Ban size={12} />
+            Clear all
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3">
       {canEdit ? (
         <>
           <PanelLabel>Selected element</PanelLabel>
@@ -564,19 +641,6 @@ export default function AnimationPanel({
               </div>
             );
           })}
-          {steps.length > 0 && (
-            <>
-              <PanelLabel>Step timing</PanelLabel>
-              {/* key resets the drafts when the canvas selection moves */}
-              {steps.map((step) => (
-                <StepControls
-                  key={`${JSON.stringify(elementSelection?.selection ?? null)}:${step.effect}`}
-                  step={step}
-                  onCommit={(partial) => commitStep(step.effect, partial)}
-                />
-              ))}
-            </>
-          )}
         </>
       ) : (
         <div className="mx-2.5 mt-2 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3 py-3 text-[11px] leading-relaxed text-[var(--text-muted)]">
@@ -618,70 +682,30 @@ export default function AnimationPanel({
           </DndContext>
         </div>
       )}
-      <PanelLabel>Animate all</PanelLabel>
-      <div className="flex flex-col gap-1.5 px-2.5">
-        <AnimateAllTimingRow timing={animateAllTiming} onChange={setAnimateAllTiming} />
-        <div className="grid grid-cols-4 gap-1.5">
-          {ANIMATE_ALL_PRESETS.map((preset) => (
-            <button
-              key={preset.id}
-              onClick={() => {
-                const next = applyAnimateAllPreset(
-                  activeUi,
-                  preset.effect,
-                  animateAllTiming,
-                );
-                if (next) onCommitUi(next);
-              }}
-              title={`One ${preset.label.toLowerCase()} entrance per element, in reading order, at the timing above (replaces existing steps)`}
-              className="flex h-8 items-center justify-center rounded-lg text-[11px] ring-1 ring-[var(--border-strong)] transition-colors hover:bg-[var(--accent-soft)] hover:text-[var(--accent-light)] hover:ring-[var(--accent)]/50"
-            >
-              {preset.label}
-            </button>
-          ))}
-        </div>
-        <button
-          onClick={() => {
-            const next = applyTimingToAll(activeUi, animateAllTiming);
-            if (next) onCommitUi(next);
-          }}
-          disabled={entries.length === 0}
-          title="Retime every step already on this slide, leaving the effects alone"
-          className="flex h-8 items-center justify-center gap-1.5 rounded-lg text-[11px] text-[var(--text-secondary)] ring-1 ring-[var(--border-strong)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <Timer size={12} />
-          Apply timing to all
-        </button>
-        <button
-          onClick={() => {
-            const next = clearAllAnimations(activeUi);
-            if (next) onCommitUi(next);
-          }}
-          disabled={entries.length === 0}
-          className="flex h-8 items-center justify-center gap-1.5 rounded-lg text-[11px] text-[var(--text-secondary)] ring-1 ring-[var(--border-strong)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <Ban size={12} />
-          Clear all animations
-        </button>
       </div>
 
-      {onPreviewAnimation && (
-        <div className="px-2.5">
-          <button
-            onClick={onPreviewAnimation}
-            disabled={entries.length === 0 && !previewActive}
-            className={cn(
-              "flex h-9 w-full items-center justify-center gap-2 rounded-lg text-xs font-medium transition-colors",
-              previewActive
-                ? "bg-[var(--accent-soft)] text-[var(--accent-light)] ring-1 ring-[var(--accent)]/50"
-                : "bg-[var(--accent)] text-white hover:opacity-90",
-              entries.length === 0 &&
-                !previewActive && "cursor-not-allowed opacity-40",
-            )}
-          >
-            {previewActive ? <Square size={13} /> : <Play size={13} />}
-            {previewActive ? "Stop preview" : "Play preview"}
-          </button>
+      {/* Pinned to the bottom edge instead of stacked under the header: the
+          block only exists while a step is selected, so its height changes as
+          you work, and a second top sticky would have to be offset by whatever
+          the header currently measures. Capped and scrollable for the rare
+          element carrying all three kinds at once — capped in vh, not %,
+          because the panel's own height is content-driven inside the scroll
+          container and a percentage max-height would resolve to none. */}
+      {canEdit && steps.length > 0 && (
+        <div className="sticky bottom-0 z-20 mt-3 max-h-[38vh] overflow-y-auto border-t border-[var(--border)] bg-[var(--bg-panel)] px-2.5 pb-2.5 pt-2">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+            Step timing
+          </span>
+          <div className="mt-1.5 flex flex-col gap-1.5">
+            {/* key resets the drafts when the canvas selection moves */}
+            {steps.map((step) => (
+              <StepControls
+                key={`${JSON.stringify(elementSelection?.selection ?? null)}:${step.effect}`}
+                step={step}
+                onCommit={(partial) => commitStep(step.effect, partial)}
+              />
+            ))}
+          </div>
         </div>
       )}
     </div>

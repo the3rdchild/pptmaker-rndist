@@ -330,10 +330,10 @@ export type TemplateSelectionPayload = {
   element: RawElement | null;
   patch: ((updater: (element: RawElement) => RawElement) => void) | null;
   /** Reverse direction of the bridge: lets a panel drive the canvas selection
-   *  (the Animation tab's build list clicks an element into view). Present on
-   *  every payload, including null-selection ones, so it survives the canvas
-   *  being deselected. */
-  selectElement?: (selection: ElementSelection) => void;
+   *  (the Animation tab's build list clicks an element into view; passing
+   *  null deselects). Present on every payload, including null-selection
+   *  ones, so it survives the canvas being deselected. */
+  selectElement?: (selection: ElementSelection | null) => void;
 };
 
 function TemplateV2KonvaSlideComponent({
@@ -1084,9 +1084,10 @@ function TemplateV2KonvaSlideComponent({
   );
 
   /** Handed out through every TemplateSelectionPayload so panels can select an
-   *  element on the canvas without a new callback prop threading down here. */
+   *  element (or clear the selection) on the canvas without a new callback
+   *  prop threading down here. */
   const selectElement = useCallback(
-    (target: ElementSelection) => select(target),
+    (target: ElementSelection | null) => select(target),
     [select],
   );
 

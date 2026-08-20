@@ -15,7 +15,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Ban, GripVertical } from "lucide-react";
+import { Ban, GripVertical, Play, Square } from "lucide-react";
 import { PanelLabel } from "@/components/editor-react/ui";
 import { cn } from "@/lib/utils";
 import {
@@ -303,6 +303,8 @@ export default function AnimationPanel({
   elementSelection,
   activeUi,
   onCommitUi,
+  onPreviewAnimation,
+  previewActive,
 }: {
   /** The canvas element currently selected — effect edits write through its
    *  patch so the surface keeps ownership of its ui draft. */
@@ -312,6 +314,9 @@ export default function AnimationPanel({
    *  Background panel's onApply. This resets the canvas selection — acceptable
    *  for whole-slide actions. */
   onCommitUi: (ui: Record<string, unknown>) => void;
+  /** Starts/stops the on-canvas preview run of the whole build. */
+  onPreviewAnimation?: () => void;
+  previewActive?: boolean;
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
@@ -473,6 +478,25 @@ export default function AnimationPanel({
               </div>
             </SortableContext>
           </DndContext>
+        </div>
+      )}
+      {onPreviewAnimation && (
+        <div className="px-2.5">
+          <button
+            onClick={onPreviewAnimation}
+            disabled={entries.length === 0 && !previewActive}
+            className={cn(
+              "flex h-9 w-full items-center justify-center gap-2 rounded-lg text-xs font-medium transition-colors",
+              previewActive
+                ? "bg-[var(--accent-soft)] text-[var(--accent-light)] ring-1 ring-[var(--accent)]/50"
+                : "bg-[var(--accent)] text-white hover:opacity-90",
+              entries.length === 0 &&
+                !previewActive && "cursor-not-allowed opacity-40",
+            )}
+          >
+            {previewActive ? <Square size={13} /> : <Play size={13} />}
+            {previewActive ? "Stop preview" : "Play preview"}
+          </button>
         </div>
       )}
     </div>

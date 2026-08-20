@@ -238,23 +238,24 @@ body {
 }
 
 /* ── Element animations (Animation panel + raster-flight playback) ─────────
-   Consumed by animation-player.tsx: one class per effect carries the
-   animation-name, fill-mode and will-change; the PLAYER sets duration, delay
-   and timing-function inline per step. Fill-mode matters:
-   - entrance "backwards" holds the from-state through animation-delay;
-   - exit "forwards" keeps the element hidden after it finishes (the class
-     stays on until the overlay is torn down);
-   - emphasis "both" (ends at identity, so dropping the class later is safe).
-   will-change rides on the class on purpose: the player releases it by
-   swapping the class off when a group finishes — a permanently promoted layer
-   per animated element is a slow leak on the GPU.
+   Consumed by animation-player.tsx: the player sets animation-name/duration/
+   delay/timing/fill-mode as INLINE longhands per step — comma-joined when one
+   element runs several steps in the same group, which single classes cannot
+   express (one animation-name property, one winner). There are deliberately
+   no .anim-* playback classes.
+   Fill-mode per kind: entrance "backwards" (holds the from-state through
+   animation-delay), exit "forwards" (keeps the element hidden after it ends —
+   the animation values stay applied until the overlay tears down), emphasis
+   "both" (ends at identity). will-change is set inline for the running group
+   only — a permanently promoted layer per animated element is a slow GPU
+   leak.
    Same hard rules as the transition section: transform/opacity only, always
    translate3d. The one exception is the wipe effects, which use clip-path
    inset — not guaranteed compositor-only on every GPU, but it never touches a
    canvas texture, so even a main-thread clip update stays off the 15fps cliff.
-   `--anim-travel` (px) is set inline by the player per flight so slide
-   effects start fully off the slide edge; the fallback is only for the
-   preview cards. */
+   The --anim-travel-* vars (px) are set inline per flight so slide effects
+   start fully off the slide edge; the fallback is only for the preview
+   cards, which don't set them. */
 
 @keyframes anim-kf-fade-in {
 	from {
@@ -276,7 +277,7 @@ body {
 }
 @keyframes anim-kf-slide-in-left {
 	from {
-		transform: translate3d(calc(-1 * var(--anim-travel, 120px)), 0, 0);
+		transform: translate3d(calc(-1 * var(--anim-travel-x-neg, 120px)), 0, 0);
 	}
 	to {
 		transform: translate3d(0, 0, 0);
@@ -284,7 +285,7 @@ body {
 }
 @keyframes anim-kf-slide-in-right {
 	from {
-		transform: translate3d(var(--anim-travel, 120px), 0, 0);
+		transform: translate3d(var(--anim-travel-x-pos, 120px), 0, 0);
 	}
 	to {
 		transform: translate3d(0, 0, 0);
@@ -292,7 +293,7 @@ body {
 }
 @keyframes anim-kf-slide-in-up {
 	from {
-		transform: translate3d(0, var(--anim-travel, 120px), 0);
+		transform: translate3d(0, var(--anim-travel-y-pos, 120px), 0);
 	}
 	to {
 		transform: translate3d(0, 0, 0);
@@ -300,7 +301,7 @@ body {
 }
 @keyframes anim-kf-slide-in-down {
 	from {
-		transform: translate3d(0, calc(-1 * var(--anim-travel, 120px)), 0);
+		transform: translate3d(0, calc(-1 * var(--anim-travel-y-neg, 120px)), 0);
 	}
 	to {
 		transform: translate3d(0, 0, 0);
@@ -420,7 +421,7 @@ body {
 		transform: translate3d(0, 0, 0);
 	}
 	to {
-		transform: translate3d(calc(-1 * var(--anim-travel, 120px)), 0, 0);
+		transform: translate3d(calc(-1 * var(--anim-travel-x-neg, 120px)), 0, 0);
 	}
 }
 @keyframes anim-kf-slide-out-right {
@@ -428,7 +429,7 @@ body {
 		transform: translate3d(0, 0, 0);
 	}
 	to {
-		transform: translate3d(var(--anim-travel, 120px), 0, 0);
+		transform: translate3d(var(--anim-travel-x-pos, 120px), 0, 0);
 	}
 }
 @keyframes anim-kf-slide-out-up {
@@ -436,7 +437,7 @@ body {
 		transform: translate3d(0, 0, 0);
 	}
 	to {
-		transform: translate3d(0, calc(-1 * var(--anim-travel, 120px)), 0);
+		transform: translate3d(0, calc(-1 * var(--anim-travel-y-neg, 120px)), 0);
 	}
 }
 @keyframes anim-kf-slide-out-down {
@@ -444,7 +445,7 @@ body {
 		transform: translate3d(0, 0, 0);
 	}
 	to {
-		transform: translate3d(0, var(--anim-travel, 120px), 0);
+		transform: translate3d(0, var(--anim-travel-y-pos, 120px), 0);
 	}
 }
 @keyframes anim-kf-zoom-out {
@@ -464,116 +465,6 @@ body {
 	to {
 		clip-path: inset(0 100% 0 0);
 	}
-}
-
-.anim-fade-in {
-	will-change: opacity;
-	animation-name: anim-kf-fade-in;
-	animation-fill-mode: backwards;
-}
-.anim-rise {
-	will-change: transform, opacity;
-	animation-name: anim-kf-rise;
-	animation-fill-mode: backwards;
-}
-.anim-slide-in-left,
-.anim-slide-in-right,
-.anim-slide-in-up,
-.anim-slide-in-down {
-	will-change: transform;
-	animation-fill-mode: backwards;
-}
-.anim-slide-in-left {
-	animation-name: anim-kf-slide-in-left;
-}
-.anim-slide-in-right {
-	animation-name: anim-kf-slide-in-right;
-}
-.anim-slide-in-up {
-	animation-name: anim-kf-slide-in-up;
-}
-.anim-slide-in-down {
-	animation-name: anim-kf-slide-in-down;
-}
-.anim-zoom-in,
-.anim-pop {
-	will-change: transform, opacity;
-	animation-fill-mode: backwards;
-}
-.anim-zoom-in {
-	animation-name: anim-kf-zoom-in;
-}
-.anim-pop {
-	animation-name: anim-kf-pop;
-}
-.anim-wipe-in {
-	will-change: clip-path;
-	animation-name: anim-kf-wipe-in;
-	animation-fill-mode: backwards;
-}
-
-.anim-pulse,
-.anim-shake,
-.anim-spin,
-.anim-grow,
-.anim-bounce {
-	will-change: transform;
-	animation-fill-mode: both;
-}
-.anim-pulse {
-	animation-name: anim-kf-pulse;
-}
-.anim-shake {
-	animation-name: anim-kf-shake;
-}
-.anim-spin {
-	animation-name: anim-kf-spin;
-}
-.anim-grow {
-	animation-name: anim-kf-grow;
-}
-.anim-bounce {
-	animation-name: anim-kf-bounce;
-}
-
-.anim-fade-out {
-	will-change: opacity;
-	animation-name: anim-kf-fade-out;
-	animation-fill-mode: forwards;
-}
-.anim-sink {
-	will-change: transform, opacity;
-	animation-name: anim-kf-sink;
-	animation-fill-mode: forwards;
-}
-.anim-slide-out-left,
-.anim-slide-out-right,
-.anim-slide-out-up,
-.anim-slide-out-down {
-	will-change: transform;
-	animation-fill-mode: forwards;
-}
-.anim-slide-out-left {
-	animation-name: anim-kf-slide-out-left;
-}
-.anim-slide-out-right {
-	animation-name: anim-kf-slide-out-right;
-}
-.anim-slide-out-up {
-	animation-name: anim-kf-slide-out-up;
-}
-.anim-slide-out-down {
-	animation-name: anim-kf-slide-out-down;
-}
-.anim-zoom-out {
-	will-change: transform, opacity;
-	animation-name: anim-kf-zoom-out;
-	animation-fill-mode: forwards;
-}
-.anim-wipe-out {
-	will-change: clip-path;
-	animation-name: anim-kf-wipe-out;
-	animation-fill-mode: forwards;
 }
 
 /* Effect preview cards (Animation panel). Separate looping keyframes rather

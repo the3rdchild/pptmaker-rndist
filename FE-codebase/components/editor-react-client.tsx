@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import type Konva from "konva";
 import { useSearchParams } from "next/navigation";
 import { useDispatch, useSelector, useStore } from "react-redux";
 import {
@@ -101,6 +102,7 @@ import {
   EDITOR_STAGE_WIDTH,
 } from "@/components/slide-editor/types";
 import PresentMode from "@/components/editor-react/present-mode";
+import { AnimationPreviewLayer } from "@/components/editor-react/animation-player";
 import { exportToPptx } from "@/components/editor-react/export-pptx";
 import { buildPdfFromSlideImages } from "@/components/editor-react/export-pdf";
 import {
@@ -414,6 +416,12 @@ export default function EditorReactClient({
   );
   const [templateSelection, setTemplateSelection] =
     useState<TemplateSelectionPayload | null>(null);
+  /** The editor canvas's Konva surface, exposed so the Animation preview can
+   *  freeze/rasterize it (same handles Present Mode uses on its own stage). */
+  const editorStageRef = useRef<Konva.Stage | null>(null);
+  const editorNodeRefs = useRef<Map<string, Konva.Node> | null>(null);
+  /** Bump = (re)start the on-canvas animation preview; 0 = idle. */
+  const [animationPreviewToken, setAnimationPreviewToken] = useState(0);
   /** A pasted image the author chose to keep in the reusable element library. */
   const [libraryImage, setLibraryImage] = useState<PastedImage | null>(null);
   const [generationError, setGenerationError] = useState<{
@@ -755,6 +763,23 @@ export default function EditorReactClient({
     (payload: TemplateSelectionPayload | null) => setTemplateSelection(payload),
     []
   );
+
+  /** Play/Stop for the Animation tab's on-canvas preview. Selection is cleared
+   *  first — a visible transformer would bake into the preview's rasters. */
+  const handleToggleAnimationPreview = useCallback(() => {
+    if (animationPreviewToken > 0) {
+      setAnimationPreviewToken(0);
+      return;
+    }
+    templateSelection?.selectElement?.(null);
+    setAnimationPreviewToken((token) => token + 1);
+  }, [animationPreviewToken, templateSelection]);
+
+  // The preview belongs to the slide it was started on; its layer restores
+  // the hidden nodes in its own unmount cleanup.
+  useEffect(() => {
+    setAnimationPreviewToken(0);
+  }, [safeActive]);
 
   /** Every page on the template canvas — the engine's Theme scope saves the
    *  whole canvas at once, not just the page being looked at. */
@@ -2567,6 +2592,8 @@ export default function EditorReactClient({
             dispatch(setSlideTransition({ index: safeActive, transition }))
           }
           elementSelection={templateSelection}
+          onPreviewAnimation={handleToggleAnimationPreview}
+          animationPreviewActive={animationPreviewToken > 0}
           templatePanel={
             templateMode ? (
               <TemplateEnginePanel
@@ -2627,8 +2654,11 @@ export default function EditorReactClient({
                 transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
                 transition: isPanning ? "none" : "transform 0.1s ease-out",
                 // With the hand tool up, the slide must not swallow the drag —
-                // otherwise Konva starts moving an element mid-pan.
-                pointerEvents: handTool ? "none" : undefined,
+                // otherwise Konva starts moving an element mid-pan. Same while
+                // an animation preview runs: the canvas is a static picture
+                // until it finishes.
+                pointerEvents:
+                  handTool || animationPreviewToken > 0 ? "none" : undefined,
               }}
             >
               <TemplateV2KonvaSlide
@@ -2648,12 +2678,27 @@ export default function EditorReactClient({
                 // Transition tab's morph link editor needs the selected
                 // element and its patch.
                 onTemplateSelection={handleTemplateSelection}
+                // The Animation preview freezes this stage into rasters the
+                // same way Present Mode freezes its own.
+                stageRef={(stage: Konva.Stage | null) => {
+                  editorStageRef.current = stage;
+                }}
+                externalNodeRefs={editorNodeRefs}
               />
               <SlideBuildSkeleton
                 ui={activeUi as Record<string, unknown>}
                 pendingPhotos={pendingPhotos[safeActive] ?? EMPTY_PHOTO_SET}
                 building={slideProgress[safeActive]?.phase === "building"}
               />
+              {animationPreviewToken > 0 && (
+                <AnimationPreviewLayer
+                  key={`${safeActive}-${animationPreviewToken}`}
+                  ui={activeUi as Record<string, unknown> | null}
+                  stageRef={editorStageRef}
+                  nodeRefs={editorNodeRefs}
+                  onFinished={() => setAnimationPreviewToken(0)}
+                />
+              )}
             </div>
           ) : generationError ? (
             <div className="flex max-w-[320px] flex-col items-center gap-3 rounded-xl border border-red-500/20 bg-red-500/5 px-6 py-5 text-center">

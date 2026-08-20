@@ -114,6 +114,9 @@ export interface InsertToolbarProps {
   /** The element selected on the canvas — the Transition tab's morph link
    *  editor writes `morph_id` through its patch. */
   elementSelection?: TemplateSelectionPayload | null;
+  /** Starts/stops the Animation tab's on-canvas preview run. */
+  onPreviewAnimation?: () => void;
+  animationPreviewActive?: boolean;
 }
 
 type TabId =
@@ -182,6 +185,8 @@ export default function InsertToolbar({
   activeTransition,
   onSelectTransition,
   elementSelection,
+  onPreviewAnimation,
+  animationPreviewActive,
 }: InsertToolbarProps) {
   // The template tab only exists in the engine; the normal editor never sees it.
   const tabs = templatePanel
@@ -387,6 +392,8 @@ export default function InsertToolbar({
                 elementSelection={elementSelection}
                 activeUi={activeUi}
                 onCommitUi={onInsert}
+                onPreviewAnimation={onPreviewAnimation}
+                previewActive={animationPreviewActive}
               />
             )}
             {openTab === "transition" && (

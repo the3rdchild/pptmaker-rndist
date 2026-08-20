@@ -74,8 +74,11 @@ import {
 } from "@/app/(presentation-generator)/services/api/presentation-generation";
 import type { SlideElement } from "@/components/slide-editor/types";
 
-/** The flyout is 560px wide: two columns inside 2.5rem of padding and a 12px gap. */
-const TEMPLATE_CARD_WIDTH = 248;
+/** Two template columns inside the tab's 22px side padding and a 12px gap.
+ *  Derived from the flyout's live width, which the user can drag. */
+function templateCardWidth(panelWidth: number): number {
+  return Math.max(120, Math.floor((panelWidth - 56) / 2));
+}
 /** Roughly what fits above the fold — rendered without waiting for the observer. */
 const EAGER_TEMPLATE_CARDS = 6;
 
@@ -89,14 +92,20 @@ type Layout = Record<string, unknown>;
 
 export function TemplatesTab({
   search,
+  panelWidth,
   onApplyLayout,
   onApplyAllLayouts,
 }: {
   search: string;
+  /** Live width of the flyout — the card grid is the one thing here that has
+   *  to be measured rather than flowed, since each preview is a fixed
+   *  1280x720 stage scaled to fit its card. */
+  panelWidth: number;
   onApplyLayout: (layout: Layout) => void;
   /** Adds every layout of the selected theme as its own slide. */
   onApplyAllLayouts?: (layouts: Layout[], themeName: string) => void;
 }) {
+  const cardWidth = templateCardWidth(panelWidth);
   const { themes, loading, activeThemeId, setActiveThemeId, visibleLayouts } =
     useTemplateThemes();
   const activeTheme = themes.find((theme) => theme.id === activeThemeId) ?? null;
@@ -147,7 +156,7 @@ export function TemplatesTab({
           >
             <LazyLayoutThumbnail
               layout={layout}
-              width={TEMPLATE_CARD_WIDTH}
+              width={cardWidth}
               eager={i < EAGER_TEMPLATE_CARDS}
             />
             <span className="pointer-events-none absolute inset-x-0 bottom-0 flex h-6 items-center justify-center bg-gradient-to-t from-black/70 to-transparent text-[10px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">

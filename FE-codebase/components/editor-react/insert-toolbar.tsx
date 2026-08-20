@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowRightLeft,
   Clapperboard,
@@ -12,6 +12,7 @@ import {
   Type,
   X,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { PanelLabel, RailTabButton, SearchField } from "@/components/editor-react/ui";
 import AnimationPanel from "@/components/editor-react/animation-panel";
 import BackgroundPanel, {
@@ -135,6 +136,26 @@ const TABS: {
   { id: "transition", label: "Transition", icon: ArrowRightLeft },
 ];
 
+/** The flyout used to be a fixed 560px, which crowded the canvas on a laptop
+ *  screen. It now opens at 400px and can be dragged wider from its inner edge;
+ *  every tab's content is fluid, and the one measurement that isn't (the
+ *  template card) is derived from the live width. */
+const PANEL_DEFAULT_WIDTH = 400;
+const PANEL_MIN_WIDTH = 320;
+const PANEL_MAX_WIDTH = 720;
+const PANEL_WIDTH_STORAGE_KEY = "ppt:insert-panel-width";
+
+/** Bounded by the constants above and by what the window can spare — a panel
+ *  dragged past the viewport would otherwise squeeze the canvas to nothing. */
+function clampPanelWidth(width: number): number {
+  const viewportCap =
+    typeof window === "undefined"
+      ? PANEL_MAX_WIDTH
+      : Math.max(PANEL_MIN_WIDTH, window.innerWidth - 420);
+  const ceiling = Math.min(PANEL_MAX_WIDTH, viewportCap);
+  return Math.round(Math.min(ceiling, Math.max(PANEL_MIN_WIDTH, width)));
+}
+
 function backgroundSwatchStyle(style: BackgroundStyle): React.CSSProperties {
   if (style.type === "image" && style.imageUrl) {
     return {
@@ -177,8 +198,69 @@ export default function InsertToolbar({
   const [recentElementKeys, setRecentElementKeys] = useState<string[]>([]);
   const [recentBackgrounds, setRecentBackgrounds] = useState<BackgroundStyle[]>([]);
   const [uploads, setUploads] = useState<UploadedAsset[]>([]);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [panelWidth, setPanelWidth] = useState(PANEL_DEFAULT_WIDTH);
+  const [resizing, setResizing] = useState(false);
+  /** Mirrors what the drag has written to the node. A re-render triggered from
+   *  outside mid-drag would otherwise reapply the pre-drag width and snap the
+   *  panel back under the cursor. */
+  const liveWidthRef = useRef(PANEL_DEFAULT_WIDTH);
+
+  // Read after mount rather than in the initializer: localStorage doesn't
+  // exist during SSR, and seeding from it would desync the hydrated markup.
+  // Nothing flashes — the flyout is closed until a tab is picked.
+  useEffect(() => {
+    const stored = Number(window.localStorage.getItem(PANEL_WIDTH_STORAGE_KEY));
+    if (!Number.isFinite(stored) || stored <= 0) return;
+    const restored = clampPanelWidth(stored);
+    liveWidthRef.current = restored;
+    setPanelWidth(restored);
+  }, []);
 
   if (!activeUi) return null;
+
+  const startResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const handle = event.currentTarget;
+    const pointerId = event.pointerId;
+    const startX = event.clientX;
+    const startWidth = Math.round(
+      panelRef.current?.getBoundingClientRect().width ?? panelWidth,
+    );
+    liveWidthRef.current = startWidth;
+    handle.setPointerCapture(pointerId);
+    setResizing(true);
+
+    // The drag writes straight to the node instead of through state: the open
+    // tab can hold dozens of Konva template thumbnails, and re-rendering them
+    // on every pointermove would drop the drag to a crawl. React only learns
+    // the new width once the pointer is released.
+    const onMove = (move: PointerEvent) => {
+      const next = clampPanelWidth(startWidth + (move.clientX - startX));
+      liveWidthRef.current = next;
+      if (panelRef.current) panelRef.current.style.width = `${next}px`;
+    };
+    const onEnd = () => {
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onEnd);
+      handle.removeEventListener("pointercancel", onEnd);
+      if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
+      setResizing(false);
+      const settled = liveWidthRef.current;
+      setPanelWidth(settled);
+      window.localStorage.setItem(PANEL_WIDTH_STORAGE_KEY, String(settled));
+    };
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onEnd);
+    handle.addEventListener("pointercancel", onEnd);
+  };
+
+  const resetPanelWidth = () => {
+    liveWidthRef.current = PANEL_DEFAULT_WIDTH;
+    if (panelRef.current) panelRef.current.style.width = `${PANEL_DEFAULT_WIDTH}px`;
+    setPanelWidth(PANEL_DEFAULT_WIDTH);
+    window.localStorage.setItem(PANEL_WIDTH_STORAGE_KEY, String(PANEL_DEFAULT_WIDTH));
+  };
 
   const selectTab = (id: TabId) => {
     setSearch("");
@@ -275,9 +357,16 @@ export default function InsertToolbar({
   const activeTab = tabs.find((t) => t.id === openTab) ?? null;
 
   return (
-    <div className="flex h-full shrink-0" data-inline-edit-ignore="true">
+    <div
+      className={cn("flex h-full shrink-0", resizing && "select-none")}
+      data-inline-edit-ignore="true"
+    >
       {activeTab && (
-        <div className="flex h-full w-[560px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-panel)]">
+        <div
+          ref={panelRef}
+          style={{ width: resizing ? liveWidthRef.current : panelWidth }}
+          className="relative flex h-full shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-panel)]"
+        >
           <div className="flex shrink-0 flex-col gap-2 border-b border-[var(--border)] p-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-medium text-[var(--text-primary)]">{activeTab.label}</h2>
@@ -302,6 +391,7 @@ export default function InsertToolbar({
             {openTab === "templates" && (
               <TemplatesTab
                 search={search}
+                panelWidth={panelWidth}
                 onApplyLayout={onInsert}
                 onApplyAllLayouts={onApplyAllLayouts}
               />
@@ -368,6 +458,23 @@ export default function InsertToolbar({
               />
             )}
           </div>
+
+          {/* Straddles the panel's inner border so there is a real target to
+              grab without stealing clicks from the content. Double-click puts
+              it back to the default width. */}
+          <div
+            onPointerDown={startResize}
+            onDoubleClick={resetPanelWidth}
+            role="separator"
+            aria-orientation="vertical"
+            title="Drag to resize — double-click to reset"
+            className={cn(
+              "absolute inset-y-0 -right-1 z-30 w-2 cursor-col-resize transition-colors",
+              resizing
+                ? "bg-[var(--accent)]/60"
+                : "hover:bg-[var(--accent)]/40",
+            )}
+          />
         </div>
       )}
 

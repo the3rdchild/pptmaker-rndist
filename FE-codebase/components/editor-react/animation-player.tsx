@@ -403,7 +403,10 @@ export function AnimationPreviewLayer({
 
   if (!state) return null;
   return (
-    <div className="pointer-events-none absolute inset-0 z-[60]">
+    // Clipped to the slide box: Present Mode's stage is already inside an
+    // overflow-hidden frame, but the editor canvas is not, so a slide-out
+    // flight would otherwise travel across the workspace around the slide.
+    <div className="pointer-events-none absolute inset-0 z-[60] overflow-hidden">
       {state.base ? (
         <CanvasHost canvas={state.base} className="absolute inset-0" />
       ) : null}

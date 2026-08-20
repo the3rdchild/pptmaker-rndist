@@ -87,6 +87,10 @@ interface TransitionRun {
   incoming: HTMLCanvasElement | null;
   flights: MorphFlight[];
   stage: TransitionStage;
+  /** Navigating BACKWARDS shows the slide in its final state: every build
+   *  already ran, so elements whose last step is an exit are hidden for good
+   *  (no playback). Forward runs leave this empty. */
+  finalHiddenKeys: string[];
 }
 
 /** One navigation's element-animation run. The plan's flights are cut from
@@ -228,6 +232,9 @@ export default function PresentMode({
   const runRef = useRef<TransitionRun | null>(null);
   const morphRestoreRef = useRef<(() => void)[]>([]);
   const [transition, setTransition] = useState<TransitionRun | null>(null);
+  /** Opacity restores for nodes hidden by a backward navigation's final
+   *  state — same shape as morphRestoreRef, kept until the next navigation. */
+  const exitedRestoreRef = useRef<(() => void)[]>([]);
   /** Plan for the slide being navigated TO, handed to the driver effect —
    *  built here (not there) because the morph exclusion needs the OUTGOING
    *  slide's ui, which the stage no longer holds once navigation commits. */
@@ -251,6 +258,18 @@ export default function PresentMode({
     }
   }, []);
 
+  /** Puts back the elements a backward navigation left hidden. */
+  const restoreExitedNodes = useCallback(() => {
+    if (exitedRestoreRef.current.length === 0) return;
+    exitedRestoreRef.current.forEach((restore) => restore());
+    exitedRestoreRef.current = [];
+    try {
+      stageRef.current?.getLayers().forEach((layer) => layer.draw());
+    } catch {
+      // Unmounting — see restoreMorphNodes.
+    }
+  }, []);
+
   const goTo = useCallback(
     (target: number) => {
       const list = slidesRef.current;
@@ -261,6 +280,7 @@ export default function PresentMode({
       // full opacity before anything else reads the stage.
       const wasRunning = runRef.current !== null;
       restoreMorphNodes();
+      restoreExitedNodes();
       // Full restore, exited elements included: the run is being abandoned,
       // and whichever slide ends up on screen must show every element.
       animationRunRef.current?.restore();
@@ -270,6 +290,9 @@ export default function PresentMode({
 
       const type = list[target]?.transition ?? "none";
       const targetUi = list[target]?.ui;
+      // Backward navigation shows the slide's FINAL state (every build ran),
+      // so no playback — only the exited elements get hidden.
+      const backward = target < current;
       // Morph wins over element animation: a matched element flies in from
       // the previous slide, so it must not also run an entrance. Its animation
       // steps are dropped from the plan; unmatched elements still animate.
@@ -282,7 +305,7 @@ export default function PresentMode({
           : undefined;
       const plan = targetUi ? buildAnimationPlan(targetUi, excludeMorph) : null;
       const hasAnimation = Boolean(plan && plan.animatedKeys.length > 0);
-      pendingAnimationRef.current = hasAnimation ? plan : null;
+      pendingAnimationRef.current = hasAnimation && !backward ? plan : null;
 
       indexRef.current = target;
       // Navigating again mid-transition cuts straight to the target. The live
@@ -333,12 +356,13 @@ export default function PresentMode({
         incoming: null,
         flights: captured.flights,
         stage: "preparing",
+        finalHiddenKeys: backward && plan ? plan.hiddenAtEnd : [],
       };
       runRef.current = run;
       setTransition(run);
       setIndex(target);
     },
-    [restoreMorphNodes],
+    [restoreMorphNodes, restoreExitedNodes],
   );
 
   // Drives one transition end to end: wait out the incoming slide's rebuild
@@ -375,6 +399,19 @@ export default function PresentMode({
         return rect ? { ...flight, to: rect } : flight;
       });
       if (morphRestoreRef.current.length > 0) {
+        stageRef.current?.getLayers().forEach((layer) => layer.draw());
+      }
+      // Backward navigation: park the exited elements at opacity 0 BEFORE the
+      // freeze so the bitmap (and later the live stage) shows the slide with
+      // every build already finished. No overlay, no playback.
+      if (run.finalHiddenKeys.length > 0) {
+        for (const key of run.finalHiddenKeys) {
+          const node = refs?.get(key);
+          if (!node) continue;
+          const original = node.opacity();
+          node.opacity(0);
+          exitedRestoreRef.current.push(() => node.opacity(original));
+        }
         stageRef.current?.getLayers().forEach((layer) => layer.draw());
       }
       // Cut the animated elements out too — order matters: morph sources
@@ -433,10 +470,19 @@ export default function PresentMode({
       };
 
       if (run.type === "none") {
-        // No transition to play — the staged bitmap simply replaces the live
-        // view (identical pixels) and the animation takes over immediately.
-        settle((current) => ({ ...current, stage: "animating" }));
-        startAnimation();
+        if (animationRunRef.current) {
+          // No transition to play — the staged bitmap simply replaces the
+          // live view (identical pixels) and the animation takes over.
+          settle((current) => ({ ...current, stage: "animating" }));
+          startAnimation();
+          return;
+        }
+        // Backward final state: nothing to play, hand straight back.
+        restoreMorphNodes();
+        await nextFrame();
+        if (!alive()) return;
+        runRef.current = null;
+        settle(() => null);
         return;
       }
 
@@ -496,9 +542,10 @@ export default function PresentMode({
   useEffect(
     () => () => {
       restoreMorphNodes();
+      restoreExitedNodes();
       animationRunRef.current?.restore();
     },
-    [restoreMorphNodes],
+    [restoreMorphNodes, restoreExitedNodes],
   );
 
   const [scale, setScale] = useState(1);
@@ -511,6 +558,32 @@ export default function PresentMode({
 
   const step = useCallback(
     (delta: number) => {
+      if (delta > 0) {
+        // Next advances the BUILD first: elements still waiting off-stage
+        // come in before the slide changes. Reverse-stepping a build is
+        // deliberately unsupported (reverse playback per step, little value);
+        // Left always leaves the slide.
+        const animRun = animationRunRef.current;
+        if (animRun && animRun.activeGroup >= 0) {
+          const nextGroup = animRun.activeGroup + 1;
+          if (nextGroup < animRun.plan.groups.length) {
+            const group = animRun.plan.groups[nextGroup];
+            setAnimationRun((current) =>
+              current && current.id === animRun.id
+                ? { ...current, activeGroup: nextGroup }
+                : current,
+            );
+            profileFlight(
+              `animation group ${nextGroup} (${animRun.flights.length} flights)`,
+              group.durationMs,
+            );
+            return;
+          }
+          // Last group done — fall through and leave the slide. If the last
+          // group is STILL playing, the goTo below cancels the run and jumps:
+          // someone pressing Next wants the slide, not the tail of a fade.
+        }
+      }
       const pos = visibleIndexes.indexOf(indexRef.current);
       const nextPos = Math.min(
         Math.max((pos === -1 ? 0 : pos) + delta, 0),
@@ -531,9 +604,19 @@ export default function PresentMode({
   // that change originated from a message we just received — is harmless:
   // the Presenter View window only reacts to a *different* index, so
   // echoing the same value back settles immediately with no feedback loop.
+  const buildTotal = animationRun?.plan.groups.length ?? 0;
+  const buildStep = animationRun ? Math.max(0, animationRun.activeGroup + 1) : 0;
   const postToPresenter = usePresenterChannel(deckId, (message) => {
     if (message.type === "ping") {
-      postToPresenter({ type: "state", index, total: visibleIndexes.length });
+      postToPresenter({
+        type: "state",
+        index,
+        total: visibleIndexes.length,
+        buildStep,
+        buildTotal,
+      });
+    } else if (message.type === "step") {
+      step(message.delta);
     } else if (message.type === "slide-change") {
       if (visibleIndexes.includes(message.index)) goTo(message.index);
     } else if (message.type === "laser") {
@@ -556,6 +639,20 @@ export default function PresentMode({
   useEffect(() => {
     postToPresenter({ type: "slide-change", index });
   }, [index, postToPresenter]);
+
+  // Build steps are NOT slide changes — piggybacking them on the index
+  // broadcast above would never fire (the index doesn't move inside a
+  // build), so the build counter gets its own state broadcast whenever the
+  // run or the active group moves.
+  useEffect(() => {
+    postToPresenter({
+      type: "state",
+      index,
+      total: visibleIndexes.length,
+      buildStep,
+      buildTotal,
+    });
+  }, [index, buildStep, buildTotal, postToPresenter]);
 
   // Annotations and the laser dot are tied to "this moment", not the slide
   // itself — clear them whenever the slide changes, from either window.

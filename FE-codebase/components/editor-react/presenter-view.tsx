@@ -59,11 +59,18 @@ export function PresenterView({ deckId }: { deckId: string }) {
   const sessionReady = useSessionStore((s) => s.ready);
   const [slides, setSlides] = useState<PresenterSlide[]>([]);
   const [index, setIndex] = useState(0);
+  const [build, setBuild] = useState<{ step: number; total: number } | null>(
+    null,
+  );
   const [tool, setTool] = useState<"none" | "laser" | "pen">("none");
   const [elapsedMs, setElapsedMs] = useState(0);
   const [running, setRunning] = useState(false);
   const drawingRef = useRef<PresenterPoint[] | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
+  /** True once a Present Mode window has answered/broadcast anything. Until
+   *  then this window may be standalone, and arrows drive the local preview
+   *  directly — there is no build authority to defer to. */
+  const sawPresentModeRef = useRef(false);
 
   useEffect(() => {
     if (!sessionReady || !token) return;
@@ -83,7 +90,19 @@ export function PresenterView({ deckId }: { deckId: string }) {
 
   const postToPresenter = usePresenterChannel(deckId, (message) => {
     if (message.type === "state" || message.type === "slide-change") {
+      sawPresentModeRef.current = true;
       setIndex(message.index);
+      // Build fields only ride "state"; a bare slide-change resets the
+      // counter until the next state broadcast arrives.
+      if (
+        message.type === "state" &&
+        message.buildTotal != null &&
+        message.buildTotal > 1
+      ) {
+        setBuild({ step: message.buildStep ?? 0, total: message.buildTotal });
+      } else {
+        setBuild(null);
+      }
     }
   });
 
@@ -119,10 +138,23 @@ export function PresenterView({ deckId }: { deckId: string }) {
     postToPresenter({ type: "slide-change", index: nextIndex });
   };
 
+  /** Arrows send INTENT (`step`), not state: Present Mode owns the build
+   *  order and decides whether a forward step means the next animation
+   *  group or the next slide. The local index only moves when the state /
+   *  slide-change broadcast comes back — except in standalone mode, where
+   *  there is no other window to answer. */
+  const advance = (delta: 1 | -1) => {
+    if (sawPresentModeRef.current) {
+      postToPresenter({ type: "step", delta });
+      return;
+    }
+    goTo(index + delta);
+  };
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "ArrowRight" || event.key === "PageDown") goTo(index + 1);
-      else if (event.key === "ArrowLeft" || event.key === "PageUp") goTo(index - 1);
+      if (event.key === "ArrowRight" || event.key === "PageDown") advance(1);
+      else if (event.key === "ArrowLeft" || event.key === "PageUp") advance(-1);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -247,7 +279,7 @@ export function PresenterView({ deckId }: { deckId: string }) {
           <div className="flex items-center gap-2">
             <button
               className="rounded-md p-2 hover:bg-white/10 disabled:opacity-30"
-              onClick={() => goTo(index - 1)}
+              onClick={() => advance(-1)}
               disabled={index <= 0}
               title="Previous (←)"
             >
@@ -258,12 +290,17 @@ export function PresenterView({ deckId }: { deckId: string }) {
             </span>
             <button
               className="rounded-md p-2 hover:bg-white/10 disabled:opacity-30"
-              onClick={() => goTo(index + 1)}
+              onClick={() => advance(1)}
               disabled={index >= total - 1}
               title="Next (→)"
             >
               <ChevronRight size={16} />
             </button>
+            {build ? (
+              <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] tabular-nums text-white/60">
+                Build {Math.max(1, build.step)} / {build.total}
+              </span>
+            ) : null}
             <div className="mx-1 h-4 w-px bg-white/15" />
             <button
               className={`rounded-md p-2 hover:bg-white/10 ${tool === "laser" ? "bg-white/15 text-[var(--accent-light)]" : ""}`}

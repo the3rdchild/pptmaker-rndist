@@ -12,15 +12,21 @@ export type PresenterPoint = { x: number; y: number };
 export type PresenterSyncMessage =
   | { type: "slide-change"; index: number }
   /** Presenter View announces itself on open so an already-running Present
-   * Mode window can reply with where it currently is. */
+   *  Mode window can reply with where it currently is. */
   | { type: "ping" }
-  | { type: "state"; index: number; total: number }
+  /** Intent, not state: the Presenter View asks to advance one step; Present
+   *  Mode — the only build authority — decides whether that means the next
+   *  animation build or the next slide, then broadcasts the result. */
+  | { type: "step"; delta: 1 | -1 }
+  /** `buildStep`/`buildTotal` describe the current slide's animation builds
+   *  (1-based, 0 = staged/not started). Absent when the slide has none. */
+  | { type: "state"; index: number; total: number; buildStep?: number; buildTotal?: number }
   /** x/y are normalized 0-1 within the slide's own box, so either window can
-   * be a different physical size/zoom and the dot still lands correctly. */
+   *  be a different physical size/zoom and the dot still lands correctly. */
   | { type: "laser"; x: number; y: number; visible: boolean }
   /** `done: false` while the stroke is still being drawn — the receiver
-   * replaces its "in progress" preview with each successive points array
-   * rather than diffing. `done: true` commits it as a finished stroke. */
+   *  replaces its "in progress" preview with each successive points array
+   *  rather than diffing. `done: true` commits it as a finished stroke. */
   | { type: "annotation-stroke"; points: PresenterPoint[]; done: boolean }
   | { type: "annotation-clear" };
 

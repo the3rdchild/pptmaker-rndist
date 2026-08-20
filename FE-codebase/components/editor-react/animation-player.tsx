@@ -206,14 +206,16 @@ export function AnimationOverlay({
         const startsHidden =
           plan.hiddenAtStart.includes(flight.key) && activeGroup < entranceGroup;
         const running = steps.filter((s) => s.groupIndex === activeGroup);
-        // Finished exits keep their animation applied: fill-mode forwards is
-        // what holds the element hidden once its group is over.
-        const heldExits = steps.filter(
-          (s) =>
-            s.groupIndex < activeGroup &&
-            animationEffectKind(s.planned.step.effect) === "exit",
-        );
-        const active = [...running, ...heldExits];
+        // Every step the element has REACHED, not just the running ones. The
+        // list has to grow monotonically: CSS matches animations to the
+        // animation-name list by index, so dropping a finished step shifts the
+        // ones behind it and the browser restarts them. An element that
+        // entered and exited in the same group used to replay its exit — pop
+        // back to full opacity, fade out again — the moment the next group
+        // started. Appending is safe; finished entrances fill "backwards" and
+        // contribute nothing once they end, finished emphasis holds identity,
+        // and a finished exit's "forwards" is exactly what keeps it hidden.
+        const active = steps.filter((s) => s.groupIndex <= activeGroup);
 
         const style = {
           position: "absolute",

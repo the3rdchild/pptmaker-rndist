@@ -382,6 +382,11 @@ export default function EditorReactClient({
   const [pendingPhotos, setPendingPhotos] = useState<
     Record<number, Set<string>>
   >({});
+  /** True once the user has closed the generation progress panel. The panel
+   *  otherwise stays mounted forever after a run finishes — it's the user's
+   *  call when it goes away, not a timer. Reset at the start of every new
+   *  generation run so the next deck gets its own panel. */
+  const [progressDismissed, setProgressDismissed] = useState(false);
   // Template mode only.
   const [themes, setThemes] = useState<TemplateTheme[]>([]);
   const [templateThemeId, setTemplateThemeId] = useState(
@@ -710,6 +715,12 @@ export default function EditorReactClient({
   const slides = presentationData?.slides ?? [];
   const safeActive = Math.min(activeIndex, Math.max(0, slides.length - 1));
   const activeUi = slides[safeActive]?.ui ?? null;
+
+  /** Whether the progress bar + filmstrip badges should be showing — true
+   *  while actively generating, and true after until the user dismisses the
+   *  panel (see progressDismissed). */
+  const showGenerationProgress =
+    (isGenerating || Object.keys(slideProgress).length > 0) && !progressDismissed;
 
   /** Filmstrip badge state, derived from the same per-slide progress the
    *  activity log reads. */
@@ -1852,6 +1863,7 @@ export default function EditorReactClient({
     setGenerationStatus(null);
     setSlideProgress({});
     setPendingPhotos({});
+    setProgressDismissed(false);
     // The /outline page hands over a serialized outline — one "## " heading per
     // planned page — so the progress bar gets a real denominator before the
     // first slide streams. A free-text prompt has none; the bar goes
@@ -2515,13 +2527,15 @@ export default function EditorReactClient({
           </DropdownMenu>
         </div>
       </header>
-      {isGenerating && (
+      {showGenerationProgress && (
         <GenerationProgress
           stage={generationStatus}
           slides={slideProgress}
           expected={expectedSlideCount}
           built={slides.length}
+          finished={!isGenerating}
           onSelectSlide={setActiveIndex}
+          onClose={() => setProgressDismissed(true)}
         />
       )}
       <PdfExportCapture slides={pdfExportSlides} onCapture={handlePdfCaptured} />
@@ -2750,7 +2764,7 @@ export default function EditorReactClient({
         <SlideSidebar
           slides={slides}
           activeIndex={safeActive}
-          reviewBadges={isGenerating ? reviewBadges : undefined}
+          reviewBadges={showGenerationProgress ? reviewBadges : undefined}
           onSelect={setActiveIndex}
           onAdd={handleAdd}
           onAddAt={handleAddAt}

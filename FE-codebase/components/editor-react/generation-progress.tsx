@@ -10,7 +10,7 @@
 // previous header pill failed. Progress belongs to the deck; per-slide state
 // belongs on the filmstrip thumbnails (see slide-sidebar) and in the log here.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Check,
   ChevronDown,
@@ -20,6 +20,7 @@ import {
   Loader2,
   Type as TypeIcon,
   TriangleAlert,
+  X,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -53,7 +54,11 @@ interface GenerationProgressProps {
   expected: number | null;
   /** Slides actually mounted so far. */
   built: number;
+  /** True once generation+review has actually ended. The panel keeps
+   *  rendering after that — it only goes away when the user closes it. */
+  finished: boolean;
   onSelectSlide: (index: number) => void;
+  onClose: () => void;
 }
 
 const KIND_ICON = {
@@ -68,9 +73,18 @@ export default function GenerationProgress({
   slides,
   expected,
   built,
+  finished,
   onSelectSlide,
+  onClose,
 }: GenerationProgressProps) {
   const [open, setOpen] = useState(false);
+  // Auto-opens the moment generation finishes — that's the whole point of
+  // keeping the panel around after, so the log is what the user lands on
+  // instead of a flat bar they'd have to think to expand. The component
+  // stays mounted across the whole run, so this can't be an initial state.
+  useEffect(() => {
+    if (finished) setOpen(true);
+  }, [finished]);
 
   const entries = Object.values(slides);
   const done = entries.filter((s) => s.phase === "done").length;
@@ -84,9 +98,13 @@ export default function GenerationProgress({
   return (
     <div className="relative shrink-0 border-b border-[var(--border)] bg-[var(--bg-panel)]">
       <div className="flex items-center gap-2 px-4 py-1.5">
-        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--accent-light)]" />
+        {finished ? (
+          <Check className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+        ) : (
+          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--accent-light)]" />
+        )}
         <span className="truncate text-xs text-[var(--text-secondary)]">
-          {stage ?? "Preparing your presentation…"}
+          {finished ? "Presentation ready" : (stage ?? "Preparing your presentation…")}
         </span>
         <div className="flex-1" />
         {determinate && (
@@ -105,6 +123,13 @@ export default function GenerationProgress({
           ) : (
             <ChevronDown className="h-3 w-3" />
           )}
+        </button>
+        <button
+          onClick={onClose}
+          title="Dismiss"
+          className="flex shrink-0 items-center justify-center rounded-md p-0.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
+        >
+          <X className="h-3.5 w-3.5" />
         </button>
       </div>
       <div className="h-[3px] w-full overflow-hidden bg-[var(--bg-surface)]">

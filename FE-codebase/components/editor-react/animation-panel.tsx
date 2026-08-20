@@ -148,8 +148,11 @@ function StepControls({
   const selectClass =
     "h-8 w-full rounded-lg border border-[var(--border-strong)] bg-[var(--bg-base)] px-2 text-xs text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]/60";
 
+  // No card chrome: this sits flush in the pinned footer the way the timing
+  // row sits in the pinned header. Several steps on one element are separated
+  // by the parent's divider instead of by a box each.
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-surface)] p-2.5">
+    <div className="flex flex-col gap-2 py-2.5 first:pt-0 last:pb-0">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-[var(--text-primary)]">
           {effectLabel(step.effect)}
@@ -534,12 +537,12 @@ export default function AnimationPanel({
   // grids of effect cards plus the build list — scrolls between them. Two
   // stickies at opposite edges rather than stacked at the top, so neither has
   // to know how tall the other one happens to be.
-  // Three tones off the existing surface ramp so the pinned chrome reads as
-  // chrome and the scrolling middle as the well it is: surface (header) over
-  // base (middle) under panel (footer). Flat --bg-panel everywhere left the
-  // effect cards, which are themselves --bg-surface, only a few points away
-  // from what they sat on. min-h-full + flex-1 on the middle so its darker
-  // tone still reaches the footer when a slide has almost nothing on it.
+  // Two tones off the existing surface ramp: both pinned strips on --bg-surface
+  // so they read as one piece of chrome, the scrolling middle on --bg-base as
+  // the well between them. Flat --bg-panel everywhere left the effect cards,
+  // which are themselves --bg-surface, only a few points away from what they
+  // sat on. min-h-full + flex-1 on the middle so its darker tone still reaches
+  // the footer when a slide has almost nothing on it.
   return (
     <div className="flex min-h-full flex-col">
       <div className="sticky top-0 z-20 flex flex-col gap-1.5 border-b border-[var(--border)] bg-[var(--bg-surface)] px-2.5 pb-2.5 pt-2.5">
@@ -698,11 +701,11 @@ export default function AnimationPanel({
           because the panel's own height is content-driven inside the scroll
           container and a percentage max-height would resolve to none. */}
       {canEdit && steps.length > 0 && (
-        <div className="sticky bottom-0 z-20 max-h-[38vh] overflow-y-auto border-t border-[var(--border)] bg-[var(--bg-panel)] px-2.5 pb-2.5 pt-2">
+        <div className="sticky bottom-0 z-20 max-h-[38vh] overflow-y-auto border-t border-[var(--border)] bg-[var(--bg-surface)] px-2.5 pb-2.5 pt-2">
           <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
             Step timing
           </span>
-          <div className="mt-1.5 flex flex-col gap-1.5">
+          <div className="mt-1.5 flex flex-col divide-y divide-[var(--border)]">
             {/* key resets the drafts when the canvas selection moves */}
             {steps.map((step) => (
               <StepControls

@@ -21,6 +21,8 @@ import {
   STAGE_WIDTH,
   type RawComponent,
 } from "@/components/slide-editor/model/model";
+import { parseElementAnimations } from "@/components/slide-editor/animation/animation-meta";
+import { MAX_ANIMATION_FLIGHTS } from "@/components/editor-react/animation-sequence";
 
 type Rec = Record<string, unknown>;
 
@@ -119,6 +121,15 @@ function cleanElement(value: unknown, theme: string, warnings: ExportWarning[]):
     if (key === "slot") {
       const slot = parseSlotMeta(raw);
       if (slot) out.slot = slot;
+      continue;
+    }
+
+    // Same treatment as `slot`: animations ride along on unknown keys anyway,
+    // but parsing them here normalizes hand-edited or legacy data so garbage
+    // never bakes into a shared template.
+    if (key === "animations") {
+      const animations = parseElementAnimations(raw);
+      if (animations) out.animations = animations;
       continue;
     }
 
@@ -323,6 +334,7 @@ export function exportSlideAsLayout(
   }
 
   warnings.push(...auditSlots(components));
+  warnings.push(...auditAnimations(components));
 
   const layout: ExportedLayout = {
     id: options.id ?? makeLayoutId(options.name, options.existingIds ?? []),
@@ -367,6 +379,58 @@ function auditSlots(components: Rec[]): ExportWarning[] {
     warnings.push({
       level: "warning",
       message: `${unlabelled} text slot${unlabelled === 1 ? " has" : "s have"} no role — that slot will be filled with generic prose.`,
+    });
+  }
+  return warnings;
+}
+
+/** Flags animation authoring that will surprise the author at playback. */
+function auditAnimations(components: Rec[]): ExportWarning[] {
+  const warnings: ExportWarning[] = [];
+  let decorative = 0;
+  let total = 0;
+  // order → how many DISTINCT elements chain an after-previous step at that
+  // position. Shared values there are legal but their sequence falls back to
+  // element order, which is rarely what the author meant.
+  const chainedByOrder = new Map<number, Set<string>>();
+
+  walkElements(components, (element) => {
+    const steps = parseElementAnimations(element.animations);
+    if (!steps) return;
+    const name =
+      typeof element.name === "string" && element.name.trim()
+        ? element.name
+        : String(element.type ?? "element");
+    if (element.decorative === true) decorative += 1;
+    for (const step of steps) {
+      total += 1;
+      if (step.trigger !== "after-previous") continue;
+      const names = chainedByOrder.get(step.order) ?? new Set<string>();
+      names.add(name);
+      chainedByOrder.set(step.order, names);
+    }
+  });
+
+  const ambiguous = [...chainedByOrder.values()].filter(
+    (names) => names.size > 1,
+  ).length;
+
+  if (decorative > 0) {
+    warnings.push({
+      level: "warning",
+      message: `${decorative} decorative element${decorative === 1 ? " has" : "s have"} animations — usually not intended.`,
+    });
+  }
+  if (ambiguous > 0) {
+    warnings.push({
+      level: "warning",
+      message: `${ambiguous} animation order value${ambiguous === 1 ? " is" : "s are"} shared by several after-previous steps — their sequence falls back to element order, not authoring.`,
+    });
+  }
+  if (total > MAX_ANIMATION_FLIGHTS) {
+    warnings.push({
+      level: "warning",
+      message: `${total} animation steps on one layout — playback caps at ${MAX_ANIMATION_FLIGHTS}; the rest render statically.`,
     });
   }
   return warnings;

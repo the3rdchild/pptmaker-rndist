@@ -537,15 +537,17 @@ export default function AnimationPanel({
   // grids of effect cards plus the build list — scrolls between them. Two
   // stickies at opposite edges rather than stacked at the top, so neither has
   // to know how tall the other one happens to be.
-  // Two tones off the existing surface ramp: both pinned strips on --bg-surface
-  // so they read as one piece of chrome, the scrolling middle on --bg-base as
-  // the well between them. Flat --bg-panel everywhere left the effect cards,
-  // which are themselves --bg-surface, only a few points away from what they
-  // sat on. min-h-full + flex-1 on the middle so its darker tone still reaches
-  // the footer when a slide has almost nothing on it.
+  // Three surfaces that all have to differ from each OTHER and from the effect
+  // cards scrolling between them: the strips are --bg-panel, the well is
+  // --bg-canvas (darkest), and the cards keep their --bg-surface. Putting the
+  // strips on --bg-surface too is what made a card vanish into the chrome the
+  // moment it scrolled under one. The shadows do the rest of that work —
+  // colour alone is a weak edge, a card sliding UNDER something should look
+  // like it. min-h-full + flex-1 on the middle so its tone still reaches the
+  // footer when a slide has almost nothing on it.
   return (
     <div className="flex min-h-full flex-col">
-      <div className="sticky top-0 z-20 flex flex-col gap-1.5 border-b border-[var(--border)] bg-[var(--bg-surface)] px-2.5 pb-2.5 pt-2.5">
+      <div className="sticky top-0 z-20 flex flex-col gap-1.5 border-b border-[var(--border)] bg-[var(--bg-panel)] px-2.5 pb-2.5 pt-2.5 shadow-[0_3px_10px_rgba(0,0,0,0.45)]">
         {onPreviewAnimation && (
           <button
             onClick={onPreviewAnimation}
@@ -615,7 +617,7 @@ export default function AnimationPanel({
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col gap-3 bg-[var(--bg-base)] pb-3">
+      <div className="flex flex-1 flex-col gap-3 bg-[var(--bg-canvas)] pb-3">
       {canEdit ? (
         <>
           <PanelLabel>Selected element</PanelLabel>
@@ -701,7 +703,7 @@ export default function AnimationPanel({
           because the panel's own height is content-driven inside the scroll
           container and a percentage max-height would resolve to none. */}
       {canEdit && steps.length > 0 && (
-        <div className="sticky bottom-0 z-20 max-h-[38vh] overflow-y-auto border-t border-[var(--border)] bg-[var(--bg-surface)] px-2.5 pb-2.5 pt-2">
+        <div className="sticky bottom-0 z-20 max-h-[38vh] overflow-y-auto border-t border-[var(--border)] bg-[var(--bg-panel)] px-2.5 pb-2.5 pt-2 shadow-[0_-3px_10px_rgba(0,0,0,0.45)]">
           <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
             Step timing
           </span>

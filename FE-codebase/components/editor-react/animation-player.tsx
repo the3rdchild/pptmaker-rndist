@@ -55,11 +55,18 @@ export interface AnimationFlight {
 
 /** Fill-mode per kind. Entrance "backwards" holds the from-state through
  *  animation-delay; exit "forwards" keeps the element hidden after it ends
- *  (the animation values must STAY applied for that — see heldExits in the
- *  overlay); emphasis ends at identity so nothing needs holding. */
+ *  (the animation values must STAY applied for that — see the started list in
+ *  the overlay).
+ *
+ *  Emphasis is "forwards", NOT "both". A backwards fill would apply the
+ *  emphasis's 0% keyframe during its delay, and since it sits later in the
+ *  animation list than the entrance it would win `transform` outright — an
+ *  element set to rise then pulse would sit still and only fade, because
+ *  pulse's not-yet-started scale(1) overrode rise's translate from frame one.
+ *  Forwards costs nothing here: every emphasis ends back at identity. */
 const FILL_MODE: Record<AnimationKind, string> = {
   entrance: "backwards",
-  emphasis: "both",
+  emphasis: "forwards",
   exit: "forwards",
 };
 

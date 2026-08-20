@@ -325,8 +325,12 @@ export type TemplateSelectionPayload = {
   /** The element being edited, or null when a multi-element component is
    *  selected and no single element is implied. */
   selection: ElementSelection | null;
-  /** Always set — the component the selection sits in. */
-  componentIndex: number;
+  /** The component the selection sits in, or null when nothing on the canvas
+   *  is selected at all. That distinction matters: a payload with a null
+   *  `selection` but a real `componentIndex` means "a component holding
+   *  several elements is selected, pick one", which is a different thing to
+   *  say to the author than "select something". */
+  componentIndex: number | null;
   element: RawElement | null;
   patch: ((updater: (element: RawElement) => RawElement) => void) | null;
   /** Reverse direction of the bridge: lets a panel drive the canvas selection
@@ -1503,11 +1507,13 @@ function TemplateV2KonvaSlideComponent({
 
     // Not `null` but a null-selection payload: `selectElement` must survive a
     // deselected canvas, or the Animation tab's build list goes dead the
-    // moment the user clicks empty space. Existing consumers all optional-chain
-    // into element/patch, so this reads exactly like `null` to them.
+    // moment the user clicks empty space. `componentIndex: null` is what marks
+    // it as "nothing selected" — -1 would have collided with the root-elements
+    // pseudo-component, and consumers that only checked for a null payload
+    // started mistaking this for a multi-element component selection.
     onTemplateSelection({
       selection: null,
-      componentIndex: -1,
+      componentIndex: null,
       element: null,
       patch: null,
       selectElement,

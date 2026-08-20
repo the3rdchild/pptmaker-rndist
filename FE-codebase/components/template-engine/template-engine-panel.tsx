@@ -1937,7 +1937,10 @@ async function toDataUrl(src: string): Promise<string> {
 }
 
 function SlotSection({ selection }: { selection: TemplateSelectionPayload | null }) {
-  if (!selection) {
+  // componentIndex null = the canvas has nothing selected. The surface still
+  // sends a payload in that case (it carries selectElement), so "no payload"
+  // is no longer the same question as "nothing selected".
+  if (!selection || selection.componentIndex == null) {
     return (
       <Section title="Selected slot">
         <p className="text-[11px] leading-relaxed text-[var(--text-muted)]">

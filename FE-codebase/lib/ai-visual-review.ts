@@ -37,15 +37,22 @@ export interface ReviewIssue {
   problem: string;
   /** "image" when `slot` names a PhotoDescriptor (a mismatched/too-generic
    *  photo) rather than a text slot. "resize" when the slot's text should
-   *  render larger given the empty space in its box — fixed by scaling the
-   *  font client-side, never by rewriting the copy, so it skips the repair
-   *  call entirely. Defaults to "text" when absent so older callers/responses
-   *  keep working. */
-  kind?: "text" | "image" | "resize";
+   *  render larger given the empty space in its box. "contrast" when the
+   *  text color is too close to what's behind it to read comfortably. Both
+   *  "resize" and "contrast" are fixed client-side — scaling the font or
+   *  swapping the color directly — never by rewriting the copy, so they skip
+   *  the repair call entirely. Defaults to "text" when absent so older
+   *  callers/responses keep working. */
+  kind?: "text" | "image" | "resize" | "contrast";
   /** Only set for kind:"image" — a concrete replacement photo prompt tied to
    *  THIS slide's specific concept, so regeneration doesn't need a second
    *  LLM round-trip to figure out what to ask for. */
   suggestedPhotoPrompt?: string;
+  /** Only set for kind:"contrast" — a hex color the reviewer judged would
+   *  read clearly against what it actually saw behind the text (a photo, a
+   *  gradient, a flat fill — whatever is really there), so the client can
+   *  apply it without a second round-trip. */
+  suggestedTextColor?: string;
 }
 
 export interface VerifyInput {
@@ -90,6 +97,17 @@ empty box. Only flag when the smallness is genuinely awkward to look at; a
 normally-proportioned body paragraph is not a "resize" issue just because
 some whitespace remains.
 
+Separately, flag a text slot as low-contrast (kind:"contrast") when its color
+is close enough to what's actually behind it — a flat fill, a gradient, a
+photo, whatever you SEE in the image, not what you'd assume from the theme —
+that the text is genuinely hard to read at a glance (pale yellow on white,
+light gray on a light photo, white on a bright color close to it). Judge the
+real rendered pixels only; do not flag text that is merely a bold color
+choice but still clearly legible. Suggest a minimal, safe correction: near-
+black (#111827) against a light background, near-white (#f9fafb) against a
+dark one, unless another color already used elsewhere on the slide reads
+clearly and fits better.
+
 Also report photo slots (kind:"image") whose picture does not genuinely fit
 THIS SLIDE — judge against the slide's own title/text, not just the deck's
 broad topic. Flag it when the photo is:
@@ -107,8 +125,9 @@ A photo that is merely stylistically plain but IS on-topic for this slide is
 fine — do not flag for taste, composition, or color alone.
 
 Do NOT report: colors, fonts, positions, spacing, layout taste — those are
-the template author's, and nothing can change them here. The one exception is
-the "resize" case above: that's about size versus available space, not taste.
+the template author's, and nothing can change them here. The exceptions are
+"resize" (size versus available space) and "contrast" (legibility) above —
+neither is about taste.
 
 Respect each slot's stated budget (max_words/ideal_words): flag text that exceeds max_words, or that is far under ideal_words when the box clearly expects more.
 
@@ -116,6 +135,7 @@ OUTPUT: raw JSON ONLY, no fences, no commentary:
 {"issues":[
   {"slot":"<text slot name>","problem":"<one concrete sentence>"},
   {"slot":"<text slot name>","problem":"<why this text looks too small for its space>","kind":"resize"},
+  {"slot":"<text slot name>","problem":"<why this text is hard to read against what's behind it>","kind":"contrast","suggested_text_color":"<a hex color>"},
   {"slot":"<photo name from the photos list>","problem":"<why this photo doesn't fit THIS slide>","kind":"image","suggested_photo_prompt":"<a concrete photo description tied to this slide's specific concept, ready to hand a generator>"}
 ]}
 An empty issues array means the slide passed. Never invent a slot name that wasn't given to you.`;
@@ -154,13 +174,21 @@ export async function reviewSlideVisual(input: VerifyInput): Promise<ReviewIssue
           ? ("image" as const)
           : i.kind === "resize"
             ? ("resize" as const)
-            : ("text" as const),
+            : i.kind === "contrast"
+              ? ("contrast" as const)
+              : ("text" as const),
       suggestedPhotoPrompt:
         typeof i.suggested_photo_prompt === "string" ? i.suggested_photo_prompt : undefined,
+      suggestedTextColor:
+        typeof i.suggested_text_color === "string" && HEX_COLOR_RE.test(i.suggested_text_color)
+          ? i.suggested_text_color
+          : undefined,
     }))
     .filter((i) => i.slot && i.problem)
     .slice(0, 12);
 }
+
+const HEX_COLOR_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
 const REPAIR_SYSTEM = `You are fixing presentation slide copy. You receive a slide's current slot fills, each slot's budget, and a reviewer'S issues. Return corrected fills for ONLY the slots named in the issues — every other slot stays as-is (do not include it).
 

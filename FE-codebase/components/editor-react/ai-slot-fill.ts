@@ -13,9 +13,10 @@
 //   4. backstops "always" slots the model forgot.
 // Colors, positions, decorative elements, and fonts are never touched by the
 // normal fill path — the slide stays exactly as the template author designed
-// it. The one deliberate exception is applyFontBoostToUi at the bottom of
-// this file, which the visual-review "resize" fix uses to grow a slot's font
-// when the reviewer judged it too small for its own empty space.
+// it. The deliberate exceptions are applyFontBoostToUi and applyTextColorToUi
+// below, which the visual review's "resize" and "contrast" fixes use to grow
+// a slot's font or recolor it when the reviewer judged the rendered slide
+// too small or too illegible to read — legibility, not taste.
 
 import {
   findAllPhotoSlots,
@@ -639,6 +640,65 @@ export function applyFontBoostToUi(
     if (!fitScale) continue;
 
     Object.assign(named.el, scaleRawTextMetrics(named.el as never, fitScale));
+    changed = true;
+  }
+
+  return { ui: next, changed };
+}
+
+/* --------------------- Visual-review "contrast" fix ----------------------- */
+
+const HEX_COLOR_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+/** Sets a text element's color on both its base font and every run's font —
+ *  mirrors how applyTextStyle (model.ts) propagates a color edit, since a
+ *  renderer reading run-level font would otherwise keep the old color even
+ *  after the base font changed. */
+function setTextColor(el: Rec, color: string): void {
+  el.font = { ...(el.font as Rec | undefined), color };
+  const runs = el.runs as Rec[] | undefined;
+  if (Array.isArray(runs) && runs.length > 0) {
+    el.runs = runs.map((run) => ({
+      ...run,
+      font: { ...((run as Rec).font as Rec | undefined), color },
+    }));
+  }
+}
+
+/** One "contrast" fix: which text slot, and the hex color the reviewer judged
+ *  would read clearly against what it actually saw behind the text. */
+export interface TextColorFix {
+  name: string;
+  color: string;
+}
+
+/** Recolors named plain-text slots the reviewer flagged as too low-contrast
+ *  to read ("contrast" issues) — box, size and every other style stay
+ *  untouched, only font.color changes. Consumes fixes in document order the
+ *  same way applyFillsToUi consumes fills, so a repeated slot name with two
+ *  distinct fixes lands each on its own element instead of both on the
+ *  first. A malformed color (not `#rgb`/`#rrggbb`) is skipped rather than
+ *  written verbatim. Text-list/table/chart elements are skipped — same scope
+ *  as applyFontBoostToUi. Returns a new ui (input is not mutated). */
+export function applyTextColorToUi(ui: Rec, fixes: TextColorFix[]): { ui: Rec; changed: boolean } {
+  const next = JSON.parse(JSON.stringify(ui)) as Rec;
+  const components = (next.components as Rec[]) ?? [];
+  const namedSlots = collectNamedTextSlots(components);
+  let changed = false;
+
+  const fixesByName = new Map<string, TextColorFix[]>();
+  for (const fix of fixes) {
+    if (!HEX_COLOR_RE.test(fix.color)) continue;
+    const list = fixesByName.get(fix.name) ?? [];
+    list.push(fix);
+    fixesByName.set(fix.name, list);
+  }
+
+  for (const named of namedSlots) {
+    if (named.kind !== "text" || named.el.type !== "text") continue;
+    const fix = fixesByName.get(named.name)?.shift();
+    if (!fix) continue;
+    setTextColor(named.el, fix.color);
     changed = true;
   }
 

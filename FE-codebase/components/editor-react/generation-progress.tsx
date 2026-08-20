@@ -15,6 +15,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  Contrast,
   Image as ImageIcon,
   Loader2,
   Type as TypeIcon,
@@ -23,7 +24,7 @@ import {
 
 import { cn } from "@/lib/utils";
 
-export type ReviewFixKind = "text" | "image" | "resize";
+export type ReviewFixKind = "text" | "image" | "resize" | "contrast";
 
 /** One reviewer finding plus what the pipeline actually did about it — the
  *  raw material for the log. `action` is null when the issue was flagged but
@@ -59,6 +60,7 @@ const KIND_ICON = {
   text: TypeIcon,
   image: ImageIcon,
   resize: TypeIcon,
+  contrast: Contrast,
 } as const;
 
 export default function GenerationProgress({
@@ -185,7 +187,7 @@ function SlideRow({
         {phase === "reviewing" && (
           <span className="mt-0.5 block text-[11px] text-[var(--text-muted)]">
             Looking for overlapping text, text that doesn&apos;t fit, undersized
-            text, and photos that don&apos;t match this slide
+            or low-contrast text, and photos that don&apos;t match this slide
           </span>
         )}
         {phase === "done" && issues.length === 0 && (

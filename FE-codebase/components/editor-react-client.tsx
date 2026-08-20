@@ -130,6 +130,7 @@ import {
   isSlideEndLine,
   applyFillsToUi,
   applyFontBoostToUi,
+  applyTextColorToUi,
   buildEmptySlideUi,
   finalizeStreamedSlide,
   describeLayoutSlots,
@@ -1510,13 +1511,21 @@ export default function EditorReactClient({
             }),
           });
           const verifyBody = await verifyRes.json().catch(() => null);
-          const issues: { slot: string; problem: string; kind?: string; suggestedPhotoPrompt?: string }[] =
-            Array.isArray(verifyBody?.issues) ? verifyBody.issues : [];
+          const issues: {
+            slot: string;
+            problem: string;
+            kind?: string;
+            suggestedPhotoPrompt?: string;
+            suggestedTextColor?: string;
+          }[] = Array.isArray(verifyBody?.issues) ? verifyBody.issues : [];
           if (issues.length === 0) break; // slide passed, no more passes needed
 
           const imageIssues = issues.filter((i) => i.kind === "image");
           const resizeIssues = issues.filter((i) => i.kind === "resize");
-          const textIssues = issues.filter((i) => i.kind !== "image" && i.kind !== "resize");
+          const contrastIssues = issues.filter((i) => i.kind === "contrast");
+          const textIssues = issues.filter(
+            (i) => i.kind !== "image" && i.kind !== "resize" && i.kind !== "contrast",
+          );
           let appliedFix = false;
 
           if (resizeIssues.length > 0) {
@@ -1536,6 +1545,36 @@ export default function EditorReactClient({
                 problem: issue.problem,
                 kind: "resize" as const,
                 action: boosted?.changed ? "enlarged the text" : null,
+              })),
+            );
+          }
+
+          if (contrastIssues.length > 0) {
+            setGenerationStatus(`Fixing text color on slide ${slideIndex + 1}…`);
+            const base = slideUiAt(slideIndex);
+            // Issues without a usable suggested color (missing, or the model
+            // sent something that wasn't a valid hex) are still logged below,
+            // just not passed to the recolor — nothing to apply for them.
+            const fixes = contrastIssues
+              .filter((issue): issue is typeof issue & { suggestedTextColor: string } =>
+                Boolean(issue.suggestedTextColor),
+              )
+              .map((issue) => ({ name: issue.slot, color: issue.suggestedTextColor }));
+            const recolored = base && fixes.length > 0 ? applyTextColorToUi(base, fixes) : null;
+            if (recolored?.changed) {
+              dispatch(updateSlideUi({ index: slideIndex, ui: recolored.ui }));
+              appliedFix = true;
+            }
+            recordIssues(
+              slideIndex,
+              contrastIssues.map((issue) => ({
+                slot: issue.slot,
+                problem: issue.problem,
+                kind: "contrast" as const,
+                // Only issues that actually had a usable color to try can
+                // claim it was applied — recolored?.changed alone would wrongly
+                // credit a fix to an issue that never had a color to begin with.
+                action: issue.suggestedTextColor && recolored?.changed ? "changed the text color" : null,
               })),
             );
           }

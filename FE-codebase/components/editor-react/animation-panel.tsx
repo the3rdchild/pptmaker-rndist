@@ -15,7 +15,16 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Ban, GripVertical, Play, Square, Timer } from "lucide-react";
+import {
+  Ban,
+  ChevronDown,
+  ChevronUp,
+  GripVertical,
+  Play,
+  Repeat,
+  Square,
+  Timer,
+} from "lucide-react";
 import { PanelLabel } from "@/components/editor-react/ui";
 import { cn } from "@/lib/utils";
 import {
@@ -248,6 +257,32 @@ function StepControls({
 
 const rowId = (key: string, effect: AnimationEffect) => `${key}|${effect}`;
 
+/** Label row of a pinned strip, doubling as its collapse control — the strips
+ *  are the only thing between the scrolling middle and the panel edges, so
+ *  folding one away is how you get the room back without unpinning it. */
+function StripHeader({
+  label,
+  open,
+  onToggle,
+}: {
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      title={open ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+      className="flex w-full items-center justify-between rounded text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] transition-colors hover:text-[var(--text-secondary)]"
+    >
+      {label}
+      {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+    </button>
+  );
+}
+
+type PanelView = "effects" | "build";
+
 /** The preset patterns — one entrance effect each, applied to every
  *  meaningful element on the slide (replacing existing steps). Pacing comes
  *  from the timing row next to them, not from the pattern. */
@@ -424,6 +459,25 @@ function BuildRow({
           {effectLabel(entry.step.effect)}
         </div>
       </div>
+      {/* Mirrors the two lines on the left: how long it runs over how long it
+          waits first. A looping step gets the repeat mark, or its duration
+          reads as the whole story when it is really one iteration of many. */}
+      <div className="shrink-0 text-right tabular-nums">
+        <div className="flex items-center justify-end gap-1 text-[10px] text-[var(--text-secondary)]">
+          {entry.step.loop && <Repeat size={9} />}
+          {entry.step.duration}ms
+        </div>
+        <div
+          className={cn(
+            "text-[10px]",
+            entry.step.delay > 0
+              ? "text-[var(--text-muted)]"
+              : "text-[var(--text-muted)]/40",
+          )}
+        >
+          +{entry.step.delay}ms
+        </div>
+      </div>
       <span
         className={cn(
           "shrink-0 rounded-full px-1.5 py-0.5 text-[9px] leading-none",
@@ -462,6 +516,9 @@ export default function AnimationPanel({
   const [animateAllTiming, setAnimateAllTiming] = useState<AnimateAllTiming>(
     DEFAULT_ANIMATE_ALL_TIMING,
   );
+  const [view, setView] = useState<PanelView>("effects");
+  const [headerOpen, setHeaderOpen] = useState(true);
+  const [footerOpen, setFooterOpen] = useState(true);
 
   const element = elementSelection?.element ?? null;
   const patch = elementSelection?.patch ?? null;
@@ -565,9 +622,15 @@ export default function AnimationPanel({
             {previewActive ? "Stop preview" : "Play preview"}
           </button>
         )}
-        <span className="pt-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
-          Animate all
-        </span>
+        <div className="pt-0.5">
+          <StripHeader
+            label="Animate all"
+            open={headerOpen}
+            onToggle={() => setHeaderOpen((open) => !open)}
+          />
+        </div>
+        {headerOpen && (
+          <>
         <AnimateAllTimingRow timing={animateAllTiming} onChange={setAnimateAllTiming} />
         <div className="grid grid-cols-4 gap-1.5">
           {ANIMATE_ALL_PRESETS.map((preset) => (
@@ -615,10 +678,39 @@ export default function AnimationPanel({
             Clear all
           </button>
         </div>
+          </>
+        )}
+        {/* Outside the collapsible block on purpose: folding the whole header
+            away must not take the view switch with it. */}
+        <div className="mt-0.5 grid grid-cols-2 gap-1 rounded-lg bg-[var(--bg-canvas)] p-0.5">
+          {(
+            [
+              ["effects", "Effects"],
+              ["build", `Build order${entries.length > 0 ? ` (${entries.length})` : ""}`],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setView(id)}
+              className={cn(
+                "h-7 rounded-md text-[11px] font-medium transition-colors",
+                view === id
+                  ? "bg-[var(--bg-elevated)] text-[var(--text-primary)]"
+                  : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
+      {/* Two views, one scroll well. The effects half needs an element; the
+          build half describes the whole slide and stands on its own. */}
       <div className="flex flex-1 flex-col gap-3 bg-[var(--bg-canvas)] pb-3">
-      {canEdit ? (
+      {view === "effects" ? (
+        // ── Effects: pick one entrance / emphasis / exit for the selection ──
+        canEdit ? (
         <>
           <PanelLabel>Selected element</PanelLabel>
           {ANIMATION_KIND_ORDER.map((kind) => {
@@ -655,18 +747,18 @@ export default function AnimationPanel({
         </>
       ) : (
         <div className="mx-2.5 mt-2 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3 py-3 text-[11px] leading-relaxed text-[var(--text-muted)]">
-          Select an element on the canvas to give it an animation. The build
-          order below applies to the whole slide.
+          Select an element on the canvas to give it an animation, or switch to
+          Build order to see what the whole slide already does.
         </div>
-      )}
-
-      <PanelLabel>Build order</PanelLabel>
-      {entries.length === 0 ? (
-        <p className="px-2.5 pb-1 text-[11px] leading-relaxed text-[var(--text-muted)]">
-          No animated elements on this slide yet.
+        )
+      ) : /* ── Build order: the slide's whole sequence, reorderable ── */
+      entries.length === 0 ? (
+        <p className="px-2.5 pt-3 text-[11px] leading-relaxed text-[var(--text-muted)]">
+          No animated elements on this slide yet. Pick an element and give it an
+          effect, or use one of the Animate all presets above.
         </p>
       ) : (
-        <div className="px-2.5" data-inline-edit-ignore="true">
+        <div className="px-2.5 pt-3" data-inline-edit-ignore="true">
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
@@ -704,10 +796,17 @@ export default function AnimationPanel({
           container and a percentage max-height would resolve to none. */}
       {canEdit && steps.length > 0 && (
         <div className="sticky bottom-0 z-20 max-h-[38vh] overflow-y-auto border-t border-[var(--border)] bg-[var(--bg-panel)] px-2.5 pb-2.5 pt-2 shadow-[0_-3px_10px_rgba(0,0,0,0.45)]">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
-            Step timing
-          </span>
-          <div className="mt-1.5 flex flex-col divide-y divide-[var(--border)]">
+          <StripHeader
+            label="Step timing"
+            open={footerOpen}
+            onToggle={() => setFooterOpen((open) => !open)}
+          />
+          <div
+            className={cn(
+              "mt-1.5 flex-col divide-y divide-[var(--border)]",
+              footerOpen ? "flex" : "hidden",
+            )}
+          >
             {/* key resets the drafts when the canvas selection moves */}
             {steps.map((step) => (
               <StepControls

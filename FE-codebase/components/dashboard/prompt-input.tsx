@@ -10,6 +10,15 @@ import { importPptxFile, resolveUnresolvedFonts } from '@/components/slide-edito
 import { notify } from '@/components/ui/sonner'
 import { SourceDocAttach, useSourceDocs } from '@/components/shared/source-doc-attach'
 import { SOURCE_PARAM } from '@/lib/source-docs/store'
+import {
+	DEFAULT_PAGE_COUNT_ID,
+	PAGE_COUNTS,
+	PAGE_COUNT_PARAM,
+	isPageCountId,
+	pageCountIdFromLabel,
+	pageCountLabel,
+	type PageCountId,
+} from '@/lib/page-counts'
 
 const LANGUAGES = ['Bahasa Indonesia', 'English', 'Español', '中文', '日本語']
 
@@ -75,6 +84,14 @@ export function PromptInput() {
 	const sessionError = useSessionStore((s) => s.error)
 	const [prompt, setPrompt] = useState('')
 	const [language, setLanguage] = useState('Bahasa Indonesia')
+	// Page count is decided here now rather than only on /outline, so the very
+	// first outline comes back at the right length instead of being regenerated
+	// after the user changes the pill. Persisted like the other choices below.
+	const [pageCountId, setPageCountId] = useState<PageCountId>(DEFAULT_PAGE_COUNT_ID)
+	useEffect(() => {
+		const saved = localStorage.getItem('ppt_page_count')
+		if (isPageCountId(saved)) setPageCountId(saved)
+	}, [])
 	const providers = useAvailableProviders()
 	// Per-section AI provider choices (generate text, verify vision, repair
 	// text). Persisted in localStorage so the choice survives between visits.
@@ -154,6 +171,7 @@ export function PromptInput() {
 			// Only the ids travel; the extracted text and figures stay in
 			// IndexedDB (they are megabytes, and a URL is not).
 			if (sourceDocs.ids) qs.set(SOURCE_PARAM, sourceDocs.ids)
+			qs.set(PAGE_COUNT_PARAM, pageCountId)
 			// Provider choices travel as separate params so each section
 			// (generate/verify/repair) can be overridden independently.
 			// Absent param = the editor applies the server default.
@@ -279,6 +297,16 @@ export function PromptInput() {
 					onAdd={sourceDocs.add}
 					onRemove={sourceDocs.remove}
 					disabled={importing || submitting}
+				/>
+
+				<Dropdown
+					label={pageCountLabel(pageCountId)}
+					options={PAGE_COUNTS.map((option) => option.label)}
+					onSelect={(label) => {
+						const id = pageCountIdFromLabel(label)
+						setPageCountId(id)
+						localStorage.setItem('ppt_page_count', id)
+					}}
 				/>
 
 				<Dropdown label={language} options={LANGUAGES} onSelect={(v) => setLanguage(v)} />

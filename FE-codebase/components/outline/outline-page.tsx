@@ -49,6 +49,15 @@ import {
 import { buildSourceDigest, withSourceDocument } from "@/lib/source-docs/digest";
 import { SOURCE_PARAM, parseSourceIds } from "@/lib/source-docs/store";
 import {
+  DEFAULT_PAGE_COUNT_ID,
+  PAGE_COUNTS,
+  PAGE_COUNT_PARAM,
+  isPageCountId,
+  pageCountFor,
+  pageCountLabel as labelForPageCount,
+  type PageCountId,
+} from "@/lib/page-counts";
+import {
   parseOutline,
   serializeOutline,
   type Outline,
@@ -56,16 +65,6 @@ import {
 } from "./outline-markdown";
 
 const LANGUAGES = ["Bahasa Indonesia", "English", "Español", "中文", "日本語"];
-
-// Page-count pill options. The range midpoint is what the worker's outline
-// prompt receives as its slideCount hint; "Auto" omits it entirely.
-const PAGE_COUNTS = [
-  { id: "auto", label: "Auto", slideCount: undefined },
-  { id: "4-6", label: "4-6 Pages", slideCount: 5 },
-  { id: "6-10", label: "6-10 Pages", slideCount: 8 },
-  { id: "10-15", label: "10-15 Pages", slideCount: 12 },
-] as const;
-type PageCountId = (typeof PAGE_COUNTS)[number]["id"];
 
 let customPageSeq = 0;
 
@@ -80,7 +79,12 @@ export function OutlinePage() {
   const [language, setLanguage] = useState(
     searchParams.get("lang") ?? "Bahasa Indonesia",
   );
-  const [pageCountId, setPageCountId] = useState<PageCountId>("6-10");
+  // Seeded from the homepage's pill (?pages=), so the first outline already
+  // comes back at the length the user picked instead of at the default.
+  const [pageCountId, setPageCountId] = useState<PageCountId>(() => {
+    const fromUrl = searchParams.get(PAGE_COUNT_PARAM);
+    return isPageCountId(fromUrl) ? fromUrl : DEFAULT_PAGE_COUNT_ID;
+  });
   const [themeId, setThemeId] = useState<string | null>(null);
 
   const [outline, setOutline] = useState<Outline>({ title: "", pages: [] });
@@ -123,7 +127,7 @@ export function OutlinePage() {
     setStreamError(null);
     setStreaming(true);
     try {
-      const slideCount = PAGE_COUNTS.find((c) => c.id === pageCountId)?.slideCount;
+      const slideCount = pageCountFor(pageCountId);
       // Read through a ref, not a dependency: startOutline is also called from
       // the retry button and the "Generate ulang" control, and rebuilding the
       // callback whenever a document is attached would re-fire the auto-start
@@ -312,8 +316,7 @@ export function OutlinePage() {
     }
   };
 
-  const pageCountLabel =
-    PAGE_COUNTS.find((c) => c.id === pageCountId)?.label ?? "Auto";
+  const pageCountLabel = labelForPageCount(pageCountId);
   const canGenerate =
     !streaming && !generating && outline.pages.some((p) => p.heading.trim());
 

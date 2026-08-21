@@ -32,6 +32,9 @@ const aipptSchema = z.object({
 	// Attached-document digest + asset inventory; presence lets the model
 	// answer with {"asset":"fig-3"} fills the client resolves locally.
 	source: z.string().max(200_000).optional(),
+	// Pages the approved outline has — a HARD target for the deck, unlike the
+	// outline job's same-named hint. Absent for free-text prompts.
+	slideCount: z.number().int().min(1).max(30).optional(),
 })
 const writingSchema = z.object({
 	content: z.string(),
@@ -254,6 +257,7 @@ tools.post('/aippt', async (c) => {
 				model: parsed.data.model,
 				manifest: parsed.data.manifest,
 				source: parsed.data.source,
+				slideCount: parsed.data.slideCount,
 				stream_mode: 'raw',
 			},
 		})
@@ -266,6 +270,7 @@ tools.post('/aippt', async (c) => {
 			model: parsed.data.model,
 			manifest: parsed.data.manifest,
 			source: parsed.data.source,
+			slideCount: parsed.data.slideCount,
 			stream_mode: 'raw',
 		})
 

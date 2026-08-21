@@ -1205,6 +1205,13 @@ export default function EditorReactClient({
       .map((doc) => buildSourceDigest(doc))
       .filter(Boolean)
       .join("\n\n");
+    // How many pages the user actually approved on /outline — one "## " per
+    // page. Without this the generator only ever sees the outline TEXT, and
+    // its own prompt tells it to aim for 6-9 slides, so an 8-page outline
+    // came back as 7 slides and the progress bar sat at 7/8 forever. Counted
+    // from the raw topic: a short free-text prompt has no headings and passes
+    // 0, which leaves the model on its own judgement as before.
+    const plannedSlideCount = (topic.match(/^##\s+\S/gm) ?? []).length;
     // Resolve the theme FIRST and fetch its layout manifest — with the
     // manifest in the request body the worker switches to the slot-by-slot
     // contract (model fills NAMED slots under their authored budgets) instead
@@ -1277,6 +1284,7 @@ export default function EditorReactClient({
       model,
       manifest: manifest ?? undefined,
       source: sourceDigest || undefined,
+      slideCount: plannedSlideCount > 0 ? plannedSlideCount : undefined,
     });
     if (!(res instanceof Response) || !res.body) {
       const message =
@@ -1861,8 +1869,14 @@ export default function EditorReactClient({
       const start = parseSlideStartLine(t);
       if (start) {
         await closePendingStream(); // model skipped a slide_end — close it
-        const layout = layoutPicker.getLayoutById(start.layout_id);
-        if (!layout) return; // hallucinated layout id — drop the sequence
+        const resolved = layoutPicker.resolveLayoutId(start.layout_id);
+        if (!resolved) return; // no layouts at all — nothing to mount
+        if (!resolved.exact) {
+          console.warn(
+            `[generation] layout "${start.layout_id}" is not in this theme — substituting "${resolved.layout.id}"`,
+          );
+        }
+        const layout = resolved.layout;
         const index = count;
         // Mount the EMPTY layout immediately — the user watches the template
         // appear first, then each text element land as its fill streams in.
@@ -2071,6 +2085,14 @@ export default function EditorReactClient({
     setExpectedSlideCount(planned > 0 ? planned : null);
     setIsGenerating(true);
     generateDeckFromTopic(topic, language, model, withReview, providers, imageSource, pinnedThemeId)
+      .then((built) => {
+        // Settle the denominator against what actually shipped. `planned` is
+        // the outline's page count and drives the bar WHILE streaming, but a
+        // model that returns one slide fewer used to leave the panel reading
+        // "7 / 8" with a row stuck at "queued" forever — a finished deck of 7
+        // slides is 7 of 7.
+        if (built > 0) setExpectedSlideCount(built);
+      })
       .catch((e) => {
         setGenerationError({
           message: e instanceof Error ? e.message : "Something went wrong while generating your deck.",

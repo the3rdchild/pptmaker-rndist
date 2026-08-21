@@ -70,7 +70,8 @@ Output: JSONL — one JSON object per line. A slide is emitted as a SEQUENCE of 
 The client renders each line the moment it arrives: slide_start mounts the empty layout, every fill line types one element in live. So emit the lines of a slide in reading order (headline first, body after) and never buffer a whole slide — stream it element by element.
 
 RULES — violations break the deck:
-1. STRUCTURE: first slide uses a "cover" layout; then an "agenda" layout if one exists; a "section" layout before each chapter; 2-5 "content" (or comparison/timeline/process/team/gallery) slides; last slide uses a "closing" layout. Aim for 6-9 slides TOTAL, cover and closing included — a tight, dense deck, not a long thin one. Never reuse the same layout id for two slides in a row.
+1. STRUCTURE: first slide uses a "cover" layout; then an "agenda" layout if one exists; a "section" layout before each chapter; 2-5 "content" (or comparison/timeline/process/team/gallery) slides; last slide uses a "closing" layout. Never reuse the same layout id for two slides in a row.
+   SLIDE COUNT: when the request states "Slides: N", emit EXACTLY N slides — the user reviewed and approved an outline of exactly that many pages, and every "## " heading in it is a page they expect to see. Do not merge two outline pages into one slide, do not drop the last one, do not add an extra. Only when no count is stated do you choose: aim for 6-9 slides TOTAL, cover and closing included — a tight, dense deck, not a long thin one.
 2. SLOTS: fill ONLY slots that exist in the chosen layout, addressed by their EXACT name. If a name appears multiple times in that layout, provide one fill line per occurrence, in order.
 3. NO EMPTY SLOTS: choose a layout ONLY when the topic gives you enough material to fill EVERY "always" slot in it — an empty required slot is a broken slide. If you can't fill a layout completely, pick a simpler one; never start a slide you can't finish. Fewer fully-filled slides ALWAYS beat many half-empty ones.
 4. BUDGETS: max_words is a HARD ceiling per slot — count your words and never exceed it. But don't just stay under the max: when a slot states ideal_words, AIM for it. A body box authored for a long paragraph looks broken when it gets three words; a headline box looks broken when it gets twenty. Land within a few words of the ideal whenever the material allows.
@@ -220,12 +221,17 @@ def process(ctx: dict):
     # Assembled client-side (the browser holds the actual image bytes, which
     # never leave it) and passed through untouched, same as the manifest.
     source = params.get("source") or ""
+    # Pages the approved outline has. Unlike the outline job's same-named hint
+    # this is a hard target: the user already saw and edited those pages, so a
+    # deck with fewer is a deck missing content they signed off on.
+    slide_count = int(params.get("slideCount") or params.get("slide_count") or 0)
 
     use_manifest = bool(compact.get("layouts"))
     logger.info(
-        "[deck_service] job_id=%s lang=%s provider=%r mode=%s layouts=%d",
+        "[deck_service] job_id=%s lang=%s provider=%r mode=%s layouts=%d slides=%s",
         ctx["job_id"], language, provider,
         "manifest" if use_manifest else "legacy", len(compact.get("layouts", [])),
+        slide_count or "auto",
     )
     if source:
         logger.info("[deck_service] source document attached | chars=%d | job_id=%s", len(source), ctx["job_id"])
@@ -234,11 +240,13 @@ def process(ctx: dict):
     # slide can hold), the document is material (what goes in it), and the
     # closing "generate now" sentence has to stay the last thing the model reads.
     source_block = source + "\n\n" if source else ""
+    count_block = f"Slides: {slide_count}\n" if slide_count else ""
 
     if use_manifest:
         system_prompt = MANIFEST_SYSTEM_PROMPT
         user_msg = (
-            f"Language: {language}\n\n"
+            f"Language: {language}\n"
+            f"{count_block}\n"
             f"Topic: {outline}\n\n"
             f"THEME MANIFEST:\n{json.dumps(compact, ensure_ascii=False)}\n\n"
             f"{source_block}"
@@ -247,7 +255,7 @@ def process(ctx: dict):
     else:
         system_prompt = LEGACY_SYSTEM_PROMPT
         user_msg = (
-            f"Language: {language}\n\nOutline:\n{outline}\n\n"
+            f"Language: {language}\n{count_block}\nOutline:\n{outline}\n\n"
             f"{source_block}"
             "Generate the JSONL slides now."
         )

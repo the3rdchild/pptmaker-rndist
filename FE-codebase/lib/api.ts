@@ -180,6 +180,10 @@ export async function streamAipptDeck(
 		 *  figures/tables the model may place. Kept separate from `content` so
 		 *  the topic stays a topic. */
 		source?: string
+		/** Pages the approved outline has. The worker turns this into a hard
+		 *  "emit exactly N slides" instruction — without it the model follows
+		 *  its own 6-9 slide guidance and silently drops outline pages. */
+		slideCount?: number
 	},
 ): Promise<{ state: -1; message: string } | Response> {
 	const res = await fetch(`${API_BASE}/api/v1/tools/aippt`, {

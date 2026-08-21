@@ -333,6 +333,34 @@ export class DeckLayoutPicker {
     return this.layouts.find((l) => l.id === id) ?? null;
   }
 
+  /** Best layout for an id the model may have got wrong.
+   *
+   *  Authored ids carry an arbitrary numeric suffix ("visual_1_8449"), which a
+   *  model reproduces from memory and sometimes mistypes. Dropping the slide
+   *  on a miss meant an approved outline page silently vanished from the deck,
+   *  so a near miss falls back to a layout of the same family (same alphabetic
+   *  stem) and an outright miss to the next content layout. The slide's own
+   *  slot names then won't match, but finalizeStreamedSlide backstops "always"
+   *  slots from the headline — a slide with the right title beats no slide. */
+  resolveLayoutId(id: string): { layout: TemplateLayout; exact: boolean } | null {
+    const exact = this.getLayoutById(id);
+    if (exact) return { layout: exact, exact: true };
+    if (this.layouts.length === 0) return null;
+
+    const stem = (value: string) => value.toLowerCase().replace(/[^a-z]/g, "");
+    const wanted = stem(id);
+    const sameFamily = wanted
+      ? this.layouts.find((l) => stem(l.id) === wanted)
+      : undefined;
+    if (sameFamily) return { layout: sameFamily, exact: false };
+
+    try {
+      return { layout: this.pickFor("content"), exact: false };
+    } catch {
+      return null;
+    }
+  }
+
   /** The chosen pack's font map ({ family: cssUrl }). Available after
    *  ensureLoaded(). Used so the editor/present render path loads the right
    *  per-pack typeface instead of only the generic Google-Fonts fallback. */

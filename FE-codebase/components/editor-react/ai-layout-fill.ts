@@ -1229,7 +1229,15 @@ export function findSecondaryImages(candidates: PhotoCandidate[], hero: HeroImag
  * URL/data-URL, using occurrenceIndex to pick out the right element among
  * same-named siblings. No-ops if the marker no longer matches anything.
  * `extra` optionally stamps attribution fields (stock-photo fills only —
- * AI-generated images have no photographer/source to credit). */
+ * AI-generated images have no photographer/source to credit).
+ *
+ * `fit` is forced to "cover" — what the toolbar calls "Fill". Template photo
+ * slots are routinely authored as "fill", an anisotropic stretch, and that is
+ * harmless for the placeholder art because it was cut to the slot's exact
+ * aspect ratio. A generated 1024x1024 photo dropped into a 16:9 slot is not,
+ * and inheriting "fill" is what left generated decks full of squashed people.
+ * Cropping to fill is what a photograph wants. A document figure must NOT be
+ * cropped — it goes through source-asset-fill.ts, which sets "contain". */
 export function patchHeroImage(
   ui: Rec,
   marker: HeroImageMarker,
@@ -1246,6 +1254,7 @@ export function patchHeroImage(
     if (el.type === "image" && el.name === marker.elementName) {
       if (seen === marker.occurrenceIndex) {
         el.data = dataUrl;
+        el.fit = "cover";
         if (extra) Object.assign(el, extra);
         return true;
       }

@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { Wand2, Plus, ChevronDown, Loader2, ScanEye, Check, ImageIcon, FilePlus2 } from 'lucide-react'
+import { Wand2, Plus, ChevronDown, Loader2, ScanEye, Check, ImageIcon, FilePlus2, Code2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useSessionStore } from '@/store/session.store'
 import { createDeck, saveDeck } from '@/lib/api'
@@ -10,6 +10,17 @@ import { importPptxFile, resolveUnresolvedFonts } from '@/components/slide-edito
 import { notify } from '@/components/ui/sonner'
 import { SourceDocAttach, useSourceDocs } from '@/components/shared/source-doc-attach'
 import { SOURCE_PARAM } from '@/lib/source-docs/store'
+import {
+	HTML_THEMES,
+	HTML_THEME_PARAM,
+	MODE_PARAM,
+	loadStoredHtmlTheme,
+	loadStoredMode,
+	storeHtmlTheme,
+	storeMode,
+	type GenerationMode,
+	type HtmlThemeId,
+} from '@/lib/generation-mode'
 import {
 	DEFAULT_PAGE_COUNT_ID,
 	PAGE_COUNTS,
@@ -131,6 +142,16 @@ export function PromptInput() {
 			localStorage.removeItem('ppt_image_source')
 		}
 	}, [hasStockProvider, imageSource])
+	// Which engine builds the deck. "template" fills a hand-designed layout;
+	// "html" lets the model design the slide as HTML and reads the rendered DOM
+	// back as editable elements. Restored after mount so SSR and the first
+	// client render agree.
+	const [genMode, setGenMode] = useState<GenerationMode>('template')
+	const [htmlTheme, setHtmlTheme] = useState<HtmlThemeId>('paper')
+	useEffect(() => {
+		setGenMode(loadStoredMode())
+		setHtmlTheme(loadStoredHtmlTheme())
+	}, [])
 	const [submitting, setSubmitting] = useState(false)
 	const [importing, setImporting] = useState(false)
 	const [localError, setLocalError] = useState<string | null>(null)
@@ -180,6 +201,11 @@ export function PromptInput() {
 			if (repairProvider) qs.set('repair', repairProvider)
 			if (!review) qs.set('review', 'off')
 			if (imageSource === 'stock') qs.set('images', 'stock')
+			// Absent param = template mode, so every existing link keeps working.
+			if (genMode === 'html') {
+				qs.set(MODE_PARAM, 'html')
+				qs.set(HTML_THEME_PARAM, htmlTheme)
+			}
 			router.push(`/outline?${qs.toString()}`)
 			setSubmitting(false)
 		} catch (e) {
@@ -389,6 +415,51 @@ export function PromptInput() {
 						/>
 					</span>
 				</button>
+
+				<button
+					type="button"
+					onClick={() => {
+						const next = genMode === 'html' ? 'template' : 'html'
+						setGenMode(next)
+						storeMode(next)
+					}}
+					title="Mode HTML: AI mendesain tiap slide sebagai halaman HTML, lalu ukuran/posisi/warna dicontek dari hasil render jadi elemen editor. Layout tidak dibatasi template, tapi tema dan font ikut aturan mode ini."
+					className="flex items-center gap-1.5 rounded-lg border border-[#2d2e42] bg-[#1a1b2e] px-2.5 py-1.5 text-xs text-zinc-300 transition-colors hover:border-[#6c5ce7]"
+				>
+					<Code2 className={`h-3.5 w-3.5 ${genMode === 'html' ? 'text-[#a29bfe]' : 'text-zinc-600'}`} />
+					<span>Mode HTML</span>
+					<span
+						className={`relative h-4 w-7 rounded-full transition-colors ${genMode === 'html' ? 'bg-[#6c5ce7]' : 'bg-[#2d2e42]'}`}
+					>
+						<span
+							className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${genMode === 'html' ? 'left-3.5' : 'left-0.5'}`}
+						/>
+					</span>
+				</button>
+
+				{/* HTML mode brings its own palette + font pair, so the template
+				    theme picker on /outline does not apply to it. */}
+				{genMode === 'html' && (
+					<div className="flex items-center gap-1 rounded-lg border border-[#2d2e42] bg-[#1a1b2e] p-0.5 text-xs">
+						{HTML_THEMES.map((theme) => (
+							<button
+								key={theme.id}
+								type="button"
+								onClick={() => {
+									setHtmlTheme(theme.id)
+									storeHtmlTheme(theme.id)
+								}}
+								className={`rounded-md px-2 py-1 transition-colors ${
+									htmlTheme === theme.id
+										? 'bg-[#6c5ce7] text-white'
+										: 'text-zinc-400 hover:text-zinc-200'
+								}`}
+							>
+								{theme.label}
+							</button>
+						))}
+					</div>
+				)}
 
 				<div className="ml-auto flex items-center gap-2">
 					{/* Session status indicator */}

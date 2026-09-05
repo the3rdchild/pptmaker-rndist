@@ -6,7 +6,7 @@
 // what fills it. Here that is an Unsplash search; in the worker it would be the
 // existing stock-image / DeepInfra path.
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,9 +15,16 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 let accessKey = null;
 function unsplashKey() {
   if (accessKey !== null) return accessKey;
-  const text = readFileSync(join(HERE, "..", "FE-codebase", ".env.local"), "utf8");
-  const match = text.match(/^\s*UNSPLASH_ACCESS_KEY\s*=\s*(.+)$/m);
-  accessKey = match ? match[1].trim() : "";
+  // Inside Next the key is already in process.env from .env.local; the file
+  // read is only for running this from the CLI.
+  accessKey = (process.env.UNSPLASH_ACCESS_KEY ?? "").trim();
+  if (!accessKey) {
+    const path = join(HERE, "..", "..", ".env.local");
+    if (existsSync(path)) {
+      const match = readFileSync(path, "utf8").match(/^\s*UNSPLASH_ACCESS_KEY\s*=\s*(.+)$/m);
+      accessKey = match ? match[1].trim() : "";
+    }
+  }
   return accessKey;
 }
 

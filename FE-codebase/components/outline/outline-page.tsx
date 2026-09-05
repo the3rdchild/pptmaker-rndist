@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createDeck, streamAipptOutline } from "@/lib/api";
+import { HTML_THEME_PARAM, MODE_PARAM, modeFromParams } from "@/lib/generation-mode";
 import { useSessionStore } from "@/store/session.store";
 import { useTemplateThemes } from "@/components/editor-react/theme-picker";
 import { LazyLayoutThumbnail } from "@/components/editor-react/lazy-layout-thumbnail";
@@ -71,6 +72,7 @@ let customPageSeq = 0;
 export function OutlinePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const generationMode = modeFromParams(searchParams);
   const token = useSessionStore((s) => s.token);
   const sessionReady = useSessionStore((s) => s.ready);
 
@@ -304,8 +306,8 @@ export function OutlinePage() {
       // Carry the attached documents into the editor — deck generation needs
       // them again, both for the prose and to resolve figure/table ids.
       if (sourceDocs.ids) qs.set(SOURCE_PARAM, sourceDocs.ids);
-      // Forward the homepage's provider/review/image choices untouched.
-      for (const key of ["gen", "verify", "repair", "review", "images"]) {
+      // Forward the homepage's provider/review/image/mode choices untouched.
+      for (const key of ["gen", "verify", "repair", "review", "images", MODE_PARAM, HTML_THEME_PARAM]) {
         const v = searchParams.get(key);
         if (v) qs.set(key, v);
       }
@@ -512,6 +514,16 @@ export function OutlinePage() {
                 More Theme
               </button>
             </div>
+
+            {/* HTML mode designs each slide from its own locked palette and
+                font pair, so a template theme picked here would be ignored —
+                say so rather than letting the click look broken. */}
+            {generationMode === "html" && (
+              <p className="mb-3 rounded-lg border border-[var(--border)] bg-[var(--bg-base)] p-2.5 text-[11px] leading-relaxed text-[var(--text-muted)]">
+                Mode HTML aktif — deck ini didesain AI dari nol, jadi theme di
+                bawah tidak dipakai. Ganti terang/gelap di halaman depan.
+              </p>
+            )}
 
             {themesLoading ? (
               <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">

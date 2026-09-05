@@ -58,6 +58,8 @@ import { adaptDeckToPresentation } from "@/components/editor-react/deck-adapt";
 import { useSessionStore } from "@/store/session.store";
 import { getDeck, saveDeck, streamAipptDeck, fetchThemeManifest, chooseThemeForTopic, generateImage, type AgentAction } from "@/lib/api";
 import { getGlobalFonts } from "@/lib/fonts/global-fonts";
+import { streamHtmlDeck } from "@/lib/html-slides-stream";
+import { htmlThemeFromParams, modeFromParams } from "@/lib/generation-mode";
 import type { StockImageResult } from "@/lib/stock-image-providers";
 import {
   DEFAULT_THEME_ID,
@@ -1182,6 +1184,54 @@ export default function EditorReactClient({
   // auto-generate-on-open flow (?prompt= from the homepage). Throws on real
   // failure (bad response, dead stream) so callers can show a graceful
   // error + retry (PRD #19) instead of silently ending up with 0 slides.
+  /** HTML mode: the model designs each slide as a page, headless Chrome renders
+   *  it server-side, and the extracted elements arrive one slide at a time.
+   *  Deliberately narrow next to `generateDeckFromTopic` — there is no template
+   *  to pick, no slot to fill and no photo job to chase, because the layout and
+   *  its photos were already settled in the browser that rendered them. */
+  const generateDeckFromHtml = async (
+    topic: string,
+    themeId: string,
+  ): Promise<number> => {
+    if (!token) return 0;
+    const plannedSlideCount = (topic.match(/^##\s+\S/gm) ?? []).length;
+
+    dispatch(setPresentationData({
+      ...(presentationData ?? { id: deckId, title: topic, slides: [] }),
+      slides: [],
+    }));
+
+    return streamHtmlDeck(
+      {
+        topic,
+        theme: themeId,
+        slideCount: plannedSlideCount > 0 ? plannedSlideCount : undefined,
+      },
+      (event) => {
+        if (event.type === "status") setGenerationStatus(event.message);
+        if (event.type === "outline") {
+          setExpectedSlideCount(event.slides.length);
+          const current = reduxStore.getState().presentationGeneration.presentationData;
+          if (current) dispatch(setPresentationData({ ...current, title: event.title }));
+        }
+        if (event.type === "slide") {
+          const current = reduxStore.getState().presentationGeneration.presentationData;
+          if (!current) return;
+          dispatch(setPresentationData({
+            ...current,
+            slides: [...current.slides, { ui: event.ui } as SlideData],
+          }));
+          setGenerationStatus(`Slide ${event.index + 1} — ${event.heading}`);
+        }
+        if (event.type === "warning") {
+          // Same class of problem the vision review reports in template mode,
+          // except the DOM measured it exactly. Surfaced, not fatal.
+          console.warn(`[html-slides] slide ${event.slide}: ${event.message}`);
+        }
+      },
+    );
+  };
+
   const generateDeckFromTopic = async (
     topic: string,
     language?: string,
@@ -2084,7 +2134,13 @@ export default function EditorReactClient({
     const planned = (topic.match(/^##\s+\S/gm) ?? []).length;
     setExpectedSlideCount(planned > 0 ? planned : null);
     setIsGenerating(true);
-    generateDeckFromTopic(topic, language, model, withReview, providers, imageSource, pinnedThemeId)
+    // The mode lives in the URL, so a reload or a "Try Again" re-runs whichever
+    // engine the user actually chose rather than silently falling back.
+    const build =
+      modeFromParams(searchParams) === "html"
+        ? generateDeckFromHtml(topic, htmlThemeFromParams(searchParams))
+        : generateDeckFromTopic(topic, language, model, withReview, providers, imageSource, pinnedThemeId);
+    build
       .then((built) => {
         // Settle the denominator against what actually shipped. `planned` is
         // the outline's page count and drives the bar WHILE streaming, but a

@@ -160,7 +160,15 @@ export function OutlinePage() {
         rawRef.current += decoder.decode(value, { stream: true });
         setOutline(parseOutline(rawRef.current));
       }
-      if (!rawRef.current.trim()) setStreamError("Outline kosong — coba generate ulang");
+      const workerError = rawRef.current.match(/<!--ppt-error:([^]*?)-->/);
+      if (workerError) {
+        const message = decodeURIComponent(workerError[1]);
+        rawRef.current = rawRef.current.replace(workerError[0], "").trim();
+        setOutline(parseOutline(rawRef.current));
+        setStreamError(message);
+      } else if (!rawRef.current.trim()) {
+        setStreamError("Outline kosong — coba generate ulang");
+      }
     } catch (e) {
       setStreamError(e instanceof Error ? e.message : "Gagal membuat outline");
     } finally {
@@ -307,7 +315,7 @@ export function OutlinePage() {
       // them again, both for the prose and to resolve figure/table ids.
       if (sourceDocs.ids) qs.set(SOURCE_PARAM, sourceDocs.ids);
       // Forward the homepage's provider/review/image/mode choices untouched.
-      for (const key of ["gen", "verify", "repair", "review", "images", MODE_PARAM, HTML_THEME_PARAM]) {
+      for (const key of ["gen", "verify", "repair", "review", "images", "image-model", MODE_PARAM, HTML_THEME_PARAM]) {
         const v = searchParams.get(key);
         if (v) qs.set(key, v);
       }

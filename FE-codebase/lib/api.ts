@@ -245,7 +245,7 @@ export async function streamOutlineChat(
 
 // ── Theme manifest (slot-by-slot generation contract) ─────────────────────
 
-/** Asks the server (Kimi) which theme best fits a deck topic, matched against
+/** Asks the server AI which theme best fits a deck topic, matched against
  * each theme's authored when_to_use / avoid_when / keywords. Returns null on
  * any failure or "no defensible fit" — the caller falls back to the
  * deterministic DeckLayoutPicker seed instead of dying. */
@@ -292,7 +292,7 @@ export async function fetchThemeManifest(themeId: string): Promise<unknown | nul
 
 export async function requestImage(
 	token: string,
-	body: { prompt: string; size?: string },
+	body: { prompt: string; size?: string; model?: string },
 ): Promise<{ jobId: string }> {
 	const res = await fetch(`${API_BASE}/api/v1/tools/image`, {
 		method: 'POST',
@@ -309,11 +309,11 @@ export async function requestImage(
 export async function generateImage(
 	token: string,
 	prompt: string,
-	opts: { size?: string; timeoutMs?: number; intervalMs?: number } = {},
+	opts: { size?: string; model?: string; timeoutMs?: number; intervalMs?: number } = {},
 ): Promise<string | null> {
-	const { size, timeoutMs = 45000, intervalMs = 1200 } = opts
+	const { size, model, timeoutMs = 180000, intervalMs = 1200 } = opts
 	try {
-		const { jobId } = await requestImage(token, { prompt, size })
+		const { jobId } = await requestImage(token, { prompt, size, model })
 		const deadline = Date.now() + timeoutMs
 		while (Date.now() < deadline) {
 			const status = await pollStatus(token, jobId)

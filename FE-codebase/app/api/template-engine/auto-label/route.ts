@@ -1,11 +1,11 @@
-// POST /api/template-engine/auto-label — proxies one page's elements to Kimi
+// POST /api/template-engine/auto-label — sends one page's elements to AI
 // and returns authored slot metadata. The key stays server-side; the panel
 // sends only the compact element list.
 
 import { NextResponse } from "next/server";
 
 import {
-	callKimiAutoLabel,
+	callAutoLabel,
 	type AutoLabelRequest,
 } from "@/lib/templates/auto-label";
 
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
 		return NextResponse.json({ error: "elements[] is required" }, { status: 400 });
 	}
 	try {
-		const result = await callKimiAutoLabel(body);
+		const result = await callAutoLabel(body);
 		return NextResponse.json(result);
 	} catch (error) {
 		return NextResponse.json(

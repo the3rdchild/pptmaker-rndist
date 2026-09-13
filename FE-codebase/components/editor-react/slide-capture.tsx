@@ -1,7 +1,7 @@
 "use client";
 
 // Imperative one-off slide rasterizer. Two consumers:
-//   - template-engine auto-label (sends a page PNG to Kimi vision)
+//   - template-engine auto-label (sends a page PNG to the selected vision model)
 //   - post-generation visual verify (sends each generated slide for review)
 //
 // Same approach as PdfExportCapture: render the ui off-screen through the real

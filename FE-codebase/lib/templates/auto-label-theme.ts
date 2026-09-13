@@ -1,4 +1,4 @@
-// Theme-level auto-label: asks Kimi to author the theme's model-facing
+// Theme-level auto-label: asks the selected AI provider to author metadata for
 // identity — description + AI guidance (when_to_use / avoid_when / tone /
 // keywords) — by looking at ALL of the theme's layouts at once, optionally
 // with a few rendered page images as visual ground truth.
@@ -11,7 +11,7 @@
 // Lives in lib/ (not in the API route) so the prompt build + sanitize can be
 // exercised directly with bun, without a running Next server.
 
-import { callKimiChat, extractJson, type KimiMessage } from "@/lib/templates/kimi";
+import { callTemplateChat, extractJson, type TemplateChatMessage } from "@/lib/templates/provider-chat";
 import { DEFAULT_VISION_PROVIDER } from "@/lib/ai-providers";
 
 type Rec = Record<string, unknown>;
@@ -56,7 +56,7 @@ export interface AutoLabelThemeResult {
 
 export function buildAutoLabelThemeMessages(
 	input: AutoLabelThemeRequest,
-): KimiMessage[] {
+): TemplateChatMessage[] {
 	const system = `You are a presentation-template metadata author. A template engine stores hand-designed THEMES, each a family of slide layouts sharing one visual identity. You are given one theme's current metadata and the summary of every layout it contains (plus, when attached, rendered images of a few pages — treat those as the primary truth for the theme's visual character).
 
 Author the theme-level metadata that two readers depend on:
@@ -134,12 +134,12 @@ export function sanitizeAutoLabelThemeResult(raw: Rec): AutoLabelThemeResult {
 	};
 }
 
-/** One round trip to Kimi. Throws on HTTP/parse failure — the route maps that
+/** One provider round trip. Throws on HTTP/parse failure — the route maps that
  *  to a 502 the panel can show. */
-export async function callKimiAutoLabelTheme(
+export async function callAutoLabelTheme(
 	input: AutoLabelThemeRequest,
 ): Promise<AutoLabelThemeResult> {
-	const content = await callKimiChat(
+	const content = await callTemplateChat(
 		buildAutoLabelThemeMessages(input),
 		8000,
 		input.provider ?? DEFAULT_VISION_PROVIDER,

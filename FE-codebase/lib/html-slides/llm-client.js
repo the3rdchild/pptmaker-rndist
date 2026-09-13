@@ -36,25 +36,25 @@ function read(name) {
 // key genuinely has to be configured. FE .env.local, for instance, sets
 // DEEPINFRA_API_KEY but none of the rest.
 const PROVIDERS = {
+  "gpt-luna": {
+    key: "COMMANDCODE_API_KEY",
+    base: ["COMMANDCODE_BASE_URL", "https://api.commandcode.ai/provider/v1"],
+    model: ["COMMANDCODE_LUNA_MODEL", "gpt-5.6-luna"],
+  },
+  "gpt-terra": {
+    key: "COMMANDCODE_API_KEY",
+    base: ["COMMANDCODE_BASE_URL", "https://api.commandcode.ai/provider/v1"],
+    model: ["COMMANDCODE_TERRA_MODEL", "gpt-5.6-terra"],
+  },
+  "gpt-sol": {
+    key: "COMMANDCODE_API_KEY",
+    base: ["COMMANDCODE_BASE_URL", "https://api.commandcode.ai/provider/v1"],
+    model: ["COMMANDCODE_SOL_MODEL", "gpt-5.6-sol"],
+  },
   deepinfra: {
     key: "DEEPINFRA_API_KEY",
     base: ["DEEPINFRA_BASE_URL", "https://api.deepinfra.com/v1/openai"],
     model: ["DEEPINFRA_MODEL", "deepseek-ai/DeepSeek-V3.1-Terminus"],
-  },
-  zhipu: {
-    key: "ZHIPU_API_KEY",
-    base: ["ZHIPU_BASE_URL", "https://open.bigmodel.cn/api/paas/v4"],
-    model: ["ZHIPU_MODEL", "glm-4.5-flash"],
-  },
-  openai: {
-    key: "OPENAI_API_KEY",
-    base: ["OPENAI_BASE_URL", "https://api.openai.com/v1"],
-    model: ["OPENAI_MODEL", "gpt-4o"],
-  },
-  kimi: {
-    key: "KIMI_API_KEY",
-    base: ["KIMI_BASE_URL", "https://api.kimi.com/coding/v1"],
-    model: ["KIMI_MODEL", "kimi-k2.6"],
   },
 };
 
@@ -93,7 +93,7 @@ export async function chat({ provider, prompt, maxTokens = 4000, temperature = 0
     },
     body: JSON.stringify({
       model,
-      temperature,
+      ...(provider === "deepinfra" ? { temperature } : {}),
       max_tokens: maxTokens,
       messages: [{ role: "user", content: prompt }],
     }),

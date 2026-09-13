@@ -514,7 +514,7 @@ export function TemplateEnginePanel({
     themeLabel,
   ]);
 
-  /** Auto-label: asks Kimi to author slot metadata (name/role/fill_condition/
+  /** Auto-label: asks the selected AI provider to author slot metadata,
    *  budgets) plus the layout meta, then writes it back onto the canvas. The
    *  scope decides the blast radius — theme: every page, page: this page,
    *  element: only the selected element. Labels land on the canvas as unsaved

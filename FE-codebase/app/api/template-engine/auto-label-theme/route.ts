@@ -1,12 +1,12 @@
 // POST /api/template-engine/auto-label-theme — proxies one theme's overview
-// (metadata + every layout's summary + optional page images) to Kimi and
+// (metadata + every layout's summary + optional page images) to AI and
 // returns authored theme-level metadata: description + AI guidance. The key
 // stays server-side; applying the result is the caller's job (PATCH themes).
 
 import { NextResponse } from "next/server";
 
 import {
-	callKimiAutoLabelTheme,
+	callAutoLabelTheme,
 	type AutoLabelThemeRequest,
 } from "@/lib/templates/auto-label-theme";
 
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
 		return NextResponse.json({ error: "layouts[] is required" }, { status: 400 });
 	}
 	try {
-		const result = await callKimiAutoLabelTheme(body);
+		const result = await callAutoLabelTheme(body);
 		return NextResponse.json(result);
 	} catch (error) {
 		return NextResponse.json(

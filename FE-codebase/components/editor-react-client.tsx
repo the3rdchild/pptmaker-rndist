@@ -60,6 +60,7 @@ import { getDeck, saveDeck, streamAipptDeck, fetchThemeManifest, chooseThemeForT
 import { getGlobalFonts } from "@/lib/fonts/global-fonts";
 import { streamHtmlDeck } from "@/lib/html-slides-stream";
 import { htmlThemeFromParams, modeFromParams } from "@/lib/generation-mode";
+import { resolveImageModelId } from "@/lib/image-models";
 import type { StockImageResult } from "@/lib/stock-image-providers";
 import {
   DEFAULT_THEME_ID,
@@ -367,6 +368,10 @@ export default function EditorReactClient({
    *  generation time so regenerate_slide (a separate code path) can honour
    *  the same choice without re-parsing searchParams. */
   const imageSourceRef = useRef<"ai" | "stock">("ai");
+  /** Runware price/quality tier selected on the homepage. Kept in a ref so
+   * editor agent actions and async image callbacks use the same deck setting. */
+  const imageModelRef = useRef(resolveImageModelId(searchParams.get("image-model")));
+  imageModelRef.current = resolveImageModelId(searchParams.get("image-model"));
   /** Stock-photo ids already used in this deck (across every slide), so the
    *  same photo doesn't get reused for a different slot just because two
    *  slots share a generic hint. Reset per deck generation; regenerate_slide
@@ -1192,6 +1197,7 @@ export default function EditorReactClient({
   const generateDeckFromHtml = async (
     topic: string,
     themeId: string,
+    provider?: string,
   ): Promise<number> => {
     if (!token) return 0;
     const plannedSlideCount = (topic.match(/^##\s+\S/gm) ?? []).length;
@@ -1205,6 +1211,7 @@ export default function EditorReactClient({
       {
         topic,
         theme: themeId,
+        provider,
         slideCount: plannedSlideCount > 0 ? plannedSlideCount : undefined,
       },
       (event) => {
@@ -1269,7 +1276,7 @@ export default function EditorReactClient({
     //
     // Priority: a theme pinned on the /outline page wins outright; then a
     // theme named explicitly in the prompt; otherwise the theme-choice step
-    // (Kimi + the themes' authored when_to_use/avoid_when) picks one; the
+    // (selected AI + the themes' authored when_to_use/avoid_when) picks one; the
     // DeckLayoutPicker seed hash is only the last-resort fallback when the
     // choice call fails or declines.
     const askedTheme = pinnedThemeId ?? (await resolveThemeFromPrompt(topic));
@@ -1440,7 +1447,7 @@ export default function EditorReactClient({
           };
         }
       }
-      const dataUrl = await generateImage(currentToken, prompt);
+      const dataUrl = await generateImage(currentToken, prompt, { model: imageModelRef.current });
       return dataUrl ? { url: dataUrl } : null;
     };
 
@@ -2138,7 +2145,7 @@ export default function EditorReactClient({
     // engine the user actually chose rather than silently falling back.
     const build =
       modeFromParams(searchParams) === "html"
-        ? generateDeckFromHtml(topic, htmlThemeFromParams(searchParams))
+        ? generateDeckFromHtml(topic, htmlThemeFromParams(searchParams), model)
         : generateDeckFromTopic(topic, language, model, withReview, providers, imageSource, pinnedThemeId);
     build
       .then((built) => {
@@ -2235,7 +2242,7 @@ export default function EditorReactClient({
 
           const applyAiGenerated = () => {
             const prompt = `${imagePrompt}. editorial photograph, cinematic natural lighting, cohesive color grading, no text, no watermark, no logo`;
-            void generateImage(token, prompt).then((dataUrl) => {
+            void generateImage(token, prompt, { model: imageModelRef.current }).then((dataUrl) => {
               if (!dataUrl) return;
               dispatch(updateSlideUi({ index, ui: patchHeroImage(baseUi, marker, dataUrl) }));
             });
@@ -2336,7 +2343,7 @@ export default function EditorReactClient({
 
           const applyAiGenerated = () => {
             const prompt = `${imagePrompt}. editorial photograph, cinematic natural lighting, cohesive color grading, no text, no watermark, no logo`;
-            void generateImage(token, prompt).then((dataUrl) => {
+            void generateImage(token, prompt, { model: imageModelRef.current }).then((dataUrl) => {
               if (!dataUrl) return;
               dispatch(updateSlideUi({ index: slideIndex, ui: patchHeroImage(baseUi, marker, dataUrl) }));
             });
@@ -2481,7 +2488,7 @@ export default function EditorReactClient({
         dispatch(updateSlideUi({ index: slideIndex, ui: placeholderUi }));
 
         const fullPrompt = `${prompt}. editorial photograph, cinematic natural lighting, cohesive color grading, no text, no watermark, no logo`;
-        void generateImage(token, fullPrompt).then((dataUrl) => {
+        void generateImage(token, fullPrompt, { model: imageModelRef.current }).then((dataUrl) => {
           if (!dataUrl) return;
           dispatch(
             updateSlideUi({
@@ -2524,7 +2531,7 @@ export default function EditorReactClient({
         }
 
         const fullPrompt = `${prompt}. editorial photograph, cinematic natural lighting, cohesive color grading, no text, no watermark, no logo`;
-        void generateImage(token, fullPrompt).then((dataUrl) => {
+        void generateImage(token, fullPrompt, { model: imageModelRef.current }).then((dataUrl) => {
           if (!dataUrl) return;
           // Re-read the slide instead of closing over `slideUi` — generation
           // takes seconds, and the user may well have edited the slide since.

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { availableProviders } from "@/lib/ai-providers";
+import { availableImageModels } from "@/lib/image-models";
 
 // Returns the AI providers the frontend can offer in its selectors. This runs
 // server-side so it can read the API key env vars; the browser cannot (they
@@ -14,5 +15,6 @@ export async function GET() {
   return NextResponse.json({
     text: availableProviders({ vision: false }),
     vision: availableProviders({ vision: true }),
+    image: availableImageModels(),
   });
 }

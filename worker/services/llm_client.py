@@ -1,14 +1,12 @@
 """
 Text-LLM client (OpenAI-compatible). Providers are registered in
-core/configs/env.py's PROVIDER_CONFIGS ("deepinfra" default, plus "openai"
-and "zhipu"). The global default comes from LLM_PROVIDER; any call can
+core/configs/env.py's PROVIDER_CONFIGS (CommandCode GPT tiers plus DeepInfra).
+The global default comes from LLM_PROVIDER; any call can
 override it per-request via the `provider` kwarg (job params carry it from
-the homepage model picker). Image generation (image_client.py) is
-unaffected; it always uses DeepInfra.
+the homepage model picker). Image generation is handled separately by Runware.
 
-Endpoint: {base_url}/chat/completions, or {base_url}/responses for providers
-configured with api="responses" (the gpt-*-codex models, which the chat
-completions endpoint refuses). Callers pass chat-style messages either way.
+Endpoint: {base_url}/chat/completions, with generic /responses support retained
+for future providers. Callers pass chat-style messages either way.
 Supports:
   - chat(messages) → text
   - chat_json(messages, schema_hint) → parsed JSON dict
@@ -74,15 +72,14 @@ def _extra_body(provider: str | None) -> dict:
 
 
 def _temperature_kwarg(provider: str | None, temperature: float) -> dict:
-    """Some providers (kimi-k2.6) reject any temperature other than 1, so the
-    request omits the field entirely when the provider opts out via config."""
+    """Omit temperature when a provider opts out via config."""
     name, cfg = resolve_provider(provider)
     if cfg.get("omit_temperature"):
         return {}
     return {"temperature": temperature}
 
 
-# ── Responses API (gpt-*-codex) ───────────────────────────────────────────
+# ── Optional Responses API support ────────────────────────────────────────
 #
 # Codex models are served on /responses only — /chat/completions answers 404
 # "Use the v1/responses endpoint instead". The endpoint differs from chat

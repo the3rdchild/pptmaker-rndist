@@ -1,12 +1,12 @@
 // POST /api/ai/choose-theme — given a deck topic, picks the best-fitting
-// theme via Kimi using the theme-choice manifest (when_to_use / avoid_when /
+// theme via the selected AI provider using the theme-choice manifest,
 // keywords). Read-only: it changes nothing, so unlike the template-engine
 // write routes it needs no authoring guard — same posture as visual-review.
 
 import { NextResponse } from "next/server";
 
 import { buildThemeChoiceManifest } from "@/lib/templates/manifest";
-import { callKimiChooseTheme } from "@/lib/templates/choose-theme";
+import { callChooseTheme } from "@/lib/templates/choose-theme";
 import { listThemeIds, readTheme } from "@/lib/templates/server/store";
 
 export const runtime = "nodejs";
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
 			return NextResponse.json({ theme_id: null, reason: null });
 		}
 
-		const result = await callKimiChooseTheme({
+		const result = await callChooseTheme({
 			topic,
 			language: typeof body?.language === "string" ? body.language : undefined,
 			themes: buildThemeChoiceManifest(themes),

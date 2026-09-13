@@ -44,6 +44,7 @@ const writingSchema = z.object({
 const imageSchema = z.object({
 	prompt: z.string(),
 	size: z.string().optional(),
+	model: z.enum(['runware-cheap', 'runware-mid', 'runware-premium']).optional(),
 })
 // Outline-page chat: revise the slide the user is previewing. `context` is the
 // FE-assembled snapshot (topic, outline title, target slide, selected text
@@ -223,7 +224,12 @@ tools.post('/aippt_outline', async (c) => {
 		// quiet for >60s before their first chunk — idle window is generous.
 		await readJobStream(subscriber, (text) => {
 			s.write(text).catch(() => {})
-		}, undefined, 180000)
+		}, (message) => {
+			// Raw markdown stream needs a tiny out-of-band marker. The outline UI
+			// strips this and shows the actual provider error instead of claiming
+			// the outline was merely empty.
+			s.write(`\n<!--ppt-error:${encodeURIComponent(message)}-->`).catch(() => {})
+		}, 180000)
 	})
 })
 
@@ -321,7 +327,7 @@ tools.post('/ai_writing', async (c) => {
 
 		await readJobStream(subscriber, (text) => {
 			s.write(text).catch(() => {})
-		}, 30000) // shorter idle for writing
+		}, undefined, 30000) // shorter idle for writing
 	})
 })
 
@@ -378,7 +384,7 @@ tools.post('/agent', async (c) => {
 		await readJobStream(subscriber, (text) => {
 			// JSONL: one action (or {tool:'_reply', args:{text}}) per line
 			s.write(text + '\n').catch(() => {})
-		}, 30000) // single-turn tool-call-or-reply, no need for the long idle window
+		}, undefined, 30000) // single-turn tool-call-or-reply, no need for the long idle window
 	})
 })
 
@@ -429,7 +435,7 @@ tools.post('/outline_chat', async (c) => {
 
 		await readJobStream(subscriber, (text) => {
 			s.write(text).catch(() => {})
-		}, 30000)
+		}, undefined, 30000)
 	})
 })
 
@@ -454,7 +460,7 @@ tools.post('/image', async (c) => {
 		job_id: jobId,
 		session_id: sessionId,
 		status: 'pending',
-		params: { type: 'image', prompt: parsed.data.prompt, size: parsed.data.size },
+		params: { type: 'image', prompt: parsed.data.prompt, size: parsed.data.size, model: parsed.data.model },
 	})
 	await QueueClient.enqueueJob(jobId, {
 		request_id: request.id,
@@ -462,6 +468,7 @@ tools.post('/image', async (c) => {
 		type: 'image',
 		prompt: parsed.data.prompt,
 		size: parsed.data.size,
+		model: parsed.data.model,
 	})
 
 	return c.json({ message: 'sukses', data: { jobId } })

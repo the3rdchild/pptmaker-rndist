@@ -16,10 +16,11 @@ def process(ctx: dict):
     params = ctx["params"]
     prompt = params.get("prompt", "")
     size = params.get("size") or "1024x1024"
+    model = params.get("model")
 
     logger.info("[image_service] job_id=%s size=%s prompt=%r", ctx["job_id"], size, prompt[:120])
 
-    image_bytes = image_client.generate_image(prompt, size=size)
+    image_bytes = image_client.generate_image(prompt, size=size, model=model)
     data_url = "data:image/png;base64," + base64.b64encode(image_bytes).decode("ascii")
 
     save_result(ctx["request_id"], ctx["job_id"], "image", {"data_url": data_url})

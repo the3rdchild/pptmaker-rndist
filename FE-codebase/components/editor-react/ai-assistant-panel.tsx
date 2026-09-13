@@ -33,8 +33,8 @@ const PROVIDER_STORAGE_KEY = "ppt_chat_provider";
 
 // The chat itself runs on the worker, but the list of models comes from the
 // Next.js route because that's the only side the browser can reach. Both
-// layers key off the same API-key env var names (OPENAI_API_KEY, ZHIPU_API_KEY,
-// …) and share one provider-id namespace, so the ids listed here are the ids
+// layers key off the same API-key env var names and share one provider-id
+// namespace, so the ids listed here are the ids
 // the worker understands. If an env ever drifts, the worker's resolve_provider
 // falls back to its default rather than failing the request.
 function useChatProviders() {

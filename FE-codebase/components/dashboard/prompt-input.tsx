@@ -30,6 +30,7 @@ import {
 	pageCountLabel,
 	type PageCountId,
 } from '@/lib/page-counts'
+import { DEFAULT_IMAGE_MODEL, RUNWARE_IMAGE_MODELS } from '@/lib/image-models'
 
 const LANGUAGES = ['Bahasa Indonesia', 'English', 'Español', '中文', '日本語']
 
@@ -40,7 +41,7 @@ const NO_SOURCE_IDS: string[] = []
 interface ProviderOption {
 	id: string
 	label: string
-	vision: boolean
+	vision?: boolean
 }
 
 // Fetch the server's available AI providers once on mount — the list is
@@ -48,14 +49,14 @@ interface ProviderOption {
 // homepage selector never offers a provider the server can't call. Falls back
 // to an empty list on failure; the editor then applies its own defaults.
 function useAvailableProviders() {
-	const [providers, setProviders] = useState<{ text: ProviderOption[]; vision: ProviderOption[] }>({ text: [], vision: [] })
+	const [providers, setProviders] = useState<{ text: ProviderOption[]; vision: ProviderOption[]; image: ProviderOption[] }>({ text: [], vision: [], image: [] })
 	useEffect(() => {
 		let cancelled = false
 		fetch('/api/ai/providers')
 			.then((r) => (r.ok ? r.json() : null))
 			.then((data) => {
 				if (!cancelled && data && Array.isArray(data.text) && Array.isArray(data.vision)) {
-					setProviders({ text: data.text, vision: data.vision })
+					setProviders({ text: data.text, vision: data.vision, image: Array.isArray(data.image) ? data.image : [] })
 				}
 			})
 			.catch(() => {})
@@ -111,12 +112,25 @@ export function PromptInput() {
 	const [genProvider, setGenProvider] = useState<string | null>(null)
 	const [verifyProvider, setVerifyProvider] = useState<string | null>(null)
 	const [repairProvider, setRepairProvider] = useState<string | null>(null)
+	const [imageModel, setImageModel] = useState(DEFAULT_IMAGE_MODEL)
 	useEffect(() => {
 		setGenProvider(localStorage.getItem('ppt_provider_gen'))
 		setVerifyProvider(localStorage.getItem('ppt_provider_verify'))
 		setRepairProvider(localStorage.getItem('ppt_provider_repair'))
+		const savedImageModel = localStorage.getItem('ppt_image_model')
+		if (RUNWARE_IMAGE_MODELS.some((option) => option.id === savedImageModel)) {
+			setImageModel(savedImageModel!)
+		}
 	}, [])
-	// Post-generation Kimi visual review (verify + repair per slide). Default
+	// Drop stale provider ids removed from the registry
+	// instead of silently carrying them into new generation URLs forever.
+	useEffect(() => {
+		if (providers.text.length === 0) return
+		if (genProvider && !providers.text.some((p) => p.id === genProvider)) setGenProvider(null)
+		if (repairProvider && !providers.text.some((p) => p.id === repairProvider)) setRepairProvider(null)
+		if (verifyProvider && !providers.vision.some((p) => p.id === verifyProvider)) setVerifyProvider(null)
+	}, [providers, genProvider, repairProvider, verifyProvider])
+	// Post-generation visual review (verify + repair per slide). Default
 	// on; persisted so the choice survives between visits. Travels to the
 	// editor as ?review=off when disabled.
 	const [review, setReview] = useState(true)
@@ -199,6 +213,7 @@ export function PromptInput() {
 			if (genProvider) qs.set('gen', genProvider)
 			if (verifyProvider) qs.set('verify', verifyProvider)
 			if (repairProvider) qs.set('repair', repairProvider)
+			qs.set('image-model', imageModel)
 			if (!review) qs.set('review', 'off')
 			if (imageSource === 'stock') qs.set('images', 'stock')
 			// Absent param = template mode, so every existing link keeps working.
@@ -365,6 +380,16 @@ export function PromptInput() {
 						setRepairProvider(id)
 						if (id) localStorage.setItem('ppt_provider_repair', id)
 						else localStorage.removeItem('ppt_provider_repair')
+					}}
+				/>
+				<ProviderDropdown
+					label="Image"
+					options={providers.image}
+					selected={imageModel}
+					onSelect={(id) => {
+						const next = id ?? DEFAULT_IMAGE_MODEL
+						setImageModel(next)
+						localStorage.setItem('ppt_image_model', next)
 					}}
 				/>
 

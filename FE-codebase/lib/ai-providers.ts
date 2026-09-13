@@ -1,17 +1,16 @@
-// Unified AI provider layer for every frontend AI call (theme choice, visual
-// review verify/repair, auto-label). Each call site used to hardcode its own
-// Kimi fetch + env trio + UA hack; this is the single source of truth now.
+// Unified text-AI provider layer for frontend/server AI calls (theme choice,
+// visual review verify/repair, auto-label). CommandCode serves the GPT tiers
+// through its OpenAI-compatible chat endpoint; DeepInfra remains available as
+// the independent fallback/provider option.
 //
 // A provider is a preset (id → config). Provider availability is env-aware:
 // `availableProviders` only returns presets whose API key env var is set, so
-// the homepage selector never offers a provider the server can't call. The
-// per-provider quirks (Kimi's coding-agent UA, GLM's disabled thinking,
-// kimi-k2.6's temperature=1 rule) live next to the credentials, exactly like
-// the worker's PROVIDER_CONFIGS — adding a provider is a one-place edit.
+// the homepage selector never offers a provider the server can't call. Any
+// endpoint quirks live next to the credentials, mirroring the worker config.
 //
 // Two endpoint shapes are supported, chosen per preset via `api`:
-// /chat/completions (every provider here except codex) and /responses (the
-// gpt-*-codex models, which are served on nothing else). callProvider hides
+// /chat/completions (all current presets) and /responses (kept supported for
+// future presets). callProvider hides
 // the difference, so every call site — auto-label, visual-review verify and
 // repair, theme choice, prompt enhance, font substitution — gets both for
 // free and keeps passing plain chat-style messages.
@@ -28,20 +27,18 @@ export interface ProviderPreset {
   /** Supports image_url multimodal input (vision). When false, the preset is
    *  hidden from selectors that filter { vision: true }. */
   vision?: boolean;
-  /** Extra HTTP headers (Kimi needs a coding-agent User-Agent). */
+  /** Extra HTTP headers required by a provider. */
   headers?: Record<string, string>;
-  /** Drop `temperature` from the request body (kimi-k2.6 rejects ≠ 1). */
+  /** Drop `temperature` from the request body. */
   omit_temperature?: boolean;
-  /** Send extra_body thinking=disabled (GLM reasoning models). */
+  /** Send extra_body thinking=disabled when a provider supports it. */
   disable_thinking?: boolean;
   /** Optional per-preset overrides for base_url/model via env, mirroring the
    *  worker. Falls back to the authored defaults when unset. */
   base_url_env?: string;
   model_env?: string;
   /** Which OpenAI-compatible endpoint shape to speak. "chat" (default) is
-   *  /chat/completions; "responses" is /responses, which the gpt-*-codex
-   *  models are only served on — they 404 on /chat/completions with
-   *  "Use the v1/responses endpoint instead". */
+   *  /chat/completions; "responses" is /responses. */
   api?: "chat" | "responses";
   /** Reasoning effort for `api: "responses"` models. Kept low by default:
    *  reasoning tokens are billed against max_output_tokens, so a high effort
@@ -51,22 +48,37 @@ export interface ProviderPreset {
 
 export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
-    id: "glm",
-    label: "GLM-4.6",
-    envKey: "ZHIPU_API_KEY",
-    base_url: "https://api.z.ai/api/coding/paas/v4",
-    model: "glm-4.6",
-    disable_thinking: true,
-    base_url_env: "ZHIPU_BASE_URL",
-    model_env: "ZHIPU_MODEL",
+    id: "gpt-luna",
+    label: "GPT-5.6 Luna · Murah",
+    envKey: "COMMANDCODE_API_KEY",
+    base_url: "https://api.commandcode.ai/provider/v1",
+    model: "gpt-5.6-luna",
+    vision: true,
+    omit_temperature: true,
+    base_url_env: "COMMANDCODE_BASE_URL",
+    model_env: "COMMANDCODE_LUNA_MODEL",
   },
   {
-    id: "glm-flash",
-    label: "GLM-4.5 Flash",
-    envKey: "ZHIPU_API_KEY",
-    base_url: "https://open.bigmodel.cn/api/paas/v4",
-    model: "glm-4.5-flash",
-    disable_thinking: true,
+    id: "gpt-terra",
+    label: "GPT-5.6 Terra · Mid (butuh Pro)",
+    envKey: "COMMANDCODE_API_KEY",
+    base_url: "https://api.commandcode.ai/provider/v1",
+    model: "gpt-5.6-terra",
+    vision: true,
+    omit_temperature: true,
+    base_url_env: "COMMANDCODE_BASE_URL",
+    model_env: "COMMANDCODE_TERRA_MODEL",
+  },
+  {
+    id: "gpt-sol",
+    label: "GPT-5.6 Sol · Mahal",
+    envKey: "COMMANDCODE_API_KEY",
+    base_url: "https://api.commandcode.ai/provider/v1",
+    model: "gpt-5.6-sol",
+    vision: true,
+    omit_temperature: true,
+    base_url_env: "COMMANDCODE_BASE_URL",
+    model_env: "COMMANDCODE_SOL_MODEL",
   },
   {
     id: "qwen-vl",
@@ -93,44 +105,6 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     vision: true,
   },
   {
-    id: "kimi",
-    label: "Kimi K2.6 (vision)",
-    envKey: "KIMI_API_KEY",
-    base_url: "https://api.kimi.com/coding/v1",
-    model: "kimi-k2.6",
-    vision: true,
-    headers: { "User-Agent": "claude-code/0.1.0" },
-    omit_temperature: true,
-    base_url_env: "KIMI_BASE_URL",
-    model_env: "KIMI_MODEL",
-  },
-  {
-    id: "gpt",
-    label: "GPT-4o (vision)",
-    envKey: "OPENAI_API_KEY",
-    base_url: "https://api.openai.com/v1",
-    model: "gpt-4o",
-    vision: true,
-    base_url_env: "OPENAI_BASE_URL",
-    model_env: "OPENAI_MODEL",
-  },
-  {
-    id: "codex",
-    label: "GPT-5.3 Codex (vision)",
-    envKey: "OPENAI_API_KEY",
-    base_url: "https://api.openai.com/v1",
-    model: "gpt-5.3-codex",
-    vision: true,
-    // Codex is a reasoning model served only on /responses, and it rejects
-    // `temperature` outright ("not supported with this model") for every value
-    // except the implicit default — so the field is dropped, not pinned to 1.
-    api: "responses",
-    omit_temperature: true,
-    reasoning_effort: "low",
-    base_url_env: "OPENAI_BASE_URL",
-    model_env: "OPENAI_CODEX_MODEL",
-  },
-  {
     id: "deepinfra",
     label: "DeepSeek V3.1",
     envKey: "DEEPINFRA_API_KEY",
@@ -139,11 +113,8 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   },
 ];
 
-export const DEFAULT_TEXT_PROVIDER = "glm";
-// Qwen2.5-VL-32B is the vision default — strong document/layout understanding
-// for auto-label, cheap, and not subject to Kimi's subscription rate limits.
-// Kimi stays in the preset list as a selectable option when its key is set.
-export const DEFAULT_VISION_PROVIDER = "qwen-vl";
+export const DEFAULT_TEXT_PROVIDER = "gpt-luna";
+export const DEFAULT_VISION_PROVIDER = "gpt-luna";
 
 export interface ProviderConfig {
   id: string;
@@ -229,8 +200,7 @@ export interface ChatMessage {
   content: unknown;
 }
 
-// Some providers (Kimi's coding endpoint in particular, under subscription
-// rate limiting) can go quiet mid-request instead of erroring. A plain fetch
+// Some upstream providers can go quiet mid-request instead of erroring. A plain fetch
 // with no timeout then hangs forever — and since every caller (visual review
 // verify/repair) is awaited up the chain into the generation pipeline, one
 // stuck request freezes the whole "Reviewing slide N…" step with no error,
@@ -327,7 +297,7 @@ export async function callProvider(
   if (cfg.disable_thinking) body.thinking = { type: "disabled" };
 
   const endpoint = useResponses ? "responses" : "chat/completions";
-  // Reasoning models think before they answer, so even a text-only codex call
+  // Responses/reasoning models can think before they answer, so a text call
   // outlives the 60s bound sized for one-shot chat models.
   const timeoutMs = opts.vision || useResponses ? VISION_TIMEOUT_MS : PROVIDER_TIMEOUT_MS;
   const controller = new AbortController();

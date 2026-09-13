@@ -1,4 +1,4 @@
-// Auto-label: asks Kimi to author template slot metadata (name, role,
+// Auto-label: asks the selected AI provider to author template slot metadata,
 // fill_condition, budgets, layout meta) for a page's text elements.
 //
 // Lives in lib/ (not in the API route) so the prompt build + response
@@ -240,10 +240,10 @@ export function sanitizeAutoLabelResult(raw: Rec): AutoLabelResult {
 	return { layout_name: layoutName, layout_description: layoutDescription, layout_meta: layoutMeta, elements: out };
 }
 
-/** One round-trip to the resolved provider (Kimi by default for historical
- *  behavior; pass providerId to switch). Throws on HTTP/parse failure — the
+/** One round-trip to the resolved provider. Pass providerId to switch.
+ *  Throws on HTTP/parse failure — the
  *  route maps that to a 502 the panel can show. */
-export async function callKimiAutoLabel(
+export async function callAutoLabel(
 	input: AutoLabelRequest,
 	providerId?: string | null,
 ): Promise<AutoLabelResult> {

@@ -13,67 +13,53 @@ DEEPINFRA_API_KEY      = os.getenv("DEEPINFRA_API_KEY", "")
 DEEPINFRA_BASE_URL     = os.getenv("DEEPINFRA_BASE_URL", "https://api.deepinfra.com/v1/openai")
 DEEPINFRA_MODEL        = os.getenv("DEEPINFRA_MODEL", "deepseek-ai/DeepSeek-V3.1-Terminus")
 
-# DeepInfra image generation — used by image_client (always DeepInfra, LLM_PROVIDER
-# below only switches the TEXT model llm_client uses, not image generation)
-DEEPINFRA_IMAGE_MODEL  = os.getenv("DEEPINFRA_IMAGE_MODEL", "black-forest-labs/FLUX-2-klein-4b")
+# CommandCode's OpenAI-compatible Provider API. These three presets use one
+# account/key and deliberately expose price/quality tiers to the UI.
+COMMANDCODE_API_KEY     = os.getenv("COMMANDCODE_API_KEY", "")
+COMMANDCODE_BASE_URL    = os.getenv("COMMANDCODE_BASE_URL", "https://api.commandcode.ai/provider/v1")
+COMMANDCODE_LUNA_MODEL  = os.getenv("COMMANDCODE_LUNA_MODEL", "gpt-5.6-luna")
+COMMANDCODE_TERRA_MODEL = os.getenv("COMMANDCODE_TERRA_MODEL", "gpt-5.6-terra")
+COMMANDCODE_SOL_MODEL   = os.getenv("COMMANDCODE_SOL_MODEL", "gpt-5.6-sol")
 
-# OpenAI (used by llm_client when LLM_PROVIDER=openai/gpt/codex)
-OPENAI_API_KEY         = os.getenv("OPENAI_API_KEY", "")
-OPENAI_BASE_URL        = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-OPENAI_MODEL           = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-# The gpt-*-codex models are served ONLY on the Responses endpoint — they
-# return 404 "Use the v1/responses endpoint instead" on /chat/completions, so
-# they get their own provider entry with api="responses".
-OPENAI_CODEX_MODEL     = os.getenv("OPENAI_CODEX_MODEL", "gpt-5.3-codex")
-
-# Zhipu GLM, OpenAI-compatible (used by llm_client when LLM_PROVIDER/provider=zhipu)
-ZHIPU_API_KEY          = os.getenv("ZHIPU_API_KEY", "")
-ZHIPU_BASE_URL         = os.getenv("ZHIPU_BASE_URL", "https://open.bigmodel.cn/api/paas/v4")
-ZHIPU_MODEL            = os.getenv("ZHIPU_MODEL", "glm-4.5-flash")
-
-# Kimi (Moonshot) coding endpoint — OpenAI-compatible, but requires a
-# recognized coding-agent User-Agent to authorize sk-kimi-* subscription keys,
-# and rejects any temperature other than 1. Both are handled per-provider in
-# llm_client via headers/omit_temperature below.
-KIMI_API_KEY           = os.getenv("KIMI_API_KEY", "")
-KIMI_BASE_URL          = os.getenv("KIMI_BASE_URL", "https://api.kimi.com/coding/v1")
-KIMI_MODEL             = os.getenv("KIMI_MODEL", "kimi-k2.6")
+# Runware image generation. Requests send a safe UI alias; only these aliases
+# can resolve to billable Runware AIR model ids.
+RUNWARE_API_KEY         = os.getenv("RUNWARE_API_KEY", "")
+RUNWARE_BASE_URL        = os.getenv("RUNWARE_BASE_URL", "https://api.runware.ai/v1")
+RUNWARE_IMAGE_MODEL     = os.getenv("RUNWARE_IMAGE_MODEL", "runware-mid").strip().lower()
+RUNWARE_IMAGE_MODELS    = {
+    "runware-cheap": "runware:400@4",  # FLUX.2 Klein 4B
+    "runware-mid": "runware:400@1",    # FLUX.2 Dev
+    "runware-premium": "bfl:5@1",      # FLUX.2 Pro
+}
 
 # Which text-LLM provider llm_client.py talks to by default — any key of
 # PROVIDER_CONFIGS below. Swapping providers is just this one var; all configs
 # stay present so switching back doesn't need any code change. Individual jobs
 # also override the provider per-request (see llm_client): the homepage model
 # picker sends it as `model`, and so does the editor's chat model switcher.
-LLM_PROVIDER           = os.getenv("LLM_PROVIDER", "deepinfra").strip().lower()
+LLM_PROVIDER           = os.getenv("LLM_PROVIDER", "gpt-luna").strip().lower()
 
 # name -> config dict. The single source of truth for every text-LLM provider
 # the worker can talk to. Per-provider quirks live next to the credentials so
 # adding a provider is a one-place edit:
-#   - headers:           extra HTTP headers (e.g. Kimi's coding-agent UA)
-#   - omit_temperature:  drop `temperature` from the request (kimi-k2.6 == 1 only)
-#   - disable_thinking:  send extra_body thinking=disabled (Zhipu reasoning models)
+#   - headers:           extra HTTP headers required by a provider
+#   - omit_temperature:  drop `temperature` from the request
+#   - disable_thinking:  send extra_body thinking=disabled when supported
 #   - api:               "chat" (default, /chat/completions) or "responses"
 #   - reasoning_effort:  effort for api="responses" reasoning models
 #
 # The ids deliberately match the frontend's PROVIDER_PRESETS
 # (FE-codebase/lib/ai-providers.ts) one-for-one, so the id a selector shows is
 # the id every layer understands — the editor's chat switcher reads its list
-# from the frontend but the call executes here. "openai" and "zhipu" are kept
-# as aliases of "gpt"/"glm-flash" so an existing LLM_PROVIDER value in a
-# deployed .env keeps resolving.
+# from the frontend but the call executes here.
 PROVIDER_CONFIGS       = {
+    "gpt-luna":  {"api_key": COMMANDCODE_API_KEY, "base_url": COMMANDCODE_BASE_URL, "model": COMMANDCODE_LUNA_MODEL, "omit_temperature": True},
+    "gpt-terra": {"api_key": COMMANDCODE_API_KEY, "base_url": COMMANDCODE_BASE_URL, "model": COMMANDCODE_TERRA_MODEL, "omit_temperature": True},
+    "gpt-sol":   {"api_key": COMMANDCODE_API_KEY, "base_url": COMMANDCODE_BASE_URL, "model": COMMANDCODE_SOL_MODEL, "omit_temperature": True},
     "deepinfra": {"api_key": DEEPINFRA_API_KEY, "base_url": DEEPINFRA_BASE_URL, "model": DEEPINFRA_MODEL},
-    "openai":    {"api_key": OPENAI_API_KEY,    "base_url": OPENAI_BASE_URL,    "model": OPENAI_MODEL},
-    "gpt":       {"api_key": OPENAI_API_KEY,    "base_url": OPENAI_BASE_URL,    "model": OPENAI_MODEL},
-    "codex":     {"api_key": OPENAI_API_KEY,    "base_url": OPENAI_BASE_URL,    "model": OPENAI_CODEX_MODEL,
-                  "api": "responses", "omit_temperature": True, "reasoning_effort": "low"},
-    "zhipu":     {"api_key": ZHIPU_API_KEY,     "base_url": ZHIPU_BASE_URL,     "model": ZHIPU_MODEL, "disable_thinking": True},
-    "glm-flash": {"api_key": ZHIPU_API_KEY,     "base_url": ZHIPU_BASE_URL,     "model": ZHIPU_MODEL, "disable_thinking": True},
-    "glm":       {"api_key": ZHIPU_API_KEY,     "base_url": "https://api.z.ai/api/coding/paas/v4", "model": "glm-4.6", "disable_thinking": True},
     "qwen-vl":   {"api_key": DEEPINFRA_API_KEY, "base_url": DEEPINFRA_BASE_URL, "model": "Qwen/Qwen2.5-VL-32B-Instruct"},
     "gemma-vl":  {"api_key": DEEPINFRA_API_KEY, "base_url": DEEPINFRA_BASE_URL, "model": "google/gemma-4-26B-A4B-it"},
     "llama-vl":  {"api_key": DEEPINFRA_API_KEY, "base_url": DEEPINFRA_BASE_URL, "model": "meta-llama/Llama-3.2-11B-Vision-Instruct"},
-    "kimi":      {"api_key": KIMI_API_KEY,      "base_url": KIMI_BASE_URL,      "model": KIMI_MODEL,  "headers": {"User-Agent": "claude-code/0.1.0"}, "omit_temperature": True},
 }
 
 _default_cfg = PROVIDER_CONFIGS.get(LLM_PROVIDER, PROVIDER_CONFIGS["deepinfra"])

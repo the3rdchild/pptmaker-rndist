@@ -1,4 +1,4 @@
-// Theme choice: given a deck topic, asks Kimi to pick the single best-fitting
+// Theme choice: asks the selected AI provider to pick the best-fitting
 // theme using the theme-choice manifest (name / description / when_to_use /
 // avoid_when / tone / keywords per theme — the metadata auto-label-theme
 // authors). This replaces the old seed-hash assignment as the default, so a
@@ -11,7 +11,7 @@
 // Lives in lib/ (not in the API route) so the prompt build + sanitize can be
 // exercised directly with bun, without a running Next server.
 
-import { callKimiChat, extractJson, type KimiMessage } from "@/lib/templates/kimi";
+import { callTemplateChat, extractJson, type TemplateChatMessage } from "@/lib/templates/provider-chat";
 
 type Rec = Record<string, unknown>;
 
@@ -43,7 +43,7 @@ export interface ChooseThemeResult {
 
 export function buildChooseThemeMessages(
 	input: ChooseThemeRequest,
-): KimiMessage[] {
+): TemplateChatMessage[] {
 	const system = `You are the theme selector for an AI presentation generator. You are given a deck topic and a list of candidate THEMES, each with:
 - name, description — the theme's identity and visual character
 - when_to_use — the topics and occasions the theme was designed for
@@ -95,14 +95,14 @@ export function sanitizeChooseThemeResult(
 	return { theme_id: themeId, reason: themeId ? reason : null };
 }
 
-/** One round trip to Kimi. Throws on HTTP/parse failure — the route maps that
+/** One provider round trip. Throws on HTTP/parse failure — the route maps that
  *  to a 502; the client treats any failure as "no choice" and falls back. */
-export async function callKimiChooseTheme(
+export async function callChooseTheme(
 	input: ChooseThemeRequest,
 ): Promise<ChooseThemeResult> {
-	const content = await callKimiChat(buildChooseThemeMessages(input), 4000);
+	const content = await callTemplateChat(buildChooseThemeMessages(input), 4000);
 	const parsed = extractJson(content);
-	if (!parsed) throw new Error("Kimi response was not valid JSON");
+	if (!parsed) throw new Error("AI response was not valid JSON");
 	return sanitizeChooseThemeResult(
 		parsed,
 		input.themes.map((theme) => theme.id),

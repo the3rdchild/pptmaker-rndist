@@ -34,6 +34,10 @@ export function extractSlide() {
   const base = slide.getBoundingClientRect();
   const elements = [];
   const warnings = [];
+  // Browser-only metadata used by the text merge below. Keeping it in a
+  // WeakMap guarantees DOM nodes and measurement details never leak into the
+  // JSON sent to the editor.
+  const textMergeMeta = new WeakMap();
 
   const num = (value) => {
     const n = parseFloat(value);
@@ -41,6 +45,35 @@ export function extractSlide() {
   };
 
   const round = (n) => Math.round(n * 100) / 100;
+
+  // ── Helpers for post-walk text merging ──────────────────────
+  // Bold, italic, underline and color deliberately do not participate here:
+  // those are run-level attributes in the editor. Requiring them to match was
+  // the reason emphasized spans in one sentence never merged at all.
+  function sameTextMetrics(a, b) {
+    if (!a || !b) return false;
+    return (
+      a.family === b.family &&
+      a.size === b.size &&
+      (a.line_height ?? 1.2) === (b.line_height ?? 1.2) &&
+      (a.letter_spacing ?? 0) === (b.letter_spacing ?? 0)
+    );
+  }
+
+  // Merge runs that are adjacent and share the same font into a single
+  // run, so the merged text element doesn't carry 8 runs when 2 suffice.
+  function mergeAdjacentRuns(runs) {
+    const out = [];
+    for (const r of runs) {
+      const last = out[out.length - 1];
+      if (last && JSON.stringify(last.font) === JSON.stringify(r.font)) {
+        last.text += r.text;
+      } else {
+        out.push({ text: r.text, font: r.font });
+      }
+    }
+    return out;
+  }
 
   function toHex(r, g, b) {
     const part = (v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
@@ -408,14 +441,32 @@ export function extractSlide() {
     const r = range.getBoundingClientRect();
     if (r.width < 1 || r.height < 1) return null;
     const font = fontOf(parentStyle);
-    return {
+    const box = {
+      x: round(r.left - base.left),
+      y: round(r.top - base.top),
+      width: round(r.width),
+      height: round(r.height),
+    };
+    const alignment = { horizontal: "left", vertical: "top" };
+    const padded = withMetricSlack(box, font, alignment);
+    const element = {
       type: "text",
-      position: { x: round(r.left - base.left), y: round(r.top - base.top) },
-      size: { width: round(r.width), height: round(r.height) },
+      position: { x: padded.x, y: padded.y },
+      size: { width: padded.width, height: padded.height },
       font,
-      alignment: { horizontal: "left", vertical: "top" },
+      alignment,
       runs: [{ text: node.nodeValue.replace(/\s+/g, " ").trim(), font }],
     };
+    const parent = node.parentElement;
+    const isHorizontalFlexRow =
+      parent &&
+      (parentStyle.display === "flex" || parentStyle.display === "inline-flex") &&
+      !String(parentStyle.flexDirection).startsWith("column");
+    textMergeMeta.set(element, {
+      group: isHorizontalFlexRow ? parent : null,
+      box,
+    });
+    return element;
   }
 
   // The browser and the canvas text shaper do not agree to the pixel, so a box
@@ -446,7 +497,7 @@ export function extractSlide() {
     }
     const alignment = alignmentOf(style);
     const padded = withMetricSlack(box, font, alignment);
-    return {
+    const element = {
       type: "text",
       position: { x: padded.x, y: padded.y },
       size: { width: padded.width, height: padded.height },
@@ -454,6 +505,17 @@ export function extractSlide() {
       alignment,
       runs: runsOf(el, font),
     };
+    const parent = el.parentElement;
+    const parentStyle = parent ? getComputedStyle(parent) : null;
+    const isHorizontalFlexRow =
+      parentStyle &&
+      (parentStyle.display === "flex" || parentStyle.display === "inline-flex") &&
+      !String(parentStyle.flexDirection).startsWith("column");
+    textMergeMeta.set(element, {
+      group: isHorizontalFlexRow ? parent : null,
+      box,
+    });
+    return element;
   }
 
   function walk(el) {
@@ -463,7 +525,14 @@ export function extractSlide() {
     if (opacity === 0) return;
 
     const box = boxOf(el);
-    if (box.width < 1 || box.height < 1) return;
+    if (box.width < 1 || box.height < 1) {
+      // Absolutely positioned children do not contribute to their wrapper's
+      // layout height. A collage tile can therefore have a 0px box while its
+      // photos and labels are fully visible. The wrapper itself has nothing to
+      // emit, but pruning its subtree would drop those real canvas elements.
+      for (const child of el.children) walk(child);
+      return;
+    }
     if (box.x > STAGE_W || box.y > STAGE_H || box.x + box.width < 0 || box.y + box.height < 0) return;
 
     const applyOpacity = (element) => {
@@ -502,6 +571,120 @@ export function extractSlide() {
   }
 
   for (const child of slide.children) walk(child);
+
+  // ── Merge co-linear text fragments ──────────────────────────
+  // A flex-authored sentence makes each inline leaf (e.g. each <span>) a
+  // separate editor element. A single paragraph can arrive as 5-10
+  // tiny text boxes sitting side by side on the same line, each with
+  // its own position and size.  That is correct DOM-to-element
+  // conversion, but the resulting deck is unpleasant to edit — you
+  // drag one word and the rest of the sentence stays put.
+  //
+  // Post-process: merge text elements that sit on the SAME line
+  // (overlapping y-range), are adjacent in source order, share the
+  // compatible text metrics and the same alignment, and
+  // have only a small horizontal gap between them.  The merged box
+  // spans from the leftmost left to the rightmost right; runs are
+  // concatenated (a space is injected between fragments that didn't
+  // already end/start with whitespace, matching normal inline flow).
+  const merged = [];
+  for (const el of elements) {
+    if (el.type !== "text") { merged.push(el); continue; }
+    const prev = merged[merged.length - 1];
+    if (!prev || prev.type !== "text") { merged.push(el); continue; }
+    const prevMeta = textMergeMeta.get(prev);
+    const elMeta = textMergeMeta.get(el);
+    const sameFlow =
+      prevMeta?.group && elMeta?.group && prevMeta.group === elMeta.group;
+    const sameMetrics = sameTextMetrics(prev.font, el.font);
+    const sameOpacity = (prev.opacity ?? 1) === (el.opacity ?? 1);
+    const sameRotation = (prev.rotation ?? 0) === (el.rotation ?? 0);
+    const sameAlign =
+      prev.alignment?.horizontal === el.alignment?.horizontal &&
+      prev.alignment?.vertical === el.alignment?.vertical;
+    // Flex items on one baseline can differ by a few pixels in y when one run
+    // is bold. Comparing overlap against the taller item's stretched height
+    // rejected those legitimate pairs, so compare their top edges instead.
+    const sameLine =
+      prevMeta && elMeta &&
+      Math.abs(prevMeta.box.y - elMeta.box.y) <= Math.max(4, prev.font.size * 0.35);
+    // Use the pre-slack DOM boxes. The editor-only metric slack otherwise
+    // hides real whitespace and can even make adjacent boxes appear to overlap.
+    const gap =
+      prevMeta && elMeta
+        ? elMeta.box.x - (prevMeta.box.x + prevMeta.box.width)
+        : Infinity;
+    const maxGap = Math.max(10, prev.font.size * 1.25);
+    if (
+      sameFlow &&
+      sameMetrics &&
+      sameAlign &&
+      sameOpacity &&
+      sameRotation &&
+      sameLine &&
+      gap >= -2 &&
+      gap <= maxGap
+    ) {
+      // Merge into prev
+      const lastRun = prev.runs[prev.runs.length - 1];
+      const firstRun = el.runs[0];
+      const needsSpace =
+        lastRun && lastRun.text && !lastRun.text.endsWith(" ") &&
+        firstRun && firstRun.text && !firstRun.text.startsWith(" ") &&
+        !/^[,.;:!?%…)}\]]/.test(firstRun.text) &&
+        !/[({\[]$/.test(lastRun.text) &&
+        gap > 1; // inject a space only if there was a real gap
+      const mergedRuns = [];
+      for (let i = 0; i < prev.runs.length; i++) {
+        if (i === prev.runs.length - 1 && needsSpace) {
+          mergedRuns.push({ ...prev.runs[i], text: prev.runs[i].text + " " });
+        } else {
+          mergedRuns.push(prev.runs[i]);
+        }
+      }
+      for (const r of el.runs) mergedRuns.push(r);
+      prev.runs = mergeAdjacentRuns(mergedRuns);
+      const left = Math.min(prev.position.x, el.position.x);
+      const top = Math.min(prev.position.y, el.position.y);
+      const right = Math.max(
+        prev.position.x + prev.size.width,
+        el.position.x + el.size.width,
+      );
+      const bottom = Math.max(
+        prev.position.y + prev.size.height,
+        el.position.y + el.size.height,
+      );
+      prev.position = { x: round(left), y: round(top) };
+      prev.size = {
+        width: round(right - left),
+        height: round(bottom - top),
+      };
+      textMergeMeta.set(prev, {
+        group: prevMeta.group,
+        box: {
+          x: Math.min(prevMeta.box.x, elMeta.box.x),
+          y: Math.min(prevMeta.box.y, elMeta.box.y),
+          width:
+            Math.max(
+              prevMeta.box.x + prevMeta.box.width,
+              elMeta.box.x + elMeta.box.width,
+            ) - Math.min(prevMeta.box.x, elMeta.box.x),
+          height:
+            Math.max(
+              prevMeta.box.y + prevMeta.box.height,
+              elMeta.box.y + elMeta.box.height,
+            ) - Math.min(prevMeta.box.y, elMeta.box.y),
+        },
+      });
+      continue;
+    }
+    merged.push(el);
+  }
+
+  // Replace the element list with the merged version for the
+  // overflow-check loop and the final return.
+  elements.length = 0;
+  elements.push(...merged);
 
   for (const element of elements) {
     if (element.type !== "text") continue;

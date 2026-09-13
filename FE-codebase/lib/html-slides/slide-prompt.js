@@ -61,6 +61,7 @@ BOLEH dan didorong:
 
 TEKS:
 - Tiap potongan teks tinggal di elemen daunnya sendiri (<h1>, <p>, <span>, <li>). JANGAN campur teks langsung dengan elemen blok di satu induk.
+- JANGAN pecah satu kalimat menjadi banyak <span> terpisah. Satu kalimat = satu elemen <p> atau <span>. Hanya gunakan <span> di dalam kalimat bila memang perlu warna/gaya berbeda untuk sebagian teks.
 - Teks singkat dan padat — ini slide, bukan dokumen. Judul <= 9 kata, paragraf <= 28 kata.
 
 FOTO:

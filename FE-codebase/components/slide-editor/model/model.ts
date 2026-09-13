@@ -505,6 +505,33 @@ export function scaleRawElementTextMetrics(element: RawElement, fontScale: numbe
   return scaleRawTextMetrics(element, fontScale);
 }
 
+export type RootElementResizeMode = "resize-bounds" | "scale-content";
+
+/**
+ * Applies a root-level canvas resize without imposing stage boundaries.
+ * Side handles resize only the element frame so text can reflow naturally;
+ * corner handles scale the text metrics along with the frame.
+ */
+export function resizeRootElement(
+  element: RawElement,
+  next: Box & { scaleX: number; scaleY: number; rotation?: number },
+  mode: RootElementResizeMode,
+): RawElement {
+  const resized =
+    mode === "scale-content"
+      ? scaleRawElementTextMetrics(
+          element,
+          fontScaleFromResize(next.scaleX, next.scaleY),
+        )
+      : element;
+  return {
+    ...resized,
+    position: { x: next.x, y: next.y },
+    size: { width: Math.max(1, next.width), height: Math.max(1, next.height) },
+    rotation: next.rotation ?? readNumber(element.rotation) ?? 0,
+  };
+}
+
 export function positionFromNodeInParent(
   node: Konva.Node,
   parentBox: Box,

@@ -80,6 +80,7 @@ import {
   readString,
   ROOT_ELEMENTS_COMPONENT_INDEX,
   STAGE_BOX,
+  resizeRootElement,
   resizeComponent,
   resizeComponentElementBounds,
   resizeComponentFrame,
@@ -93,6 +94,7 @@ import {
   strokeDash,
   strokeOpacity,
   strokeWidth,
+  unclampedPositionFromNodeInParent,
   valueProgress,
   pointOnCircle,
   withHash,
@@ -637,6 +639,9 @@ function RawElementNode({
   renderBox,
   layoutManaged = false,
   fontRevision,
+  onSnapDragStart,
+  onSnapDragMove,
+  onSnapDragEnd,
 }: {
   element: RawElement;
   componentIndex: number;
@@ -667,9 +672,19 @@ function RawElementNode({
   renderBox?: Box | null;
   layoutManaged?: boolean;
   fontRevision: number;
+  /** Snap-guide overlay callbacks for root-level element drag. Only passed
+   *  for root elements; components handle their own overlay. */
+  onSnapDragStart?: (selection: ElementSelection, node: Konva.Node) => void;
+  onSnapDragMove?: (selection: ElementSelection, node: Konva.Node) => void;
+  onSnapDragEnd?: (selection: ElementSelection, node: Konva.Node) => void;
 }) {
   const groupRef = useRef<Konva.Group | null>(null);
-  const box = renderBox ?? elementBox(element);
+  const isRootElement = componentIndex === ROOT_ELEMENTS_COMPONENT_INDEX;
+  const transformPreviewRef = useRef<RawElement | null>(null);
+  const [transformPreview, setTransformPreview] =
+    useState<RawElement | null>(null);
+  const renderedElement = isRootElement ? transformPreview ?? element : element;
+  const box = renderBox ?? elementBox(renderedElement);
   const selection = useMemo<ElementSelection>(
     () => ({
       kind: "element",
@@ -682,14 +697,18 @@ function RawElementNode({
   const selectedCell =
     selectedTableCell?.elementPath === key ? selectedTableCell : null;
   const editing = editingKey === key;
-  const childInfo = childArrayInfo(element);
+  const childInfo = childArrayInfo(renderedElement);
   const children = childInfo?.items ?? [];
-  const laidOutChildren = layoutChildren(element, children, box);
-  const clipChildren = shouldClipElementChildren(element, childInfo);
+  const laidOutChildren = layoutChildren(renderedElement, children, box);
+  const clipChildren = shouldClipElementChildren(renderedElement, childInfo);
   const shouldConstrainTextVisual =
     componentIndex !== ROOT_ELEMENTS_COMPONENT_INDEX || elementPath.length > 1;
   const visualBox = shouldConstrainTextVisual
-    ? constrainedWrappedTextVisualBox(element, box, textConstraintBox ?? parentBox)
+    ? constrainedWrappedTextVisualBox(
+        renderedElement,
+        box,
+        textConstraintBox ?? parentBox,
+      )
     : box;
   const childTextConstraintBox = childInfo
     ? textConstraintBox
@@ -705,7 +724,7 @@ function RawElementNode({
           height: box.height,
         }
     : null;
-  const centerOrigin = shouldUseCenterOrigin(element);
+  const centerOrigin = shouldUseCenterOrigin(renderedElement);
   const handleTableCellSelect = useCallback(
     (rowIndex: number, colIndex: number, modifiers?: TableSelectModifiers) => {
       onTableCellSelect(selection, rowIndex, colIndex, modifiers);
@@ -745,8 +764,9 @@ function RawElementNode({
       clipY={clipChildren ? 0 : undefined}
       clipWidth={clipChildren ? box.width : undefined}
       clipHeight={clipChildren ? box.height : undefined}
-      rotation={readNumber(element.rotation) ?? 0}
-      opacity={readNumber(element.opacity) ?? 1}
+      rotation={readNumber(renderedElement.rotation) ?? 0}
+      opacity={readNumber(renderedElement.opacity) ?? 1}
+      draggable={isEditMode && isRootElement}
       onMouseDown={(event) => {
         if (!isEditMode) return;
         event.cancelBubble = false;
@@ -781,11 +801,102 @@ function RawElementNode({
         onSelect(selection);
         onOpenEditor(selection);
       }}
+      onDragStart={(event) => {
+        if (!isEditMode) return;
+        event.cancelBubble = true;
+        const node = groupRef.current;
+        if (!node) return;
+        onSelect(selection);
+        onSnapDragStart?.(selection, node);
+      }}
+      onDragMove={(event) => {
+        event.cancelBubble = true;
+        const node = groupRef.current;
+        if (!node) return;
+        onSnapDragMove?.(selection, node);
+      }}
+      onDragEnd={(event) => {
+        if (!isEditMode) return;
+        event.cancelBubble = true;
+        const node = groupRef.current;
+        if (!node) return;
+        onSnapDragEnd?.(selection, node);
+        onElementChange(selection, (current) => ({
+          ...current,
+          position: isRootElement
+            ? unclampedPositionFromNodeInParent(node, parentBox, box)
+            : positionFromNodeInParent(node, parentBox, box),
+          ...(layoutManaged || isManualPositioned(current)
+            ? { __presenton_manual_position: true }
+            : {}),
+        }));
+      }}
+      onTransformStart={() => {
+        if (!isRootElement) return;
+        transformPreviewRef.current = null;
+        setTransformPreview(null);
+      }}
+      onTransform={(event) => {
+        if (!isEditMode || !isRootElement) return;
+        event.cancelBubble = true;
+        const node = groupRef.current;
+        if (!node) return;
+        const anchor = componentTransformAnchorForNode(node);
+        if (anchor === "rotater") return;
+        const source = transformPreviewRef.current ?? element;
+        const sourceBox = elementBox(source);
+        const scaleX = node.scaleX();
+        const scaleY = node.scaleY();
+        if (
+          Math.abs(scaleX - 1) < 0.001 &&
+          Math.abs(scaleY - 1) < 0.001
+        ) {
+          return;
+        }
+        const horizontalOnly = anchor
+          ? HORIZONTAL_RESIZE_ANCHORS.has(anchor)
+          : false;
+        const verticalOnly = anchor
+          ? VERTICAL_RESIZE_ANCHORS.has(anchor)
+          : false;
+        const nextScaleX = verticalOnly ? 1 : scaleX;
+        const nextScaleY = horizontalOnly ? 1 : scaleY;
+        const nextSize = {
+          width: Math.max(1, sourceBox.width * nextScaleX),
+          height: Math.max(1, sourceBox.height * nextScaleY),
+        };
+        node.scaleX(1);
+        node.scaleY(1);
+        const position = unclampedPositionFromNodeInParent(node, parentBox, {
+          ...sourceBox,
+          ...nextSize,
+        });
+        const next = resizeRootElement(
+          source,
+          {
+            ...position,
+            ...nextSize,
+            scaleX: nextScaleX,
+            scaleY: nextScaleY,
+            rotation: node.rotation(),
+          },
+          horizontalOnly || verticalOnly ? "resize-bounds" : "scale-content",
+        );
+        transformPreviewRef.current = next;
+        setTransformPreview(next);
+      }}
       onTransformEnd={(event) => {
         if (!isEditMode) return;
         event.cancelBubble = true;
         const node = groupRef.current;
         if (!node) return;
+        if (isRootElement && transformPreviewRef.current) {
+          const next = transformPreviewRef.current;
+          transformPreviewRef.current = null;
+          setTransformPreview(null);
+          onElementChange(selection, () => next);
+          return;
+        }
         const scaleX = node.scaleX();
         const scaleY = node.scaleY();
         const nextSize = {
@@ -797,11 +908,17 @@ function RawElementNode({
         const fontScale = fontScaleFromResize(scaleX, scaleY);
         onElementChange(selection, (current) => ({
           ...scaleRawElementTextMetrics(current, fontScale),
-          position: positionFromNodeInParent(
-            node,
-            parentBox,
-            { ...box, ...nextSize },
-          ),
+          position: isRootElement
+            ? unclampedPositionFromNodeInParent(
+                node,
+                parentBox,
+                { ...box, ...nextSize },
+              )
+            : positionFromNodeInParent(
+                node,
+                parentBox,
+                { ...box, ...nextSize },
+              ),
           size: nextSize,
           rotation: node.rotation(),
           ...(layoutManaged || isManualPositioned(current)
@@ -815,7 +932,7 @@ function RawElementNode({
       ) : null}
       {editing ? null : (
         <MemoizedRawElementVisual
-          element={element}
+          element={renderedElement}
           width={visualBox.width}
           height={visualBox.height}
           interactive={isEditMode}
@@ -871,6 +988,9 @@ export const MemoizedRawElementNode = memo(RawElementNode, (previous, next) => {
     previous.onTableCellEdit !== next.onTableCellEdit ||
     previous.onOpenEditor !== next.onOpenEditor ||
     previous.onElementChange !== next.onElementChange ||
+    previous.onSnapDragStart !== next.onSnapDragStart ||
+    previous.onSnapDragMove !== next.onSnapDragMove ||
+    previous.onSnapDragEnd !== next.onSnapDragEnd ||
     !numberPathEqual(previous.elementPath, next.elementPath) ||
     !boxEqual(previous.parentBox, next.parentBox) ||
     !nullableBoxEqual(previous.textConstraintBox, next.textConstraintBox) ||

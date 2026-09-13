@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, type RefObject } from "react";
 import type Konva from "konva";
 import { Transformer } from "react-konva";
 import { EDITOR_STAGE_HEIGHT, EDITOR_STAGE_WIDTH } from "@/components/slide-editor/types";
+import { ROOT_ELEMENTS_COMPONENT_INDEX } from "@/components/slide-editor/model/core";
 import {
   clearSnapGuides,
   computeResizeSnap,
@@ -271,8 +272,13 @@ export function TemplateV2SelectionTransformers({
     [getResizeSnapStops, selectedKey, selectionKind, snapGuidesLayerRef],
   );
   const isMultiComponentSelection = selectionKind === "multi-component";
+  const isRootElementSelection =
+    selectionKind === "element" &&
+    selectedKey?.startsWith(`element:${ROOT_ELEMENTS_COMPONENT_INDEX}:`);
+  const isResizable =
+    selectionKind === "component" || isRootElementSelection;
   const selectedNode =
-    selectionKind === "component" && selectedKey
+    isResizable && selectedKey
       ? nodeRefs.current?.get(selectedKey)
       : null;
   const bottomCenterRotationAnchorAngle =
@@ -310,7 +316,7 @@ export function TemplateV2SelectionTransformers({
     }
 
     const selectedRotationNode =
-      selectionKind === "component" && selectedNodes.length === 1
+      isResizable && selectedNodes.length === 1
         ? selectedNodes[0]
         : null;
     const refreshBottomCenterRotationAnchor = () => {
@@ -390,16 +396,16 @@ export function TemplateV2SelectionTransformers({
         borderStroke={isMultiComponentSelection ? "#D9D9DE" : "#7A5AF8"}
         borderStrokeWidth={1}
         enabledAnchors={
-          selectionKind === "component"
+          isResizable
             ? horizontalResizeOnly
               ? HORIZONTAL_ONLY_ANCHORS
               : undefined
             : []
         }
-        resizeEnabled={selectionKind === "component"}
+        resizeEnabled={isResizable}
         rotateAnchorAngle={bottomCenterRotationAnchorAngle}
         rotateAnchorOffset={BOTTOM_CENTER_ROTATION_ANCHOR_OFFSET}
-        rotateEnabled={selectionKind === "component"}
+        rotateEnabled={isResizable}
         rotateLineVisible={false}
         boundBoxFunc={resizeBoundBoxFunc}
         onTransformEnd={() => clearSnapGuides(snapGuidesLayerRef?.current ?? null)}

@@ -1257,13 +1257,18 @@ function TemplateV2KonvaSlideComponent({
   // so turning a heavy subtree (shadows, many children, images) into one
   // pre-rendered bitmap is what actually keeps that per-frame repaint cheap.
   const primeDragOverlayCache = useCallback(
-    (node: Konva.Node, excludedIndexes: number[], passengerNodes: Konva.Node[]) => {
+    (
+      node: Konva.Node,
+      excludedIndexes: number[],
+      passengerNodes: Konva.Node[],
+      otherBoxes?: Box[],
+    ) => {
       const layer = node.getLayer();
       if (!layer) {
         dragOverlayCacheRef.current = null;
         return;
       }
-      const others = componentBoxesExcluding(excludedIndexes);
+      const others = otherBoxes ?? componentBoxesExcluding(excludedIndexes);
       const stops = stopsForBoxes(others, STAGE_WIDTH, STAGE_HEIGHT);
       const startBox = node.getClientRect({ relativeTo: layer });
       const cachedNodes = [node, ...passengerNodes];
@@ -1438,6 +1443,44 @@ function TemplateV2KonvaSlideComponent({
       );
     },
     [clearDragOverlayCache, commitUi, updateComponent],
+  );
+
+  // ── Root-element drag (HTML mode) ──────────────────────────────
+  // Root elements (componentIndex === ROOT_ELEMENTS_COMPONENT_INDEX)
+  // don't go through the component drag system.  We still want snap
+  // guides + spacing badges, so we reuse the same overlay logic with
+  // a single-element "component index" of -1 (root).
+
+  const handleElementDragStart = useCallback(
+    (elementSelection: ElementSelection, node: Konva.Node) => {
+      const draggedIndex = elementSelection.elementPath[0];
+      const otherBoxes = readArray(currentUiRef.current.elements).flatMap(
+        (raw, index) => {
+          if (index === draggedIndex) return [];
+          const element = asRecord(raw);
+          return element ? [elementBox(element)] : [];
+        },
+      );
+      primeDragOverlayCache(node, [], [], otherBoxes);
+    },
+    [primeDragOverlayCache],
+  );
+
+  const handleElementDragMove = useCallback(
+    (_elementSelection: ElementSelection, node: Konva.Node) => {
+      applyDragOverlay(-1, node);
+      node.getLayer()?.batchDraw();
+    },
+    [applyDragOverlay],
+  );
+
+  const handleElementDragEnd = useCallback(
+    (_elementSelection: ElementSelection, node: Konva.Node) => {
+      clearSnapGuides(snapGuidesLayerRef.current);
+      clearSpacingBadges(spacingBadgesLayerRef.current);
+      clearDragOverlayCache();
+    },
+    [clearDragOverlayCache],
   );
 
   const updateElement = useCallback(
@@ -2707,6 +2750,9 @@ function TemplateV2KonvaSlideComponent({
               parentBox={STAGE_BOX}
               layoutManaged={false}
               fontRevision={fontLoadState.revision}
+              onSnapDragStart={handleElementDragStart}
+              onSnapDragMove={handleElementDragMove}
+              onSnapDragEnd={handleElementDragEnd}
             />
           ))}
           {components.map((component, componentIndex) => (

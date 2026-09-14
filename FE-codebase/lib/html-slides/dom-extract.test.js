@@ -122,3 +122,33 @@ test("extracts absolutely positioned descendants from a zero-height wrapper", as
     await rm(fixturePath, { force: true });
   }
 });
+
+test("maps the locked theme image to slide background instead of a canvas element", async () => {
+  const fixturePath = join(tmpdir(), `dom-extract-theme-background-${process.pid}.html`);
+  const image = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1280' height='720'%3E%3Crect width='1280' height='720' fill='navy'/%3E%3C/svg%3E";
+  await writeFile(
+    fixturePath,
+    `<!doctype html><style>
+      * { box-sizing: border-box; margin: 0; padding: 0 }
+      .slide { position: relative; width: 1280px; height: 720px; background: rgb(3, 16, 36) }
+      .theme-background { position: absolute; inset: 0; width: 100%; height: 100% }
+      h1 { position: absolute; left: 80px; top: 80px; font: 48px Arial; color: white }
+    </style><section class="slide"><img class="theme-background" data-theme-background data-theme-overlay="0.36" src="${image}"><h1>Theme title</h1></section>`,
+  );
+
+  const chrome = await ChromeSession.launch();
+  try {
+    await chrome.loadFile(fixturePath);
+    const extracted = await chrome.evaluate(`(${extractSlide.toString()})()`);
+    assert.deepEqual(extracted.backgroundStyle, {
+      type: "image",
+      from: "#031024",
+      imageUrl: image,
+      overlayOpacity: 0.36,
+    });
+    assert.equal(extracted.elements.filter((element) => element.type === "image").length, 0);
+  } finally {
+    await chrome.close();
+    await rm(fixturePath, { force: true });
+  }
+});

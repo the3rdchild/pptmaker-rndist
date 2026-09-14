@@ -34,6 +34,7 @@ export function extractSlide() {
   const base = slide.getBoundingClientRect();
   const elements = [];
   const warnings = [];
+  let lockedThemeBackground = null;
   // Browser-only metadata used by the text merge below. Keeping it in a
   // WeakMap guarantees DOM nodes and measurement details never leak into the
   // JSON sent to the editor.
@@ -545,6 +546,17 @@ export function extractSlide() {
       return;
     }
     if (el.tagName === "IMG") {
+      if (el.classList.contains("theme-background") && el.hasAttribute("data-theme-background")) {
+        const color = parseColor(getComputedStyle(slide).backgroundColor);
+        const overlay = Number.parseFloat(el.dataset.themeOverlay || "");
+        lockedThemeBackground = {
+          type: "image",
+          from: color ? color.color : "#031024",
+          imageUrl: el.currentSrc || el.src,
+          ...(Number.isFinite(overlay) && overlay > 0 && overlay < 1 ? { overlayOpacity: round(overlay) } : {}),
+        };
+        return;
+      }
       emit(applyOpacity(imageElementFor(el, style, box)), el);
       return;
     }
@@ -704,14 +716,14 @@ export function extractSlide() {
   // white, which is how a dark deck ends up rendering on a white slide.
   return {
     background: backgroundColor ? backgroundColor.color : null,
-    backgroundStyle: backgroundGradient
+    backgroundStyle: lockedThemeBackground ?? (backgroundGradient
       ? {
           type: backgroundGradient.shape,
           from: backgroundGradient.from,
           to: backgroundGradient.to,
           angle: backgroundGradient.angle ?? 90,
         }
-      : null,
+      : null),
     elements,
     warnings,
   };

@@ -43,6 +43,8 @@ export type BackgroundStyle = {
   pattern?: BackgroundPattern;
   /** Uploaded background image URL, used when type === "image". */
   imageUrl?: string;
+  /** Optional contrast scrim above a locked theme image and below content. */
+  overlayOpacity?: number;
 };
 
 export function readBackgroundStyle(ui: RawUi): BackgroundStyle {
@@ -64,6 +66,10 @@ export function readBackgroundStyle(ui: RawUi): BackgroundStyle {
           ? (record.pattern as BackgroundPattern)
           : "none",
         imageUrl: typeof record.imageUrl === "string" ? record.imageUrl : undefined,
+        overlayOpacity:
+          typeof record.overlayOpacity === "number" && record.overlayOpacity > 0 && record.overlayOpacity < 1
+            ? record.overlayOpacity
+            : undefined,
       };
     }
   }
@@ -273,7 +279,7 @@ function linearGradientPoints(angleDeg: number) {
 
 export function SlideBackground({ ui }: { ui: RawUi }) {
   const style = readBackgroundStyle(ui);
-  const { type, from, angle = 90, pattern = "none" } = style;
+  const { type, from, angle = 90, pattern = "none", overlayOpacity } = style;
   const to = style.to ?? from;
 
   const tilePatternImage = useMemo(() => {
@@ -338,6 +344,15 @@ export function SlideBackground({ ui }: { ui: RawUi }) {
           fillRadialGradientColorStops={[0, from, 1, to]}
         />
       )}
+      {type === "image" && overlayOpacity ? (
+        <Rect
+          width={EDITOR_STAGE_WIDTH}
+          height={EDITOR_STAGE_HEIGHT}
+          fill={from}
+          opacity={overlayOpacity}
+          listening={false}
+        />
+      ) : null}
       {tilePatternImage ? (
         <Rect
           width={EDITOR_STAGE_WIDTH}

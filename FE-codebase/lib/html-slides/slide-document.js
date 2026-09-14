@@ -69,7 +69,7 @@ function backgroundDataUrl(url) {
 
 function themeBackgroundMarkup(theme) {
   const src = backgroundDataUrl(theme.backgroundImageUrl);
-  return src ? `<img class="theme-background" src="${src}" alt="" aria-hidden="true">` : "";
+  return src ? `<img class="theme-background" data-theme-background data-theme-overlay="0.34" src="${src}" alt="" aria-hidden="true">` : "";
 }
 
 export function buildSlideDocument(theme, fragmentHtml) {

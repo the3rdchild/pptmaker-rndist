@@ -29,6 +29,10 @@ export type HtmlTheme = {
 export type HtmlThemeSummary = Pick<HtmlTheme, "id" | "name" | "description" | "previewUrl" | "updatedAt"> & {
   recipeCount: number;
   isDefault: boolean;
+  colors: HtmlTheme["colors"];
+  typography: HtmlTheme["typography"];
+  effects: HtmlTheme["effects"];
+  firstRecipe: string;
 };
 
 export type HtmlThemeRegistry = { themes: HtmlThemeSummary[]; defaultThemeId: string | null };

@@ -9,7 +9,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Layers, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 
 import { AppShell } from "@/components/layout/app-shell";
@@ -19,6 +19,9 @@ import {
   loadAllThemes,
   type TemplateTheme,
 } from "@/lib/templates/themes";
+import { invalidateHtmlThemeCache, loadHtmlThemeRegistry, removeHtmlTheme } from "@/lib/html-themes/client";
+import type { HtmlThemeRegistry, HtmlThemeSummary } from "@/lib/html-themes/types";
+import { HtmlThemeThumbnail } from "@/components/html-theme/html-theme-thumbnail";
 
 /** One preview per theme, and no more.
  *
@@ -31,6 +34,8 @@ const PREVIEW_WIDTH = 560;
 
 export function TemplateListPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  if (searchParams.get("kind") === "html") return <HtmlThemeListPage />;
   const [themes, setThemes] = useState<TemplateTheme[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -89,6 +94,7 @@ export function TemplateListPage() {
   return (
     <AppShell>
       <div className="mx-auto max-w-6xl px-8 py-10">
+        <LibraryTabs active="manual" />
         <div className="mb-6 flex items-end justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-white">Template</h1>
@@ -143,6 +149,40 @@ export function TemplateListPage() {
       </div>
     </AppShell>
   );
+}
+
+function LibraryTabs({ active }: { active: "manual" | "html" }) {
+  return <div className="mb-6 flex w-fit rounded-lg border border-[#2d2e42] bg-[#13131f] p-1 text-xs">
+    <Link href="/template-list" className={`rounded-md px-3 py-1.5 ${active === "manual" ? "bg-[#6c5ce7] text-white" : "text-zinc-400 hover:text-zinc-100"}`}>Manual templates</Link>
+    <Link href="/template-list?kind=html" className={`rounded-md px-3 py-1.5 ${active === "html" ? "bg-[#6c5ce7] text-white" : "text-zinc-400 hover:text-zinc-100"}`}>HTML themes</Link>
+  </div>;
+}
+
+function HtmlThemeListPage() {
+  const router = useRouter();
+  const [registry, setRegistry] = useState<HtmlThemeRegistry | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const refresh = async () => { invalidateHtmlThemeCache(); setRegistry(await loadHtmlThemeRegistry()); };
+  useEffect(() => { refresh().catch((e) => setError(e instanceof Error ? e.message : "Could not load HTML themes")); }, []);
+  const seed = async () => {
+    setError(null);
+    const response = await fetch("/api/html-themes/seed", { method: "POST" });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) { setError(body?.error ?? "Could not seed starter themes"); return; }
+    invalidateHtmlThemeCache(); setRegistry(body);
+  };
+  const remove = async (theme: HtmlThemeSummary) => {
+    if (!window.confirm(`Delete HTML theme "${theme.name}"?`)) return;
+    try { setRegistry(await removeHtmlTheme(theme.id)); } catch (e) { setError(e instanceof Error ? e.message : "Delete failed"); }
+  };
+  return <AppShell><div className="mx-auto max-w-6xl px-8 py-10">
+    <LibraryTabs active="html" />
+    <div className="mb-6 flex items-end justify-between gap-4"><div><h1 className="text-2xl font-bold text-white">HTML themes</h1><p className="mt-1 text-sm text-zinc-400">{registry ? `${registry.themes.length} theme · aturan visual + layout recipe untuk AI.` : "Memuat…"}</p></div><Link href="/html-theme-engine" className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[#6c5ce7] px-3 py-2 text-xs font-medium text-white"><Plus className="h-4 w-4" />HTML theme baru</Link></div>
+    {error && <p className="mb-4 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p>}
+    {!registry && !error && <div className="flex gap-2 py-16 text-sm text-zinc-500"><Loader2 className="h-4 w-4 animate-spin" />Memuat HTML themes…</div>}
+    {registry?.themes.length === 0 && <div className="py-16 text-center"><p className="text-sm text-zinc-500">Belum ada HTML theme tersimpan.</p><button onClick={() => void seed()} className="mt-3 rounded-lg bg-[#6c5ce7] px-3 py-2 text-xs font-medium text-white">Seed starter HTML themes</button></div>}
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">{registry?.themes.map((theme) => <div key={theme.id} className="overflow-hidden rounded-xl border border-[#2d2e42] bg-[#13131f]"><button onClick={() => router.push(`/html-theme-engine?theme=${encodeURIComponent(theme.id)}`)} className="block w-full text-left"><div className="aspect-video"><HtmlThemeThumbnail theme={theme} /></div><div className="p-4"><div className="flex items-center gap-2 text-sm font-semibold text-white">{theme.name}{theme.isDefault && <span className="rounded bg-[#6c5ce7]/20 px-1.5 py-0.5 text-[10px] text-[#c4b5fd]">Default</span>}</div><p className="mt-1 line-clamp-2 text-xs text-zinc-500">{theme.description || "Tanpa deskripsi."}</p><p className="mt-2 text-[11px] text-zinc-500">{theme.recipeCount} layout recipe</p></div></button><div className="border-t border-[#2d2e42] p-2 text-right">{registry.themes.length > 1 && <button onClick={() => void remove(theme)} className="rounded px-2 py-1 text-xs text-red-300 hover:bg-red-500/10">Delete</button>}</div></div>)}</div>
+  </div></AppShell>;
 }
 
 /** A preview is sized in pixels, not by CSS — it is a fixed 1280x720 stage

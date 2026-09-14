@@ -11,15 +11,10 @@ import { notify } from '@/components/ui/sonner'
 import { SourceDocAttach, useSourceDocs } from '@/components/shared/source-doc-attach'
 import { SOURCE_PARAM } from '@/lib/source-docs/store'
 import {
-	HTML_THEMES,
-	HTML_THEME_PARAM,
 	MODE_PARAM,
-	loadStoredHtmlTheme,
 	loadStoredMode,
-	storeHtmlTheme,
 	storeMode,
 	type GenerationMode,
-	type HtmlThemeId,
 } from '@/lib/generation-mode'
 import {
 	DEFAULT_PAGE_COUNT_ID,
@@ -161,10 +156,8 @@ export function PromptInput() {
 	// back as editable elements. Restored after mount so SSR and the first
 	// client render agree.
 	const [genMode, setGenMode] = useState<GenerationMode>('template')
-	const [htmlTheme, setHtmlTheme] = useState<HtmlThemeId>('paper')
 	useEffect(() => {
 		setGenMode(loadStoredMode())
-		setHtmlTheme(loadStoredHtmlTheme())
 	}, [])
 	const [submitting, setSubmitting] = useState(false)
 	const [importing, setImporting] = useState(false)
@@ -219,7 +212,6 @@ export function PromptInput() {
 			// Absent param = template mode, so every existing link keeps working.
 			if (genMode === 'html') {
 				qs.set(MODE_PARAM, 'html')
-				qs.set(HTML_THEME_PARAM, htmlTheme)
 			}
 			router.push(`/outline?${qs.toString()}`)
 			setSubmitting(false)
@@ -461,30 +453,6 @@ export function PromptInput() {
 						/>
 					</span>
 				</button>
-
-				{/* HTML mode brings its own palette + font pair, so the template
-				    theme picker on /outline does not apply to it. */}
-				{genMode === 'html' && (
-					<div className="flex items-center gap-1 rounded-lg border border-[#2d2e42] bg-[#1a1b2e] p-0.5 text-xs">
-						{HTML_THEMES.map((theme) => (
-							<button
-								key={theme.id}
-								type="button"
-								onClick={() => {
-									setHtmlTheme(theme.id)
-									storeHtmlTheme(theme.id)
-								}}
-								className={`rounded-md px-2 py-1 transition-colors ${
-									htmlTheme === theme.id
-										? 'bg-[#6c5ce7] text-white'
-										: 'text-zinc-400 hover:text-zinc-200'
-								}`}
-							>
-								{theme.label}
-							</button>
-						))}
-					</div>
-				)}
 
 				<div className="ml-auto flex items-center gap-2">
 					{/* Session status indicator */}

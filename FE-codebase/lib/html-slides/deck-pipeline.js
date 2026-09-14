@@ -11,7 +11,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { themeById } from "./design-system.js";
+import { selectRecipe } from "../html-themes/schema.js";
 import { firstConfiguredProvider, chat } from "./llm-client.js";
 import { buildOutline } from "./outline-source.js";
 import { fillPhotos } from "./photo-fill.js";
@@ -23,7 +23,7 @@ import { buildSlideDocument, parseFragment } from "./slide-document.js";
  * @param {object} options
  * @param {string} options.topic Free-text prompt, or the approved outline markdown.
  * @param {number} [options.slideCount] Only consulted when there is no approved outline.
- * @param {string} [options.themeId] A key of THEMES.
+ * @param {object} options.theme A validated persisted HTML theme.
  * @param {string} [options.provider] Falls back to the first configured one.
  * @param {string|null} [options.outDir] Keeps the HTML and PNGs; a temp dir otherwise.
  * @param {(event: Record<string, unknown>) => void} [options.onEvent]
@@ -31,12 +31,12 @@ import { buildSlideDocument, parseFragment } from "./slide-document.js";
 export async function generateDeck({
   topic,
   slideCount = 5,
-  themeId = "paper",
+  theme,
   provider,
   outDir = null,
   onEvent = () => {},
 }) {
-  const theme = themeById(themeId);
+  if (!theme) throw new Error("A valid HTML theme is required.");
   const resolvedProvider = firstConfiguredProvider(provider);
   const workDir = outDir ?? mkdtempSync(join(tmpdir(), "html-slides-"));
 
@@ -64,10 +64,12 @@ export async function generateDeck({
     // hold the layout rules in mind for a whole slide.
     const fragments = await Promise.all(
       outline.slides.map(async (slide, index) => {
+        const recipe = selectRecipe(theme, slide.role, index);
         const reply = await chat({
           provider: resolvedProvider,
           prompt: buildSlidePrompt({
             theme,
+            recipe,
             deckTitle: outline.title,
             slide,
             index,

@@ -4,7 +4,7 @@
 // thought), then one call per slide. Per-slide calls keep each response short,
 // which is what lets a cheap model hold the layout rules in mind.
 
-import { tokensForPrompt } from "./design-system.js";
+import { compileThemePrompt } from "./theme-prompt.js";
 import { STAGE_HEIGHT, STAGE_WIDTH } from "./slide-document.js";
 
 export function buildOutlinePrompt(topic, slideCount) {
@@ -29,7 +29,7 @@ const BANNED = [
   "ukuran font literal — SEMUA font-size wajib var(--fs-*)",
 ];
 
-export function buildSlidePrompt({ theme, deckTitle, slide, index, total }) {
+export function buildSlidePrompt({ theme, recipe, deckTitle, slide, index, total }) {
   return `Kamu desainer presentasi. Hasilkan SATU slide sebagai fragmen HTML.
 
 DECK: "${deckTitle}"
@@ -38,8 +38,8 @@ JUDUL: ${slide.heading}
 ISI: ${slide.brief}
 ARAHAN VISUAL: ${slide.visual}
 
-DESIGN SYSTEM TERKUNCI — pakai HANYA variabel ini:
-${tokensForPrompt(theme)}
+DESIGN SYSTEM TERKUNCI — pakai HANYA variabel ini dan patuhi recipe:
+${compileThemePrompt(theme, recipe)}
 
 OUTPUT (wajib, persis):
   <style> ...css... </style>

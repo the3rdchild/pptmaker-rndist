@@ -37,10 +37,11 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createDeck, streamAipptOutline } from "@/lib/api";
-import { HTML_THEME_PARAM, MODE_PARAM, modeFromParams } from "@/lib/generation-mode";
+import { HTML_THEME_PARAM, MODE_PARAM, htmlThemeFromParams, modeFromParams } from "@/lib/generation-mode";
 import { useSessionStore } from "@/store/session.store";
 import { useTemplateThemes } from "@/components/editor-react/theme-picker";
 import { LazyLayoutThumbnail } from "@/components/editor-react/lazy-layout-thumbnail";
+import { HtmlThemePicker } from "@/components/html-theme/html-theme-picker";
 import { OutlineChat } from "./outline-chat";
 import { Button } from "@/components/shared/button";
 import {
@@ -88,6 +89,7 @@ export function OutlinePage() {
     return isPageCountId(fromUrl) ? fromUrl : DEFAULT_PAGE_COUNT_ID;
   });
   const [themeId, setThemeId] = useState<string | null>(null);
+  const [htmlThemeId, setHtmlThemeId] = useState<string | null>(() => htmlThemeFromParams(searchParams));
 
   const [outline, setOutline] = useState<Outline>({ title: "", pages: [] });
   const [streaming, setStreaming] = useState(false);
@@ -310,12 +312,13 @@ export function OutlinePage() {
         prompt: serializeOutline(finalOutline),
         lang: language,
       });
-      if (themeId) qs.set("theme", themeId);
+      if (generationMode === "template" && themeId) qs.set("theme", themeId);
+      if (generationMode === "html" && htmlThemeId) qs.set(HTML_THEME_PARAM, htmlThemeId);
       // Carry the attached documents into the editor — deck generation needs
       // them again, both for the prose and to resolve figure/table ids.
       if (sourceDocs.ids) qs.set(SOURCE_PARAM, sourceDocs.ids);
       // Forward the homepage's provider/review/image/mode choices untouched.
-      for (const key of ["gen", "verify", "repair", "review", "images", "image-model", MODE_PARAM, HTML_THEME_PARAM]) {
+      for (const key of ["gen", "verify", "repair", "review", "images", "image-model", MODE_PARAM]) {
         const v = searchParams.get(key);
         if (v) qs.set(key, v);
       }
@@ -513,10 +516,10 @@ export function OutlinePage() {
           <div className="flex-1 overflow-y-auto p-4">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-xs font-semibold text-[var(--text-secondary)]">
-                Select Theme
+                {generationMode === "html" ? "Select HTML Theme" : "Select Theme"}
               </h2>
               <button
-                onClick={() => router.push("/template-list")}
+                onClick={() => router.push(generationMode === "html" ? "/template-list?kind=html" : "/template-list")}
                 className="text-xs text-[var(--accent-light)] hover:underline"
               >
                 More Theme
@@ -527,13 +530,13 @@ export function OutlinePage() {
                 font pair, so a template theme picked here would be ignored —
                 say so rather than letting the click look broken. */}
             {generationMode === "html" && (
-              <p className="mb-3 rounded-lg border border-[var(--border)] bg-[var(--bg-base)] p-2.5 text-[11px] leading-relaxed text-[var(--text-muted)]">
+              <><HtmlThemePicker requestedId={searchParams.get(HTML_THEME_PARAM)} value={htmlThemeId} onChange={setHtmlThemeId} /><p className="hidden mb-3 rounded-lg border border-[var(--border)] bg-[var(--bg-base)] p-2.5 text-[11px] leading-relaxed text-[var(--text-muted)]">
                 Mode HTML aktif — deck ini didesain AI dari nol, jadi theme di
                 bawah tidak dipakai. Ganti terang/gelap di halaman depan.
-              </p>
+              </p></>
             )}
 
-            {themesLoading ? (
+            {generationMode === "template" && (themesLoading ? (
               <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" /> Memuat theme…
               </div>
@@ -580,12 +583,12 @@ export function OutlinePage() {
                   );
                 })}
               </div>
-            )}
-            <p className="mt-3 text-[11px] leading-relaxed text-[var(--text-muted)]">
+            ))}
+            {generationMode === "template" && <p className="mt-3 text-[11px] leading-relaxed text-[var(--text-muted)]">
               {themeId
                 ? "Theme terpilih akan dipakai untuk semua slide."
                 : "Tanpa pilihan, AI memilih theme yang paling cocok dengan topik."}
-            </p>
+            </p>}
           </div>
 
           <div className="shrink-0 border-t border-[var(--border)] p-4">

@@ -12,6 +12,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { generateDeck } from "./deck-pipeline.js";
+import { parseHtmlTheme, resolveHtmlThemeId } from "../html-themes/schema.js";
+import { STARTER_HTML_THEMES } from "../html-themes/seeds.js";
 import { describeElements, renderAndExtract } from "./render-extract.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -51,7 +53,9 @@ async function reuse() {
 
 async function fresh() {
   const topic = arg("topic", "Kopi specialty Indonesia: dari kebun ke cangkir");
-  const themeId = arg("theme", "paper");
+  const themeId = resolveHtmlThemeId(arg("theme", "corporate-tech-glass"));
+  const theme = STARTER_HTML_THEMES.find((candidate) => candidate.id === themeId);
+  if (!theme) throw new Error(`Unknown bundled HTML theme "${themeId}". Use the API for a saved custom theme.`);
   const provider = arg("provider", undefined);
   const slideCount = Number(arg("slides", "5"));
 
@@ -61,7 +65,7 @@ async function fresh() {
   const deck = await generateDeck({
     topic,
     slideCount,
-    themeId,
+    theme: parseHtmlTheme(theme),
     provider,
     outDir: OUT_DIR,
     onEvent: (event) => {

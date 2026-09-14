@@ -43,6 +43,7 @@ const EFFECTS = {
   grid: ["none", "subtle", "technical"],
   slideNumber: ["none", "minimal", "rule"],
 };
+const BACKGROUND_IMAGE_MODES = ["none", "locked", "generated"];
 const REGION_KINDS = ["heading", "body", "bullets", "metric", "image", "quote", "label", "footer"];
 const REGION_PLACEMENTS = ["left", "center", "right", "top", "bottom", "background"];
 const REGION_EMPHASIS = ["primary", "secondary", "supporting"];
@@ -139,13 +140,21 @@ export function parseHtmlTheme(value) {
   const typography = record(theme.typography, "typography");
   const headingFont = choice(typography.headingFont, "typography.headingFont", GOOGLE_FONT_FAMILIES);
   const bodyFont = choice(typography.bodyFont, "typography.bodyFont", GOOGLE_FONT_FAMILIES);
+  const backgroundImageUrl = theme.backgroundImageUrl == null ? null : text(theme.backgroundImageUrl, "backgroundImageUrl", 2048);
+  const backgroundImageMode = choice(
+    theme.backgroundImageMode ?? (backgroundImageUrl ? "locked" : "none"),
+    "backgroundImageMode",
+    BACKGROUND_IMAGE_MODES,
+  );
+  if (backgroundImageMode === "locked" && !backgroundImageUrl) throw new Error("backgroundImageUrl is required for locked background mode");
   return {
     schemaVersion: 1,
     id: assertSafeHtmlThemeId(theme.id),
     name: text(theme.name, "name", 100),
     description: text(theme.description ?? "", "description", 500, { allowEmpty: true }),
     previewUrl: theme.previewUrl == null ? null : text(theme.previewUrl, "previewUrl", 2048),
-    backgroundImageUrl: theme.backgroundImageUrl == null ? null : text(theme.backgroundImageUrl, "backgroundImageUrl", 2048),
+    backgroundImageUrl,
+    backgroundImageMode,
     colors: parseColors(theme.colors),
     typography: {
       headingFont,
@@ -171,6 +180,7 @@ export function htmlThemeSummary(theme, { isDefault = false } = {}) {
     description: parsed.description,
     previewUrl: parsed.previewUrl,
     backgroundImageUrl: parsed.backgroundImageUrl,
+    backgroundImageMode: parsed.backgroundImageMode,
     colors: parsed.colors,
     typography: parsed.typography,
     effects: parsed.effects,
@@ -211,6 +221,7 @@ export function createBlankHtmlTheme({ id, name = "Untitled HTML Theme" } = {}) 
     description: "",
     previewUrl: null,
     backgroundImageUrl: null,
+    backgroundImageMode: "none",
     colors: {
       background: "#101828", surface: "#1D2939", primary: "#7F56D9", secondary: "#98A2B3",
       accent: "#FEC84B", text: "#F9FAFB", muted: "#D0D5DD", border: "#344054",

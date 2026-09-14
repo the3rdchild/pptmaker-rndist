@@ -19,6 +19,7 @@ export type HtmlTheme = {
   description: string;
   previewUrl: string | null;
   backgroundImageUrl: string | null;
+  backgroundImageMode: "none" | "locked" | "generated";
   colors: Record<"background" | "surface" | "primary" | "secondary" | "accent" | "text" | "muted" | "border", string>;
   typography: { headingFont: string; bodyFont: string; scale: "compact" | "balanced" | "expressive" };
   effects: { surface: "flat" | "translucent" | "gradient"; radius: "none" | "soft" | "round"; shadow: "none" | "subtle" | "elevated"; imageTreatment: "natural" | "monochrome" | "duotone"; grid: "none" | "subtle" | "technical"; slideNumber: "none" | "minimal" | "rule" };
@@ -27,7 +28,7 @@ export type HtmlTheme = {
   updatedAt: string | null;
 };
 
-export type HtmlThemeSummary = Pick<HtmlTheme, "id" | "name" | "description" | "previewUrl" | "backgroundImageUrl" | "updatedAt"> & {
+export type HtmlThemeSummary = Pick<HtmlTheme, "id" | "name" | "description" | "previewUrl" | "backgroundImageUrl" | "backgroundImageMode" | "updatedAt"> & {
   recipeCount: number;
   isDefault: boolean;
   colors: HtmlTheme["colors"];

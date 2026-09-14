@@ -14,3 +14,15 @@ test("Corporate Tech Glass compiles its KPI recipe into explicit AI rules", () =
   assert.match(prompt, /metric/i);
   assert.doesNotMatch(prompt, /backdrop-filter|mask-image|::before/i);
 });
+
+test("Image Tech requires a generated photo placeholder as the locked background", () => {
+  const theme = parseHtmlTheme({
+    ...STARTER_HTML_THEMES.find((entry) => entry.id === "corporate-tech-glass"),
+    id: "image-tech-test",
+    backgroundImageMode: "generated",
+  });
+  const prompt = compileThemePrompt(theme, theme.recipes[0]);
+
+  assert.match(prompt, /photo theme-background/i);
+  assert.match(prompt, /data-theme-background/i);
+});

@@ -66,6 +66,20 @@ function attributes(tag) {
   return out;
 }
 
+/** Makes a generated full-bleed photo deterministic. The model is invited to
+ * provide this slot, but missing it must not downgrade an image-led theme to a
+ * plain card layout. */
+export function ensureThemeBackgroundPlaceholder(sectionHtml, brief) {
+  if (/\btheme-background\b[^>]*\bdata-theme-background\b|\bdata-theme-background\b[^>]*\btheme-background\b/i.test(sectionHtml)) {
+    return sectionHtml;
+  }
+  const safeBrief = String(brief || "cinematic documentary background").replace(/"/g, "&quot;");
+  return sectionHtml.replace(
+    /^(<section(?=[^>]*\bclass\s*=\s*(?:"[^"]*\bslide\b[^"]*"|'[^']*\bslide\b[^']*'))[^>]*>)/i,
+    `$1<div class="photo theme-background" data-theme-background="true" data-theme-overlay="0.42" data-brief="${safeBrief}"></div>`,
+  );
+}
+
 export async function fillPhotos(sectionHtml) {
   const placeholder = /<div([^>]*\bclass\s*=\s*"[^"]*\bphoto\b[^"]*"[^>]*)>\s*<\/div>/gi;
   const briefs = [];
@@ -80,7 +94,9 @@ export async function fillPhotos(sectionHtml) {
     const brief = parsed["data-brief"] || "abstract background texture";
     const style = parsed.style ? ` style="${parsed.style}"` : "";
     const className = parsed.class || "photo";
-    return `<img class="${className}" data-brief="${brief}"${style} src="${urls[index++]}" alt="">`;
+    const themeBackground = /\bdata-theme-background(?:\s|=|>)/i.test(attrs) ? " data-theme-background" : "";
+    const themeOverlay = parsed["data-theme-overlay"] ? ` data-theme-overlay="${parsed["data-theme-overlay"]}"` : "";
+    return `<img class="${className}" data-brief="${brief}"${themeBackground}${themeOverlay}${style} src="${urls[index++]}" alt="">`;
   });
 
   return { html: filled, count: briefs.length };

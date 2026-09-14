@@ -40,6 +40,14 @@ test("keeps an optional full-bleed background asset as a theme rule", () => {
   );
 });
 
+test("keeps a generated background mode as a theme rule", () => {
+  const theme = structuredClone(STARTER_HTML_THEMES[0]);
+  theme.backgroundImageUrl = null;
+  theme.backgroundImageMode = "generated";
+
+  assert.equal(parseHtmlTheme(theme).backgroundImageMode, "generated");
+});
+
 test("deleting the default chooses a remaining theme and refuses the final record", () => {
   assert.deepEqual(
     deleteFromHtmlThemeIndex(

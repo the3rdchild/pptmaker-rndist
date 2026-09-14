@@ -22,7 +22,9 @@ export function compileThemePrompt(theme, recipe) {
     : theme.effects.surface === "gradient"
       ? "Use restrained extractable CSS gradients only on real rectangular layers."
       : "Use flat, solid surfaces with deliberate contrast.";
-  const backgroundRule = theme.backgroundImageUrl
+  const backgroundRule = theme.backgroundImageMode === "generated"
+    ? 'Generate exactly one topic-specific full-bleed photo placeholder as the FIRST child of .slide: <div class="photo theme-background" data-theme-background="true" data-theme-overlay="0.42" data-brief="specific English documentary-photo description"></div>. This is the locked slide background, not a content image.'
+    : theme.backgroundImageUrl
     ? "A supplied full-bleed background image is locked behind this slide. Do not create another background image; put all text on one or two readable surface panels above it."
     : "No locked background image is supplied.";
 

@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { selectRecipe } from "../html-themes/schema.js";
 import { firstConfiguredProvider, chat } from "./llm-client.js";
 import { buildOutline } from "./outline-source.js";
-import { fillPhotos } from "./photo-fill.js";
+import { ensureThemeBackgroundPlaceholder, fillPhotos } from "./photo-fill.js";
 import { assessSlideLayout } from "./layout-quality.js";
 import { describeElements, renderAndExtract } from "./render-extract.js";
 import { buildSafeFallbackFragment } from "./safe-fallback.js";
@@ -81,7 +81,13 @@ export async function generateDeck({
           temperature: 0.7,
         });
         const fragment = parseFragment(reply.text);
-        const { html } = await fillPhotos(fragment.sectionHtml);
+        const sectionHtml = theme.backgroundImageMode === "generated"
+          ? ensureThemeBackgroundPlaceholder(
+              fragment.sectionHtml,
+              `cinematic documentary photograph for ${slide.heading}: ${slide.visual || slide.brief}`,
+            )
+          : fragment.sectionHtml;
+        const { html } = await fillPhotos(sectionHtml);
         return { ...fragment, sectionHtml: html };
       };
 

@@ -1,12 +1,13 @@
 const region = (kind, placement, emphasis = "primary") => ({ kind, placement, emphasis });
 
-const base = ({ id, name, description, backgroundImageUrl = null, colors, typography, effects, guidance, recipes }) => ({
+const base = ({ id, name, description, backgroundImageUrl = null, backgroundImageMode = backgroundImageUrl ? "locked" : "none", colors, typography, effects, guidance, recipes }) => ({
   schemaVersion: 1,
   id,
   name,
   description,
   previewUrl: null,
   backgroundImageUrl,
+  backgroundImageMode,
   colors,
   typography,
   effects,
@@ -19,7 +20,7 @@ export const DEFAULT_HTML_THEME_ID = "corporate-tech-glass";
 
 export const STARTER_HTML_THEMES = [
   base({
-    id: "full-image-tech", name: "Full Image Tech", description: "The supplied full-bleed technical blueprint background, with readable navy overlays and cyan signal details.",
+    id: "blueprint-tech", name: "Blueprint Tech", description: "The supplied full-bleed technical blueprint background, with readable navy overlays and cyan signal details.",
     backgroundImageUrl: "/html-themes/full-image-tech-background.png",
     colors: { background: "#031024", surface: "#071C3D", primary: "#62C6FF", secondary: "#9EDCFF", accent: "#62C6FF", text: "#FFFFFF", muted: "#C6D7ED", border: "#3D6A96" },
     typography: { headingFont: "Manrope", bodyFont: "Inter", scale: "balanced" }, effects: { surface: "translucent", radius: "soft", shadow: "elevated", imageTreatment: "duotone", grid: "technical", slideNumber: "rule" },
@@ -28,6 +29,18 @@ export const STARTER_HTML_THEMES = [
       { id: "blueprint-cover", name: "Blueprint Cover", roles: ["cover", "section"], composition: "full-bleed", description: "Full image with a single readable title panel.", regions: [region("heading", "left"), region("body", "left", "secondary"), region("label", "top", "supporting")], decorations: ["accent-rule", "slide-number"], instructions: "Keep the supplied background visible. Use one 44%-wide navy translucent panel on the left; title must fit within three lines." },
       { id: "blueprint-content", name: "Blueprint Content", roles: ["content", "stat", "visual"], composition: "full-bleed", description: "Full image with concise narrative and one metric rail.", regions: [region("heading", "left"), region("body", "left", "secondary"), region("metric", "right")], decorations: ["accent-rule", "pill", "slide-number"], instructions: "Use one left content panel and one narrow right metric panel. Keep all content inside those panels; no free-floating paragraphs." },
       { id: "blueprint-close", name: "Blueprint Close", roles: ["comparison", "quote", "closing"], composition: "full-bleed", description: "Full image with one concise closing statement.", regions: [region("heading", "left"), region("quote", "left", "secondary"), region("footer", "bottom", "supporting")], decorations: ["accent-rule", "slide-number"], instructions: "Use one large left panel and at most two compact supporting rows. Preserve visible image around the panel." },
+    ],
+  }),
+  base({
+    id: "image-tech", name: "Image Tech", description: "Cinematic, image-led research storytelling: a topic-specific full-bleed photo on every slide, dark forest/teal grading, and bold white hierarchy.",
+    backgroundImageMode: "generated",
+    colors: { background: "#061C1B", surface: "#12312E", primary: "#F7FAF4", secondary: "#C4E3D0", accent: "#B8E86A", text: "#FFFFFF", muted: "#D2E5D9", border: "#79A994" },
+    typography: { headingFont: "Anton", bodyFont: "DM Sans", scale: "expressive" }, effects: { surface: "translucent", radius: "soft", shadow: "elevated", imageTreatment: "duotone", grid: "none", slideNumber: "minimal" },
+    guidance: { artDirection: "Cinematic environmental research documentary. Every slide begins with one relevant full-bleed photographic background in deep forest green and teal; use a restrained dark scrim, oversized uppercase white headlines, and only the minimum readable information surfaces.", dos: ["Use a different topic-specific environmental or documentary photo as the background of every slide", "Make the title the dominant visual element", "Use one translucent information panel only when body copy needs support", "Keep lime as a small scientific signal"], donts: ["Do not use generic corporate grids", "Do not place white text directly on a bright photo area without a dark scrim or panel", "Do not use more than three cards", "Do not use decorative rounded rectangles unless they contain real information"] },
+    recipes: [
+      { id: "image-tech-cover", name: "Cinematic Cover", roles: ["cover", "section"], composition: "full-bleed", description: "Photo-first cover with an oversized white title.", regions: [region("heading", "left"), region("body", "left", "secondary"), region("label", "top", "supporting")], decorations: ["accent-rule", "slide-number"], instructions: "Use a unique full-bleed documentary photo relevant to the topic. Place one oversized uppercase headline in the left half, maximum three lines, with a short subtitle below. Use only a subtle dark gradient or a single narrow panel behind text." },
+      { id: "image-tech-story", name: "Image Story", roles: ["content", "visual", "quote"], composition: "full-bleed", description: "A full image with one concise visual story panel.", regions: [region("heading", "left"), region("body", "left", "secondary"), region("quote", "bottom", "secondary")], decorations: ["accent-rule", "slide-number"], instructions: "Use one relevant full-bleed photo. Keep headline large at top-left. Put no more than 55 words in one dark translucent panel across the lower third; preserve visible photography elsewhere." },
+      { id: "image-tech-research", name: "Research Focus", roles: ["stat", "comparison", "closing"], composition: "full-bleed", description: "A full image with a compact research or comparison frame.", regions: [region("heading", "top"), region("metric", "left"), region("metric", "right")], decorations: ["accent-rule", "slide-number"], instructions: "Use a relevant full-bleed photo. Add at most one large dark translucent frame with two concise columns or three real research cards. No floating disconnected labels." },
     ],
   }),
   base({

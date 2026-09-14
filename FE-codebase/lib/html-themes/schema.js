@@ -145,6 +145,7 @@ export function parseHtmlTheme(value) {
     name: text(theme.name, "name", 100),
     description: text(theme.description ?? "", "description", 500, { allowEmpty: true }),
     previewUrl: theme.previewUrl == null ? null : text(theme.previewUrl, "previewUrl", 2048),
+    backgroundImageUrl: theme.backgroundImageUrl == null ? null : text(theme.backgroundImageUrl, "backgroundImageUrl", 2048),
     colors: parseColors(theme.colors),
     typography: {
       headingFont,
@@ -169,6 +170,7 @@ export function htmlThemeSummary(theme, { isDefault = false } = {}) {
     name: parsed.name,
     description: parsed.description,
     previewUrl: parsed.previewUrl,
+    backgroundImageUrl: parsed.backgroundImageUrl,
     colors: parsed.colors,
     typography: parsed.typography,
     effects: parsed.effects,
@@ -208,6 +210,7 @@ export function createBlankHtmlTheme({ id, name = "Untitled HTML Theme" } = {}) 
     name,
     description: "",
     previewUrl: null,
+    backgroundImageUrl: null,
     colors: {
       background: "#101828", surface: "#1D2939", primary: "#7F56D9", secondary: "#98A2B3",
       accent: "#FEC84B", text: "#F9FAFB", muted: "#D0D5DD", border: "#344054",

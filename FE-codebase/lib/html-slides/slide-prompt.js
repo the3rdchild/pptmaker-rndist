@@ -29,7 +29,7 @@ const BANNED = [
   "ukuran font literal — SEMUA font-size wajib var(--fs-*)",
 ];
 
-export function buildSlidePrompt({ theme, recipe, deckTitle, slide, index, total }) {
+export function buildSlidePrompt({ theme, recipe, deckTitle, slide, index, total, repairFeedback = "" }) {
   return `Kamu desainer presentasi. Hasilkan SATU slide sebagai fragmen HTML.
 
 DECK: "${deckTitle}"
@@ -68,6 +68,10 @@ FOTO:
 - JANGAN pakai <img> dan JANGAN karang URL. Untuk tiap foto, tulis:
   <div class="photo" data-brief="deskripsi visual spesifik dalam bahasa Inggris"></div>
 - Beri elemen itu ukuran nyata lewat CSS (width/height atau flex + aspect-ratio). Server yang mengisi gambarnya.
+
+${repairFeedback ? `PERBAIKAN WAJIB DARI RENDER SEBELUMNYA:
+${repairFeedback}
+Jangan menambah konten. Ringkas teks, kecilkan tipe, atau ubah grid sampai seluruh elemen terlihat di dalam kanvas.` : ""}
 
 Bahasa konten: Indonesia.`;
 }

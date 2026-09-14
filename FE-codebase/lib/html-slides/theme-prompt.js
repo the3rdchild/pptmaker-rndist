@@ -22,6 +22,9 @@ export function compileThemePrompt(theme, recipe) {
     : theme.effects.surface === "gradient"
       ? "Use restrained extractable CSS gradients only on real rectangular layers."
       : "Use flat, solid surfaces with deliberate contrast.";
+  const backgroundRule = theme.backgroundImageUrl
+    ? "A supplied full-bleed background image is locked behind this slide. Do not create another background image; put all text on one or two readable surface panels above it."
+    : "No locked background image is supplied.";
 
   return `THEME: ${theme.name}
 
@@ -29,6 +32,7 @@ ${tokensForPrompt(theme)}
 
 VISUAL SYSTEM:
 - Surface: ${surfaceRule}
+- Background: ${backgroundRule}
 - Corners: ${theme.effects.radius}; shadow: ${theme.effects.shadow}; grid: ${theme.effects.grid}; slide number: ${theme.effects.slideNumber}.
 - ${imageRule}
 - Art direction: ${theme.guidance.artDirection || "Follow the named visual system consistently."}

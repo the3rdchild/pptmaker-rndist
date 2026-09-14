@@ -15,7 +15,9 @@ import { selectRecipe } from "../html-themes/schema.js";
 import { firstConfiguredProvider, chat } from "./llm-client.js";
 import { buildOutline } from "./outline-source.js";
 import { fillPhotos } from "./photo-fill.js";
+import { assessSlideLayout } from "./layout-quality.js";
 import { describeElements, renderAndExtract } from "./render-extract.js";
+import { buildSafeFallbackFragment } from "./safe-fallback.js";
 import { buildSlidePrompt } from "./slide-prompt.js";
 import { buildSlideDocument, parseFragment } from "./slide-document.js";
 
@@ -62,8 +64,7 @@ export async function generateDeck({
     });
     // One call per slide, in parallel. Short replies are what let a cheap model
     // hold the layout rules in mind for a whole slide.
-    const fragments = await Promise.all(
-      outline.slides.map(async (slide, index) => {
+    const createFragment = async (slide, index, repairFeedback = "") => {
         const recipe = selectRecipe(theme, slide.role, index);
         const reply = await chat({
           provider: resolvedProvider,
@@ -74,6 +75,7 @@ export async function generateDeck({
             slide,
             index,
             total: outline.slides.length,
+            repairFeedback,
           }),
           maxTokens: 4000,
           temperature: 0.7,
@@ -81,7 +83,10 @@ export async function generateDeck({
         const fragment = parseFragment(reply.text);
         const { html } = await fillPhotos(fragment.sectionHtml);
         return { ...fragment, sectionHtml: html };
-      }),
+      };
+
+    const fragments = await Promise.all(
+      outline.slides.map((slide, index) => createFragment(slide, index)),
     );
 
     const htmlPaths = fragments.map((fragment, index) => {
@@ -91,23 +96,69 @@ export async function generateDeck({
     });
 
     onEvent({ type: "status", message: "Merender dan mencontek layout…" });
-    const { slides, warnings } = await renderAndExtract({
+    let { slides, warnings } = await renderAndExtract({
       htmlPaths,
       outDir,
-      onSlide: async ({ index, ui, warnings: slideWarnings, elementCount }) => {
-        onEvent({
-          type: "slide",
-          index,
-          ui,
-          heading: outline.slides[index]?.heading ?? "",
-          elementCount,
-          summary: describeElements(ui.elements),
-        });
-        for (const message of slideWarnings) {
-          onEvent({ type: "warning", slide: index + 1, message });
-        }
-      },
     });
+
+    // The DOM extractor can measure a broken layout exactly. Never stream a
+    // slide that it reports as clipped/out of bounds: repair that one slide
+    // first, then only hand the editor a bounded canvas.
+    for (let index = 0; index < slides.length; index += 1) {
+      let assessment = assessSlideLayout({
+        elements: slides[index].ui.elements,
+        warnings: warnings.filter((warning) => warning.slide === index + 1).map((warning) => warning.message),
+      });
+      for (let attempt = 0; !assessment.ok && attempt < 2; attempt += 1) {
+        const repaired = await createFragment(outline.slides[index], index, assessment.feedback);
+        fragments[index] = repaired;
+        writeFileSync(htmlPaths[index], buildSlideDocument(theme, repaired), "utf8");
+        const retried = await renderAndExtract({ htmlPaths: [htmlPaths[index]], outDir });
+        slides[index] = retried.slides[0];
+        warnings = [
+          ...warnings.filter((warning) => warning.slide !== index + 1),
+          ...retried.warnings.map((warning) => ({ ...warning, slide: index + 1 })),
+        ];
+        assessment = assessSlideLayout({
+          elements: slides[index].ui.elements,
+          warnings: retried.warnings.map((warning) => warning.message),
+        });
+      }
+      if (!assessment.ok) {
+        const fallback = buildSafeFallbackFragment({
+          slide: outline.slides[index],
+          index,
+          total: outline.slides.length,
+        });
+        fragments[index] = fallback;
+        writeFileSync(htmlPaths[index], buildSlideDocument(theme, fallback), "utf8");
+        const renderedFallback = await renderAndExtract({ htmlPaths: [htmlPaths[index]], outDir });
+        slides[index] = renderedFallback.slides[0];
+        warnings = [
+          ...warnings.filter((warning) => warning.slide !== index + 1),
+          ...renderedFallback.warnings.map((warning) => ({ ...warning, slide: index + 1 })),
+        ];
+        assessment = assessSlideLayout({
+          elements: slides[index].ui.elements,
+          warnings: renderedFallback.warnings.map((warning) => warning.message),
+        });
+        if (!assessment.ok) throw new Error(`Safe fallback for slide ${index + 1} failed layout validation: ${assessment.feedback}`);
+        onEvent({ type: "warning", slide: index + 1, message: "AI layout was replaced with a safe bounded layout." });
+      }
+    }
+
+    for (let index = 0; index < slides.length; index += 1) {
+      const ui = slides[index].ui;
+      onEvent({
+        type: "slide",
+        index,
+        ui,
+        heading: outline.slides[index]?.heading ?? "",
+        elementCount: ui.elements.length,
+        summary: describeElements(ui.elements),
+      });
+    }
+    for (const warning of warnings) onEvent({ type: "warning", ...warning });
 
     return { title: outline.title, slides, warnings, theme: theme.name, provider: resolvedProvider };
   } finally {

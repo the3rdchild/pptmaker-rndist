@@ -6,6 +6,9 @@
 // with overflow hidden, so a model that writes too much gets silently cropped
 // rather than producing a 1280x1400 page whose extracted geometry is nonsense.
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { googleFontLink, tokenCss } from "./design-system.js";
 
 export const STAGE_WIDTH = 1280;
@@ -28,6 +31,7 @@ html, body {
   color: var(--color-text);
   font-family: var(--font-body);
   font-size: var(--fs-body);
+  isolation: isolate;
 }
 /* Effects the editor model cannot represent are neutralised here rather than
    trusted to the prompt — a model that reaches for one gets a flat box, not a
@@ -41,9 +45,38 @@ html, body {
 }
 .slide img { display: block }
 .slide img.photo { object-fit: cover }
+.slide > .theme-background {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: cover !important;
+  z-index: 0 !important;
+  pointer-events: none !important;
+}
+.slide > :not(.theme-background) { z-index: 1; }
 `;
 
+function backgroundDataUrl(url) {
+  if (!url) return null;
+  if (!url.startsWith("/html-themes/") || url.includes("..")) return url;
+  const extension = url.endsWith(".jpg") || url.endsWith(".jpeg") ? "jpeg" : "png";
+  const filePath = join(process.cwd(), "public", ...url.split("/").filter(Boolean));
+  return `data:image/${extension};base64,${readFileSync(filePath).toString("base64")}`;
+}
+
+function themeBackgroundMarkup(theme) {
+  const src = backgroundDataUrl(theme.backgroundImageUrl);
+  return src ? `<img class="theme-background" src="${src}" alt="" aria-hidden="true">` : "";
+}
+
 export function buildSlideDocument(theme, fragmentHtml) {
+  const sectionHtml = fragmentHtml.sectionHtml.replace(
+    /^(<section[^>]*>)/i,
+    `$1${themeBackgroundMarkup(theme)}`,
+  );
   return `<!doctype html>
 <html lang="id">
 <head>
@@ -58,7 +91,7 @@ ${CONTRACT_CSS}
 </style>
 </head>
 <body>
-${fragmentHtml.sectionHtml}
+${sectionHtml}
 </body>
 </html>`;
 }

@@ -1,11 +1,12 @@
 const region = (kind, placement, emphasis = "primary") => ({ kind, placement, emphasis });
 
-const base = ({ id, name, description, colors, typography, effects, guidance, recipes }) => ({
+const base = ({ id, name, description, backgroundImageUrl = null, colors, typography, effects, guidance, recipes }) => ({
   schemaVersion: 1,
   id,
   name,
   description,
   previewUrl: null,
+  backgroundImageUrl,
   colors,
   typography,
   effects,
@@ -17,6 +18,18 @@ const base = ({ id, name, description, colors, typography, effects, guidance, re
 export const DEFAULT_HTML_THEME_ID = "corporate-tech-glass";
 
 export const STARTER_HTML_THEMES = [
+  base({
+    id: "full-image-tech", name: "Full Image Tech", description: "The supplied full-bleed technical blueprint background, with readable navy overlays and cyan signal details.",
+    backgroundImageUrl: "/html-themes/full-image-tech-background.png",
+    colors: { background: "#031024", surface: "#071C3D", primary: "#62C6FF", secondary: "#9EDCFF", accent: "#62C6FF", text: "#FFFFFF", muted: "#C6D7ED", border: "#3D6A96" },
+    typography: { headingFont: "Manrope", bodyFont: "Inter", scale: "balanced" }, effects: { surface: "translucent", radius: "soft", shadow: "elevated", imageTreatment: "duotone", grid: "technical", slideNumber: "rule" },
+    guidance: { artDirection: "Use the supplied full-bleed technical blueprint image on every slide as the fixed identity layer. Place content only on deep navy translucent panels so white text remains highly legible.", dos: ["Preserve the supplied background image edge-to-edge", "Use one strong content panel instead of scattered floating text", "Keep cyan signals sparse"], donts: ["Never place light body text directly on a busy image area", "Do not hide the image under an opaque full-slide fill", "Do not create more than two content panels"] },
+    recipes: [
+      { id: "blueprint-cover", name: "Blueprint Cover", roles: ["cover", "section"], composition: "full-bleed", description: "Full image with a single readable title panel.", regions: [region("heading", "left"), region("body", "left", "secondary"), region("label", "top", "supporting")], decorations: ["accent-rule", "slide-number"], instructions: "Keep the supplied background visible. Use one 44%-wide navy translucent panel on the left; title must fit within three lines." },
+      { id: "blueprint-content", name: "Blueprint Content", roles: ["content", "stat", "visual"], composition: "full-bleed", description: "Full image with concise narrative and one metric rail.", regions: [region("heading", "left"), region("body", "left", "secondary"), region("metric", "right")], decorations: ["accent-rule", "pill", "slide-number"], instructions: "Use one left content panel and one narrow right metric panel. Keep all content inside those panels; no free-floating paragraphs." },
+      { id: "blueprint-close", name: "Blueprint Close", roles: ["comparison", "quote", "closing"], composition: "full-bleed", description: "Full image with one concise closing statement.", regions: [region("heading", "left"), region("quote", "left", "secondary"), region("footer", "bottom", "supporting")], decorations: ["accent-rule", "slide-number"], instructions: "Use one large left panel and at most two compact supporting rows. Preserve visible image around the panel." },
+    ],
+  }),
   base({
     id: "corporate-tech-glass",
     name: "Corporate Tech Glass",

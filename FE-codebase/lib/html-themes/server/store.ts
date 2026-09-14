@@ -1,4 +1,4 @@
-import { deletePrefix, objectExists, readJson, writeJson } from "@/lib/storage/s3";
+import { deletePrefix, objectExists, putObject, readJson, writeJson } from "@/lib/storage/s3";
 import {
   assertSafeHtmlThemeId,
   deleteFromHtmlThemeIndex,
@@ -115,4 +115,14 @@ export async function seedHtmlThemes(): Promise<HtmlThemeRegistry> {
   if (!defaultThemeId) throw new Error("No starter HTML themes are configured");
   await writeIndex({ schemaVersion: 1, defaultThemeId, themes: ids });
   return listHtmlThemeRegistry();
+}
+
+export async function saveHtmlThemePreview(themeId: string, png: Buffer): Promise<HtmlTheme> {
+  const id = assertSafeHtmlThemeId(themeId);
+  const current = await readHtmlTheme(id);
+  if (!current) throw new Error("HTML_THEME_NOT_FOUND");
+  const previewUrl = await putObject(`${HTML_THEMES_PREFIX}/${id}/preview.png`, png, "image/png");
+  const next = { ...current, previewUrl, updatedAt: new Date().toISOString() };
+  await writeJson(themeKey(id), next);
+  return next;
 }

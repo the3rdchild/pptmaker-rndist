@@ -21,6 +21,24 @@ import { buildSafeFallbackFragment } from "./safe-fallback.js";
 import { buildSlidePrompt } from "./slide-prompt.js";
 import { buildSlideDocument, parseFragment } from "./slide-document.js";
 
+export async function mapWithConcurrency(items, limit, mapper) {
+  if (!Number.isInteger(limit) || limit < 1) throw new Error("limit must be a positive integer");
+  const results = new Array(items.length);
+  let cursor = 0;
+
+  const worker = async () => {
+    for (;;) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= items.length) return;
+      results[index] = await mapper(items[index], index);
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
 /**
  * @param {object} options
  * @param {string} options.topic Free-text prompt, or the approved outline markdown.
@@ -91,80 +109,68 @@ export async function generateDeck({
         return { ...fragment, sectionHtml: html };
       };
 
-    const fragments = await Promise.all(
-      outline.slides.map((slide, index) => createFragment(slide, index)),
-    );
-
-    const htmlPaths = fragments.map((fragment, index) => {
-      const path = join(workDir, `slide-${index + 1}.html`);
-      writeFileSync(path, buildSlideDocument(theme, fragment), "utf8");
-      return path;
-    });
-
-    onEvent({ type: "status", message: "Merender dan mencontek layout…" });
-    let { slides, warnings } = await renderAndExtract({
-      htmlPaths,
-      outDir,
-    });
-
-    // The DOM extractor can measure a broken layout exactly. Never stream a
-    // slide that it reports as clipped/out of bounds: repair that one slide
-    // first, then only hand the editor a bounded canvas.
-    for (let index = 0; index < slides.length; index += 1) {
-      let assessment = assessSlideLayout({
-        elements: slides[index].ui.elements,
-        warnings: warnings.filter((warning) => warning.slide === index + 1).map((warning) => warning.message),
+    const renderSingleSlide = async (htmlPath, index) => {
+      const rendered = await renderAndExtract({
+        htmlPaths: [htmlPath],
+        outDir,
+        screenshotStartIndex: index,
       });
+      return {
+        slide: rendered.slides[0],
+        warnings: rendered.warnings.map((warning) => ({ ...warning, slide: index + 1 })),
+      };
+    };
+
+    const generateSlide = async (slide, index) => {
+      onEvent({ type: "status", message: `Membuat slide ${index + 1}/${outline.slides.length}...` });
+      let fragment = await createFragment(slide, index);
+      const htmlPath = join(workDir, `slide-${index + 1}.html`);
+      writeFileSync(htmlPath, buildSlideDocument(theme, fragment), "utf8");
+      let { slide: rendered, warnings } = await renderSingleSlide(htmlPath, index);
+      let assessment = assessSlideLayout({
+        elements: rendered.ui.elements,
+        warnings: warnings.map((warning) => warning.message),
+      });
+
       for (let attempt = 0; !assessment.ok && attempt < 2; attempt += 1) {
-        const repaired = await createFragment(outline.slides[index], index, assessment.feedback);
-        fragments[index] = repaired;
-        writeFileSync(htmlPaths[index], buildSlideDocument(theme, repaired), "utf8");
-        const retried = await renderAndExtract({ htmlPaths: [htmlPaths[index]], outDir });
-        slides[index] = retried.slides[0];
-        warnings = [
-          ...warnings.filter((warning) => warning.slide !== index + 1),
-          ...retried.warnings.map((warning) => ({ ...warning, slide: index + 1 })),
-        ];
+        fragment = await createFragment(slide, index, assessment.feedback);
+        writeFileSync(htmlPath, buildSlideDocument(theme, fragment), "utf8");
+        ({ slide: rendered, warnings } = await renderSingleSlide(htmlPath, index));
         assessment = assessSlideLayout({
-          elements: slides[index].ui.elements,
-          warnings: retried.warnings.map((warning) => warning.message),
+          elements: rendered.ui.elements,
+          warnings: warnings.map((warning) => warning.message),
         });
       }
+
       if (!assessment.ok) {
-        const fallback = buildSafeFallbackFragment({
-          slide: outline.slides[index],
-          index,
-          total: outline.slides.length,
-        });
-        fragments[index] = fallback;
-        writeFileSync(htmlPaths[index], buildSlideDocument(theme, fallback), "utf8");
-        const renderedFallback = await renderAndExtract({ htmlPaths: [htmlPaths[index]], outDir });
-        slides[index] = renderedFallback.slides[0];
-        warnings = [
-          ...warnings.filter((warning) => warning.slide !== index + 1),
-          ...renderedFallback.warnings.map((warning) => ({ ...warning, slide: index + 1 })),
-        ];
+        const fallback = buildSafeFallbackFragment({ slide, index, total: outline.slides.length });
+        writeFileSync(htmlPath, buildSlideDocument(theme, fallback), "utf8");
+        ({ slide: rendered, warnings } = await renderSingleSlide(htmlPath, index));
         assessment = assessSlideLayout({
-          elements: slides[index].ui.elements,
-          warnings: renderedFallback.warnings.map((warning) => warning.message),
+          elements: rendered.ui.elements,
+          warnings: warnings.map((warning) => warning.message),
         });
         if (!assessment.ok) throw new Error(`Safe fallback for slide ${index + 1} failed layout validation: ${assessment.feedback}`);
         onEvent({ type: "warning", slide: index + 1, message: "AI layout was replaced with a safe bounded layout." });
       }
-    }
 
-    for (let index = 0; index < slides.length; index += 1) {
-      const ui = slides[index].ui;
+      const ui = rendered.ui;
       onEvent({
         type: "slide",
         index,
         ui,
-        heading: outline.slides[index]?.heading ?? "",
+        heading: slide.heading ?? "",
         elementCount: ui.elements.length,
         summary: describeElements(ui.elements),
       });
-    }
-    for (const warning of warnings) onEvent({ type: "warning", ...warning });
+      for (const warning of warnings) onEvent({ type: "warning", ...warning });
+      return { slide: rendered, warnings };
+    };
+
+    onEvent({ type: "status", message: "Merender dan mencontek layout…" });
+    const completed = await mapWithConcurrency(outline.slides, 2, generateSlide);
+    const slides = completed.map((entry) => entry.slide);
+    const warnings = completed.flatMap((entry) => entry.warnings);
 
     return { title: outline.title, slides, warnings, theme: theme.name, provider: resolvedProvider };
   } finally {

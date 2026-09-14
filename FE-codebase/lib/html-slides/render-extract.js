@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { ChromeSession } from "./chrome-session.js";
 import { extractSlide } from "./dom-extract.js";
 
-export async function renderAndExtract({ htmlPaths, outDir = null, onSlide = null }) {
+export async function renderAndExtract({ htmlPaths, outDir = null, onSlide = null, screenshotStartIndex = 0 }) {
   const chrome = await ChromeSession.launch();
   const slides = [];
   const warnings = [];
@@ -24,7 +24,7 @@ export async function renderAndExtract({ htmlPaths, outDir = null, onSlide = nul
     for (let index = 0; index < htmlPaths.length; index += 1) {
       await chrome.loadFile(htmlPaths[index]);
       if (outDir) {
-        writeFileSync(join(outDir, `slide-${index + 1}.png`), await chrome.screenshot());
+        writeFileSync(join(outDir, `slide-${screenshotStartIndex + index + 1}.png`), await chrome.screenshot());
       }
 
       const extracted = await chrome.evaluate(`(${extractSlide.toString()})()`);

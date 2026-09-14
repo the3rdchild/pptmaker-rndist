@@ -60,6 +60,7 @@ import { getDeck, saveDeck, streamAipptDeck, fetchThemeManifest, chooseThemeForT
 import { getGlobalFonts } from "@/lib/fonts/global-fonts";
 import { streamHtmlDeck } from "@/lib/html-slides-stream";
 import { htmlThemeFromParams, modeFromParams } from "@/lib/generation-mode";
+import { insertHtmlSlideAt } from "@/components/editor-react/html-slide-insertion";
 import { resolveImageModelId } from "@/lib/image-models";
 import type { StockImageResult } from "@/lib/stock-image-providers";
 import {
@@ -393,6 +394,9 @@ export default function EditorReactClient({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  /** Maps physical canvas positions to outline indices while HTML workers
+   * finish out of order. Reset before every generation run. */
+  const htmlSlideLogicalIndicesRef = useRef<number[]>([]);
   const [saveState, setSaveState] = useState<
     "idle" | "pending" | "saving" | "saved"
   >("idle");
@@ -784,6 +788,11 @@ export default function EditorReactClient({
       ),
     [slideProgress],
   );
+
+  const handleGenerationProgressSelect = useCallback((logicalIndex: number) => {
+    const physicalIndex = htmlSlideLogicalIndicesRef.current.indexOf(logicalIndex);
+    setActiveIndex(physicalIndex >= 0 ? physicalIndex : logicalIndex);
+  }, []);
 
   const handleTemplateSelection = useCallback(
     (payload: TemplateSelectionPayload | null) => setTemplateSelection(payload),
@@ -1206,6 +1215,7 @@ export default function EditorReactClient({
       ...(presentationData ?? { id: deckId, title: topic, slides: [] }),
       slides: [],
     }));
+    htmlSlideLogicalIndicesRef.current = [];
 
     return streamHtmlDeck(
       {
@@ -1224,9 +1234,24 @@ export default function EditorReactClient({
         if (event.type === "slide") {
           const current = reduxStore.getState().presentationGeneration.presentationData;
           if (!current) return;
+          const inserted = insertHtmlSlideAt(
+            {
+              logicalIndices: htmlSlideLogicalIndicesRef.current,
+              slides: current.slides,
+            },
+            event.index,
+            { ui: event.ui } as SlideData,
+          );
+          htmlSlideLogicalIndicesRef.current = inserted.logicalIndices;
+          if (!inserted.inserted) return;
           dispatch(setPresentationData({
             ...current,
-            slides: [...current.slides, { ui: event.ui } as SlideData],
+            slides: inserted.slides,
+          }));
+          setActiveIndex(inserted.physicalIndex);
+          setSlideProgress((previous) => ({
+            ...previous,
+            [event.index]: { phase: "done", issues: [] },
           }));
           setGenerationStatus(`Slide ${event.index + 1} — ${event.heading}`);
         }
@@ -2132,6 +2157,7 @@ export default function EditorReactClient({
     setGenerationError(null);
     setGenerationStatus(null);
     setSlideProgress({});
+    htmlSlideLogicalIndicesRef.current = [];
     setPendingPhotos({});
     setProgressDismissed(false);
     // The /outline page hands over a serialized outline — one "## " heading per
@@ -2818,7 +2844,7 @@ export default function EditorReactClient({
           expected={expectedSlideCount}
           built={slides.length}
           finished={!isGenerating}
-          onSelectSlide={setActiveIndex}
+          onSelectSlide={handleGenerationProgressSelect}
           onClose={() => setProgressDismissed(true)}
         />
       )}

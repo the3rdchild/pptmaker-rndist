@@ -19,7 +19,8 @@ export interface HtmlDeckRequest {
 }
 
 /** Streams a deck from the HTML pipeline, handing each event to `onEvent` as
- *  it arrives. Resolves with the number of slides that actually landed.
+ *  it arrives. Resolves only after the server explicitly confirms every
+ *  slide it promised; a dropped response must not look like a ready deck.
  *  Throws on an `error` line so the caller's existing failure UI applies. */
 export async function streamHtmlDeck(
   { topic, slideCount, theme, provider, signal }: HtmlDeckRequest,
@@ -43,6 +44,8 @@ export async function streamHtmlDeck(
   const decoder = new TextDecoder("utf-8");
   let buffer = "";
   let slides = 0;
+  let announcedCount: number | null = null;
+  let doneCount: number | null = null;
 
   const handle = (line: string) => {
     const trimmed = line.trim();
@@ -55,6 +58,10 @@ export async function streamHtmlDeck(
     }
     if (event.type === "error") throw new Error(event.message);
     if (event.type === "slide") slides += 1;
+    if (event.type === "outline") announcedCount = event.slides.length;
+    if (event.type === "done") {
+      doneCount = Number.isInteger(event.count) && event.count >= 0 ? event.count : -1;
+    }
     onEvent(event);
   };
 
@@ -72,6 +79,17 @@ export async function streamHtmlDeck(
     }
   }
   handle(buffer);
+
+  if (doneCount === null) {
+    throw new Error("HTML generation stream ended before the server confirmed completion.");
+  }
+  if (doneCount !== slides) {
+    throw new Error(`HTML generation received ${slides} of ${doneCount} slides before completion.`);
+  }
+  const expectedCount = slideCount ?? announcedCount;
+  if (expectedCount !== null && doneCount !== expectedCount) {
+    throw new Error(`HTML generation expected ${expectedCount} slides but the server completed ${doneCount}.`);
+  }
 
   return slides;
 }

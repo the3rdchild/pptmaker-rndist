@@ -22,6 +22,7 @@ import {
 import { invalidateHtmlThemeCache, loadHtmlThemeRegistry, removeHtmlTheme } from "@/lib/html-themes/client";
 import type { HtmlThemeRegistry, HtmlThemeSummary } from "@/lib/html-themes/types";
 import { HtmlThemeThumbnail } from "@/components/html-theme/html-theme-thumbnail";
+import { templateListKind } from "@/components/template-list/template-list-mode";
 
 /** One preview per theme, and no more.
  *
@@ -33,9 +34,16 @@ import { HtmlThemeThumbnail } from "@/components/html-theme/html-theme-thumbnail
 const PREVIEW_WIDTH = 560;
 
 export function TemplateListPage() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  if (searchParams.get("kind") === "html") return <HtmlThemeListPage />;
+  return templateListKind(searchParams.get("kind")) === "html"
+    ? <HtmlThemeListPage />
+    : <ManualThemeListPage />;
+}
+
+/** Both tabs are separate components so switching the URL never changes the
+ * parent component's hook sequence. */
+function ManualThemeListPage() {
+  const router = useRouter();
   const [themes, setThemes] = useState<TemplateTheme[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 

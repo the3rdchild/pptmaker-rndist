@@ -56,3 +56,6 @@ GLM_KICKOFF_FONT_UPLOAD.md
 
 # theme sources pulled out of the bucket for bulk editing (theme-sync.mjs)
 .theme-work/
+
+# isolated agent worktrees
+.worktrees/

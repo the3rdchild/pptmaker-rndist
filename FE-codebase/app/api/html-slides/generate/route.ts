@@ -15,7 +15,8 @@
 
 import { NextRequest } from "next/server";
 import { generateDeck } from "@/lib/html-slides/deck-pipeline.js";
-import { THEMES } from "@/lib/html-slides/design-system.js";
+import { DEFAULT_HTML_THEME_ID, normalizeHtmlThemeId } from "@/lib/generation-mode";
+import { readHtmlTheme } from "@/lib/html-themes/server/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,8 +37,14 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "topic is required" }, { status: 400 });
   }
 
-  const themeId =
-    typeof body.theme === "string" && body.theme in THEMES ? body.theme : "paper";
+  const requestedThemeId = body.theme == null ? DEFAULT_HTML_THEME_ID : normalizeHtmlThemeId(body.theme);
+  if (!requestedThemeId) {
+    return Response.json({ error: "theme must be a valid HTML theme id" }, { status: 400 });
+  }
+  const theme = await readHtmlTheme(requestedThemeId);
+  if (!theme) {
+    return Response.json({ error: `HTML theme "${requestedThemeId}" was not found. Seed or choose a saved theme first.` }, { status: 400 });
+  }
   const slideCount =
     typeof body.slideCount === "number" && body.slideCount >= 1 && body.slideCount <= 20
       ? Math.round(body.slideCount)
@@ -54,7 +61,7 @@ export async function POST(request: NextRequest) {
         const deck = await generateDeck({
           topic,
           slideCount,
-          themeId,
+          theme,
           provider,
           onEvent: send,
         });

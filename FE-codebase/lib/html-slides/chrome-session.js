@@ -30,6 +30,45 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** A slow third-party image must not freeze the complete deck. This is kept as
+ * a page expression so Chrome can wait for DOM image events without holding a
+ * CDP request open forever. */
+export const ASSET_READY_TIMEOUT_MS = 12000;
+
+export function imageReadinessScript(timeoutMs = ASSET_READY_TIMEOUT_MS) {
+  const timeout = Number.isInteger(timeoutMs) && timeoutMs > 0
+    ? timeoutMs
+    : ASSET_READY_TIMEOUT_MS;
+  return `
+    (async () => {
+      const settleWithin = (promise) => new Promise((resolve) => {
+        let settled = false;
+        const finish = (ready) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve(ready);
+        };
+        const timer = setTimeout(() => finish(false), ${timeout});
+        Promise.resolve(promise).then(() => finish(true), () => finish(true));
+      });
+      const images = [...document.images].map((img) =>
+        img.complete
+          ? Promise.resolve()
+          : new Promise((resolve) => {
+              img.addEventListener("load", resolve, { once: true });
+              img.addEventListener("error", resolve, { once: true });
+            }),
+      );
+      const [fontsReady, imagesReady] = await Promise.all([
+        settleWithin(document.fonts?.ready ?? Promise.resolve()),
+        settleWithin(Promise.all(images)),
+      ]);
+      return { fontsTimedOut: !fontsReady, imagesTimedOut: !imagesReady };
+    })()
+  `;
+}
+
 async function waitForDevTools(port, timeoutMs = 20000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -107,7 +146,10 @@ export class ChromeSession {
     const waiters = this.listeners.get(message.method);
     if (waiters) {
       this.listeners.delete(message.method);
-      for (const resolve of waiters) resolve(message.params);
+      for (const waiter of waiters) {
+        clearTimeout(waiter.timer);
+        waiter.resolve(message.params);
+      }
     }
   }
 
@@ -122,30 +164,35 @@ export class ChromeSession {
   once(method, timeoutMs = 30000) {
     return new Promise((resolve, reject) => {
       const list = this.listeners.get(method) ?? [];
-      list.push(resolve);
+      const waiter = { resolve, timer: null };
+      waiter.timer = setTimeout(() => {
+        const pending = this.listeners.get(method) ?? [];
+        this.listeners.set(method, pending.filter((entry) => entry !== waiter));
+        reject(new Error(`Timed out waiting for ${method}`));
+      }, timeoutMs);
+      list.push(waiter);
       this.listeners.set(method, list);
-      setTimeout(() => reject(new Error(`Timed out waiting for ${method}`)), timeoutMs);
     });
   }
 
-  async loadFile(path) {
+  async loadFile(path, { assetTimeoutMs = ASSET_READY_TIMEOUT_MS } = {}) {
     const url = "file:///" + path.replace(/\\/g, "/").replace(/^\/+/, "");
-    const loaded = this.once("Page.loadEventFired");
+    // `Page.loadEventFired` waits for every network image. A third-party image
+    // can keep that event pending forever, so start geometry settling as soon
+    // as the DOM is available and enforce our own bounded asset wait below.
+    const contentLoaded = this.once("Page.domContentEventFired");
     await this.send("Page.navigate", { url });
-    await loaded;
-    // Webfonts and images resolve after load; geometry read before they settle
-    // is measured against fallback metrics and is wrong by several pixels.
-    await this.evaluate(`
-      (async () => {
-        await document.fonts.ready;
-        await Promise.all([...document.images].map((img) =>
-          img.complete ? Promise.resolve() : new Promise((r) => {
-            img.addEventListener("load", r, { once: true });
-            img.addEventListener("error", r, { once: true });
-          })));
-        return true;
-      })()
-    `);
+    await contentLoaded;
+    // Geometry should wait for assets when possible, but an external image can
+    // leave its network request pending indefinitely. Continue after the
+    // bounded wait so this single slide cannot stall every later worker.
+    const readiness = await this.evaluate(imageReadinessScript(assetTimeoutMs));
+    if (readiness?.fontsTimedOut || readiness?.imagesTimedOut) {
+      console.warn(
+        `[html-slides] assets timed out after ${assetTimeoutMs}ms ` +
+          `(fonts=${Boolean(readiness.fontsTimedOut)}, images=${Boolean(readiness.imagesTimedOut)})`,
+      );
+    }
   }
 
   async evaluate(expression) {

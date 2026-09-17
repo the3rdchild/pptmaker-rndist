@@ -25,6 +25,7 @@ import {
 export interface SlideRevision {
   heading: string;
   description: string;
+  imageBrief: string;
   bullets: string[];
 }
 
@@ -45,6 +46,7 @@ export interface OutlineChatTarget {
   index: number;
   heading: string;
   description: string;
+  imageBrief: string;
   bullets: string[];
 }
 
@@ -110,6 +112,7 @@ export function OutlineChat({
             ? {
                 heading: target.heading,
                 description: target.description,
+                imageBrief: target.imageBrief,
                 bullets: target.bullets,
               }
             : undefined,
@@ -209,6 +212,11 @@ export function OutlineChat({
                   {msg.revision.description && (
                     <div className="mt-0.5 text-xs text-[var(--text-secondary)]">
                       {msg.revision.description}
+                    </div>
+                  )}
+                  {msg.revision.imageBrief && (
+                    <div className="mt-1.5 text-xs text-[var(--accent-light)]">
+                      Gambar: {msg.revision.imageBrief}
                     </div>
                   )}
                   <ul className="mt-1.5 flex flex-col gap-0.5">

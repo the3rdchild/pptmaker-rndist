@@ -46,6 +46,7 @@ Rules:
 - Start with a cover slide, then a contents slide listing all sections.
 - Before each section's content slides, emit a transition slide.
 - Content slides should have 2-4 items each.
+- Lines beginning with "Visual:" are image metadata for their outline page. Never copy them into slide title, subtitle, or content items.
 - End with {"type":"end"}.
 - Write in the specified language.
 - Each JSON object must be on its OWN LINE (JSONL format).
@@ -95,7 +96,8 @@ RULES — violations break the deck:
     - Only IMAGE slots take assets (a slot whose "kind" is "image"). Text slots take text; chart slots take chart data.
     - Place the asset whose caption genuinely matches what the slide says. A figure on the wrong slide is worse than no figure — when nothing fits, omit the asset line and let the slide use a generated photo instead.
     - One asset per image slot, at most two per slide.
-    - When the document's figures and tables carry the argument (architecture, results, comparisons), PREFER layouts that have an image slot: a table of results belongs on a slide able to show it."""
+    - When the document's figures and tables carry the argument (architecture, results, comparisons), PREFER layouts that have an image slot: a table of results belongs on a slide able to show it.
+13. OUTLINE VISUAL METADATA: a line beginning with "Visual:" belongs to the outline page immediately above it. It describes what generated or stock imagery should contain. Use it to choose an image-capable layout when appropriate, but NEVER copy the Visual: line into a text slot. Keep slide N aligned with outline page N; do not reorder approved pages."""
 
 
 def _compact_manifest(manifest: dict) -> dict:

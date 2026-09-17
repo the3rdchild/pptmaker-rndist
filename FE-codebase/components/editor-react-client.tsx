@@ -61,6 +61,8 @@ import { getGlobalFonts } from "@/lib/fonts/global-fonts";
 import { streamHtmlDeck } from "@/lib/html-slides-stream";
 import { htmlThemeFromParams, modeFromParams } from "@/lib/generation-mode";
 import { insertHtmlSlideAt } from "@/components/editor-react/html-slide-insertion";
+import { buildSlidePhotoRequest } from "@/components/editor-react/slide-image-brief";
+import { parseOutline } from "@/components/outline/outline-markdown";
 import { resolveImageModelId } from "@/lib/image-models";
 import type { StockImageResult } from "@/lib/stock-image-providers";
 import {
@@ -1294,6 +1296,7 @@ export default function EditorReactClient({
     // from the raw topic: a short free-text prompt has no headings and passes
     // 0, which leaves the model on its own judgement as before.
     const plannedSlideCount = (topic.match(/^##\s+\S/gm) ?? []).length;
+    const approvedPages = parseOutline(topic).pages;
     // Resolve the theme FIRST and fetch its layout manifest — with the
     // manifest in the request body the worker switches to the slot-by-slot
     // contract (model fills NAMED slots under their authored budgets) instead
@@ -1489,19 +1492,23 @@ export default function EditorReactClient({
       setUi: (ui: Record<string, unknown>) => void,
       marker: { componentId: string; elementName: string; occurrenceIndex: number },
       subject: string,
+      imageBrief?: string,
     ) => {
-      // An authored slot hint ("what photo belongs here", written by hand or
-      // by auto-label) is a far better generation prompt than the generic
-      // slide subject — use it verbatim when the slot carries one.
+      // The approved page brief owns the subject. An authored slot hint adds
+      // composition/role guidance but must never replace that subject.
       const hint = findPhotoSlotHint(getUi(), marker);
-      const prompt = hint
-        ? `${hint}. ${heroStyle}`
-        : `${subject} — related to ${genTopic}. ${heroStyle}`;
+      const photoRequest = buildSlidePhotoRequest({
+        imageBrief,
+        subject,
+        deckTopic: genTopic,
+        slotHint: hint ?? undefined,
+        style: heroStyle,
+      });
 
       const slotKey = photoSlotKey(marker.componentId, marker.elementName, marker.occurrenceIndex);
       if (isSlotClaimed(index, slotKey)) return;
       markPhotoPending(index, slotKey, true);
-      void resolvePhotoForSlot(prompt, hint || subject)
+      void resolvePhotoForSlot(photoRequest.prompt, photoRequest.searchHint)
         .then((resolved) => {
           if (!resolved || isSlotClaimed(index, slotKey)) return;
           const patched = patchHeroImage(slideUiAt(index) ?? getUi(), marker, resolved.url, resolved.extra) as Record<string, unknown>;
@@ -1523,15 +1530,16 @@ export default function EditorReactClient({
       heroImage: { componentId: string; elementName: string; occurrenceIndex: number } | null,
       secondaryImages: { componentId: string; elementName: string; occurrenceIndex: number }[],
       subject: string,
+      imageBrief?: string,
     ) => {
       let currentUi = ui;
       const getUi = () => currentUi;
       const setUi = (next: Record<string, unknown>) => {
         currentUi = next;
       };
-      if (heroImage) requestPhotoForSlot(index, getUi, setUi, heroImage, subject);
+      if (heroImage) requestPhotoForSlot(index, getUi, setUi, heroImage, subject, imageBrief);
       for (const marker of secondaryImages) {
-        requestPhotoForSlot(index, getUi, setUi, marker, subject);
+        requestPhotoForSlot(index, getUi, setUi, marker, subject, imageBrief);
       }
     };
 
@@ -1721,9 +1729,21 @@ export default function EditorReactClient({
           const image = await captureSlidePng(freshUi);
           if (!image) break;
 
+          const page = approvedPages[slideIndex];
+          const reviewTopic = page
+            ? [page.heading, page.description, page.imageBrief, ...page.bullets]
+                .filter(Boolean)
+                .join("\n")
+            : genTopic;
           const photos = photoMarkers.map((marker) => ({
             name: photoSlotName(marker),
-            hint: findPhotoSlotHint(freshUi, marker) ?? undefined,
+            hint: buildSlidePhotoRequest({
+              imageBrief: page?.imageBrief,
+              subject: page?.heading,
+              deckTopic: genTopic,
+              slotHint: findPhotoSlotHint(freshUi, marker) ?? undefined,
+              style: "",
+            }).prompt,
           }));
 
           const verifyRes = await fetch("/api/ai/visual-review", {
@@ -1732,7 +1752,7 @@ export default function EditorReactClient({
             body: JSON.stringify({
               mode: "verify",
               image,
-              topic: genTopic,
+              topic: reviewTopic,
               language: language ?? "Bahasa Indonesia",
               slots: layout ? describeLayoutSlots(layout) : [],
               fills: textFills,
@@ -1816,10 +1836,21 @@ export default function EditorReactClient({
                 const marker = photoMarkers.find((m) => photoSlotName(m) === issue.slot);
                 let replaced = false;
                 if (marker) {
-                  const prompt = issue.suggestedPhotoPrompt
-                    ? `${issue.suggestedPhotoPrompt}. ${heroStyle}`
-                    : `${issue.problem}. ${heroStyle}`;
-                  const resolved = await resolvePhotoForSlot(prompt, issue.suggestedPhotoPrompt || genTopic);
+                  const currentUi = slideUiAt(slideIndex);
+                  const replacementRequest = buildSlidePhotoRequest({
+                    imageBrief: page?.imageBrief,
+                    subject: page?.heading,
+                    deckTopic: genTopic,
+                    slotHint: currentUi
+                      ? findPhotoSlotHint(currentUi, marker) ?? undefined
+                      : undefined,
+                    additionalGuidance: issue.suggestedPhotoPrompt || issue.problem,
+                    style: heroStyle,
+                  });
+                  const resolved = await resolvePhotoForSlot(
+                    replacementRequest.prompt,
+                    replacementRequest.searchHint,
+                  );
                   const base = resolved ? slideUiAt(slideIndex) : null;
                   if (resolved && base) {
                     const patched = patchHeroImage(base, marker, resolved.url, resolved.extra) as Record<string, unknown>;
@@ -1976,7 +2007,15 @@ export default function EditorReactClient({
         // Photos start NOW — image generation is the slowest piece, and the
         // slot markers don't move with text fills, so there's no reason to
         // wait for the copy.
-        requestSlidePhotos(index, empty.ui, empty.heroImage, empty.secondaryImages, genTopic);
+        const page = approvedPages[index];
+        requestSlidePhotos(
+          index,
+          empty.ui,
+          empty.heroImage,
+          empty.secondaryImages,
+          page?.heading || genTopic,
+          page?.imageBrief,
+        );
         return;
       }
 
@@ -2025,7 +2064,14 @@ export default function EditorReactClient({
         for (const assetFill of filled.manifestLine?.fills ?? []) {
           if (assetFill.asset) applyAssetFill(index, assetFill.name, assetFill.asset);
         }
-        requestSlidePhotos(index, filled.ui, filled.heroImage, filled.secondaryImages, filled.subject);
+        requestSlidePhotos(
+          index,
+          filled.ui,
+          filled.heroImage,
+          filled.secondaryImages,
+          filled.subject,
+          approvedPages[index]?.imageBrief,
+        );
       }
     };
 

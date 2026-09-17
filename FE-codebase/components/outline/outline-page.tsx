@@ -29,6 +29,7 @@ import {
   ChevronDown,
   ChevronUp,
   GripVertical,
+  ImageIcon,
   Loader2,
   Plus,
   RefreshCw,
@@ -253,7 +254,7 @@ export function OutlinePage() {
     const id = `page-custom-${Date.now()}-${customPageSeq++}`;
     setOutline((o) => ({
       ...o,
-      pages: [...o.pages, { id, heading: "", description: "", bullets: [] }],
+      pages: [...o.pages, { id, heading: "", description: "", imageBrief: "", bullets: [] }],
     }));
     setExpandedId(id);
   };
@@ -262,7 +263,7 @@ export function OutlinePage() {
    *  No-op when the page was deleted while the reply was streaming. */
   const applyRevision = (
     pageId: string,
-    revision: { heading: string; description: string; bullets: string[] },
+    revision: { heading: string; description: string; imageBrief: string; bullets: string[] },
   ) => {
     setOutline((o) => {
       if (!o.pages.some((p) => p.id === pageId)) return o;
@@ -274,6 +275,7 @@ export function OutlinePage() {
                 ...p,
                 heading: revision.heading,
                 description: revision.description,
+                imageBrief: revision.imageBrief,
                 bullets: revision.bullets,
               }
             : p,
@@ -342,6 +344,7 @@ export function OutlinePage() {
           index: expandedIndex,
           heading: outline.pages[expandedIndex].heading,
           description: outline.pages[expandedIndex].description,
+          imageBrief: outline.pages[expandedIndex].imageBrief,
           bullets: outline.pages[expandedIndex].bullets,
         }
       : null;
@@ -773,6 +776,21 @@ function SortableOutlineCard({
             rows={2}
             className="mb-3 w-full resize-none rounded-md border border-[var(--border)] bg-transparent px-2.5 py-1.5 text-sm text-[var(--text-secondary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
           />
+
+          <label className="mb-3 block rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-2 focus-within:border-[var(--accent)]">
+            <span className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--accent-light)]">
+              <ImageIcon className="h-3 w-3" /> Isi gambar
+            </span>
+            <textarea
+              value={page.imageBrief}
+              onChange={(e) => onUpdate({ imageBrief: e.target.value })}
+              {...selectionHandlers}
+              disabled={disabled}
+              placeholder="Contoh: Petani memetik buah kopi merah di lereng pegunungan saat pagi"
+              rows={2}
+              className="w-full resize-none bg-transparent text-sm text-[var(--text-secondary)] outline-none placeholder:text-[var(--text-muted)]"
+            />
+          </label>
 
           <ul className="flex flex-col gap-1.5">
             {page.bullets.map((bullet, i) => (

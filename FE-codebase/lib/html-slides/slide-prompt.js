@@ -11,11 +11,12 @@ export function buildOutlinePrompt(topic, slideCount) {
   return `Kamu perancang presentasi. Buat outline untuk deck ${slideCount} slide tentang: "${topic}".
 
 Balas HANYA JSON (tanpa fence, tanpa komentar):
-{"title":"<judul deck>","slides":[{"role":"<cover|content|stat|comparison|quote|closing>","heading":"<judul slide>","brief":"<2-3 kalimat: poin konkret yang harus muncul, termasuk angka/nama nyata bila relevan>","visual":"<saran perlakuan visual, mis. 'foto full-bleed', 'tiga kartu', 'satu angka raksasa'>"}]}
+{"title":"<judul deck>","slides":[{"role":"<cover|content|stat|comparison|quote|closing>","heading":"<judul slide>","brief":"<2-3 kalimat: poin konkret yang harus muncul, termasuk angka/nama nyata bila relevan>","visual":"<isi gambar konkret: subjek, aktivitas, dan latar yang terlihat>"}]}
 
 Aturan:
 - Tepat ${slideCount} slide. Slide pertama role "cover", terakhir "closing".
-- Variasikan role dan visual antar slide — jangan lima slide bentuk yang sama.
+- Setiap visual harus konkret dan dapat difoto; hindari konsep abstrak, logo, watermark, atau instruksi generik seperti "buat menarik".
+- Variasikan role dan komposisi antar slide — jangan lima slide bentuk yang sama.
 - Bahasa Indonesia. Konkret, bukan generik.`;
 }
 
@@ -36,7 +37,7 @@ DECK: "${deckTitle}"
 SLIDE ${index + 1} dari ${total} — role: ${slide.role}
 JUDUL: ${slide.heading}
 ISI: ${slide.brief}
-ARAHAN VISUAL: ${slide.visual}
+ISI GAMBAR: ${slide.visual}
 
 DESIGN SYSTEM TERKUNCI — pakai HANYA variabel ini dan patuhi recipe:
 ${compileThemePrompt(theme, recipe)}
@@ -67,6 +68,7 @@ TEKS:
 FOTO:
 - JANGAN pakai <img> dan JANGAN karang URL. Untuk tiap foto, tulis:
   <div class="photo" data-brief="deskripsi visual spesifik dalam bahasa Inggris"></div>
+- data-brief WAJIB mempertahankan subjek pada ISI GAMBAR. Theme/recipe hanya menentukan komposisi dan tidak boleh mengganti subjeknya.
 - Beri elemen itu ukuran nyata lewat CSS (width/height atau flex + aspect-ratio). Server yang mengisi gambarnya.
 
 ${repairFeedback ? `PERBAIKAN WAJIB DARI RENDER SEBELUMNYA:

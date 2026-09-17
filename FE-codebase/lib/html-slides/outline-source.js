@@ -30,10 +30,12 @@ export function outlineFromMarkdown(markdown) {
     const line = rawLine.trim();
     if (!line) continue;
     if (line.startsWith("## ")) {
-      current = { heading: line.slice(3).trim(), description: "", bullets: [] };
+      current = { heading: line.slice(3).trim(), description: "", imageBrief: "", bullets: [] };
       pages.push(current);
     } else if (line.startsWith("# ")) {
       if (!title) title = line.slice(2).trim();
+    } else if (/^(?:visual|gambar|image)\s*:/i.test(line) && current) {
+      current.imageBrief = line.replace(/^(?:visual|gambar|image)\s*:\s*/i, "").trim();
     } else if (line.startsWith("- ") && current) {
       current.bullets.push(line.slice(2).trim());
     } else if (current) {
@@ -47,10 +49,33 @@ export function outlineFromMarkdown(markdown) {
       role: ROLE_BY_POSITION(index, pages.length),
       heading: page.heading,
       brief: [page.description, ...page.bullets.map((b) => `- ${b}`)].filter(Boolean).join("\n") || page.heading,
-      // The approved outline says what a page is about, never how it should
-      // look, so the slide model is told to choose the treatment itself.
-      visual: "bebas — pilih perlakuan visual yang paling pas untuk isi ini, dan jangan sama dengan slide lain",
+      visual: page.imageBrief || [page.heading, page.description].filter(Boolean).join(" — "),
     })),
+  };
+}
+
+export function normalizeOutline(raw) {
+  const slides = Array.isArray(raw?.slides) ? raw.slides : [];
+  return {
+    title: typeof raw?.title === "string" && raw.title.trim() ? raw.title.trim() : "Presentation",
+    slides: slides.map((slide, index) => {
+      const heading = typeof slide?.heading === "string" && slide.heading.trim()
+        ? slide.heading.trim()
+        : `Slide ${index + 1}`;
+      const brief = typeof slide?.brief === "string" && slide.brief.trim()
+        ? slide.brief.trim()
+        : heading;
+      const visual = typeof slide?.visual === "string" && slide.visual.trim()
+        ? slide.visual.trim()
+        : `${heading} â€” ${brief}`;
+      return {
+        ...slide,
+        role: typeof slide?.role === "string" ? slide.role : ROLE_BY_POSITION(index, slides.length),
+        heading,
+        brief,
+        visual,
+      };
+    }),
   };
 }
 
@@ -59,7 +84,7 @@ function parseOutlineReply(text) {
   const start = cleaned.indexOf("{");
   const end = cleaned.lastIndexOf("}");
   if (start < 0 || end < 0) throw new Error(`Outline reply was not JSON: ${cleaned.slice(0, 300)}`);
-  return JSON.parse(cleaned.slice(start, end + 1));
+  return normalizeOutline(JSON.parse(cleaned.slice(start, end + 1)));
 }
 
 export async function buildOutline({ topic, slideCount, provider }) {

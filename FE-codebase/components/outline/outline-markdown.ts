@@ -4,6 +4,7 @@
 //   # <Presentation Title>
 //   ## <Slide title>
 //   <one plain-text description sentence>
+//   Visual: <specific image content for this page>
 //   - <key point>
 //   - <key point>
 //
@@ -15,6 +16,7 @@ export interface OutlinePage {
   id: string;
   heading: string;
   description: string;
+  imageBrief: string;
   bullets: string[];
 }
 
@@ -52,6 +54,7 @@ export function parseOutline(markdown: string): Outline {
         id: `page-${outline.pages.length}`,
         heading: stripEmphasis(line.slice(3)),
         description: "",
+        imageBrief: "",
         bullets: [],
       };
       outline.pages.push(current);
@@ -65,6 +68,11 @@ export function parseOutline(markdown: string): Outline {
 
     if (line.startsWith("### ")) {
       current.bullets.push(stripEmphasis(line.slice(4)));
+      continue;
+    }
+    const visualMatch = line.match(/^(?:visual|gambar|image)\s*:\s*(.*)$/i);
+    if (visualMatch) {
+      current.imageBrief = stripEmphasis(visualMatch[1]);
       continue;
     }
     const bulletMatch = line.match(/^[-*•]\s+(.*)$/);
@@ -88,6 +96,8 @@ export function serializeOutline(outline: Outline): string {
   for (const page of outline.pages) {
     parts.push(`\n## ${page.heading}`);
     if (page.description.trim()) parts.push(page.description.trim());
+    const imageBrief = page.imageBrief.replace(/\s+/g, " ").trim();
+    if (imageBrief) parts.push(`Visual: ${imageBrief}`);
     for (const bullet of page.bullets) {
       if (bullet.trim()) parts.push(`- ${bullet.trim()}`);
     }
@@ -101,7 +111,7 @@ export function serializeOutline(outline: Outline): string {
  *  revision (plain chat answer). Mirrors parse_revision_block in the worker. */
 export function parseSlideRevisionBlock(
   text: string,
-): { heading: string; description: string; bullets: string[] } | null {
+): { heading: string; description: string; imageBrief: string; bullets: string[] } | null {
   const match = text.match(/```slide\s*\n([\s\S]*?)```/);
   if (!match) return null;
   const lines = match[1]
@@ -111,14 +121,18 @@ export function parseSlideRevisionBlock(
   if (lines.length === 0) return null;
   const heading = stripEmphasis(lines[0]);
   let description = "";
+  let imageBrief = "";
   const bullets: string[] = [];
   for (const line of lines.slice(1)) {
     const bulletMatch = line.match(/^[-*•]\s+(.*)$/);
     if (bulletMatch) bullets.push(stripEmphasis(bulletMatch[1]));
+    else if (/^(?:visual|gambar|image)\s*:/i.test(line)) {
+      imageBrief = stripEmphasis(line.replace(/^(?:visual|gambar|image)\s*:\s*/i, ""));
+    }
     else if (!description) description = stripEmphasis(line);
     else bullets.push(stripEmphasis(line));
   }
-  return heading ? { heading, description, bullets } : null;
+  return heading ? { heading, description, imageBrief, bullets } : null;
 }
 
 /** The reply text with the ```slide block removed — what the chat bubble

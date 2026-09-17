@@ -22,7 +22,7 @@ improve one slide at a time.
 
 You are given:
 - the deck topic and outline title,
-- the slide the user is currently previewing (its number, title, description and bullet points),
+- the slide the user is currently previewing (its number, title, description, image brief and bullet points),
 - optionally, text fragments the user selected from the outline and added as context.
 
 Rules:
@@ -33,12 +33,14 @@ the slide's content, output the FULL revised slide in one fenced block, exactly 
 ```slide
 <Slide title>
 <One-sentence description>
+Visual: <One concrete sentence describing what the image should contain>
 - <bullet point>
 - <bullet point>
 ```
 
-- The ```slide block must contain the COMPLETE slide (title line, one description line, then \
-bullets) — never a partial diff. You may add a one-sentence note before the block; nothing after it.
+- The ```slide block must contain the COMPLETE slide (title line, one description line, one \
+Visual: line, then bullets) — never a partial diff. You may add a one-sentence note before the block; nothing after it.
+- Include exactly one Visual: line in every revised block. It is image metadata, not slide copy, and must describe a concrete photographable subject.
 - Never invent facts (statistics, dates, quotes, names) the user didn't provide or ask for explicitly.
 - Write in the requested language.
 """
@@ -63,6 +65,8 @@ def _build_context_block(context: dict) -> str:
         lines.append(f"Title: {slide.get('heading')}")
         if slide.get("description"):
             lines.append(f"Description: {slide['description']}")
+        if slide.get("imageBrief"):
+            lines.append(f"Image brief: {slide['imageBrief']}")
         for bullet in slide.get("bullets") or []:
             if str(bullet).strip():
                 lines.append(f"- {bullet}")
@@ -120,7 +124,7 @@ def process(ctx: dict):
 
 # Kept importable for tests: parses the ```slide fenced block out of a reply.
 def parse_revision_block(text: str):
-    """Returns {heading, description, bullets} when the reply carries a
+    """Returns {heading, description, imageBrief, bullets} when the reply carries a
     ```slide block, else None."""
     import re
     m = re.search(r"```slide\s*\n(.*?)```", text, re.DOTALL)
@@ -131,13 +135,23 @@ def parse_revision_block(text: str):
         return None
     heading = lines[0].strip()
     description = ""
+    image_brief = ""
     bullets = []
     for line in lines[1:]:
         stripped = line.strip()
         if stripped.startswith(("- ", "* ", "• ")):
             bullets.append(stripped[2:].strip())
+        elif re.match(r"^(?:visual|gambar|image)\s*:", stripped, re.IGNORECASE):
+            image_brief = re.sub(
+                r"^(?:visual|gambar|image)\s*:\s*", "", stripped, flags=re.IGNORECASE
+            ).strip()
         elif not description:
             description = stripped
         else:
             bullets.append(stripped)
-    return {"heading": heading, "description": description, "bullets": bullets}
+    return {
+        "heading": heading,
+        "description": description,
+        "imageBrief": image_brief,
+        "bullets": bullets,
+    }

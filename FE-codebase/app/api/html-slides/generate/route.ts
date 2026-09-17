@@ -17,6 +17,13 @@ import { NextRequest } from "next/server";
 import { generateDeck } from "@/lib/html-slides/deck-pipeline.js";
 import { DEFAULT_HTML_THEME_ID, normalizeHtmlThemeId } from "@/lib/generation-mode";
 import { readHtmlTheme } from "@/lib/html-themes/server/store";
+import { createPhotoResolver } from "@/lib/html-slides/photo-resolver";
+import { generateImage } from "@/lib/api";
+import { resolveImageModelId } from "@/lib/image-models";
+import {
+  searchStockImagesWithFallback,
+  trackUnsplashDownload,
+} from "@/lib/stock-image-providers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,6 +35,8 @@ type Body = {
   slideCount?: unknown;
   theme?: unknown;
   provider?: unknown;
+  imageSource?: unknown;
+  imageModel?: unknown;
 };
 
 export async function POST(request: NextRequest) {
@@ -50,6 +59,24 @@ export async function POST(request: NextRequest) {
       ? Math.round(body.slideCount)
       : 5;
   const provider = typeof body.provider === "string" ? body.provider : undefined;
+  const imageSource = body.imageSource === "stock" ? "stock" : "ai";
+  const imageModel = resolveImageModelId(
+    typeof body.imageModel === "string" ? body.imageModel : undefined,
+  );
+  const sessionToken = request.headers.get("x-session-token") ?? "";
+  if (imageSource === "ai" && !sessionToken) {
+    return Response.json({ error: "x-session-token is required for AI images" }, { status: 401 });
+  }
+  const resolvePhoto = createPhotoResolver({
+    imageSource,
+    sessionToken,
+    imageModel,
+    generateAi: generateImage,
+    searchStock: searchStockImagesWithFallback,
+    trackStockDownload: async (downloadLocation) => {
+      await trackUnsplashDownload(downloadLocation);
+    },
+  });
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -63,6 +90,7 @@ export async function POST(request: NextRequest) {
           slideCount,
           theme,
           provider,
+          resolvePhoto,
           onEvent: send,
         });
         send({ type: "done", title: deck.title, count: deck.slides.length });

@@ -85,3 +85,32 @@ test("rejects a done count that falls short of the caller's requested deck size"
     },
   );
 });
+
+test("forwards the selected image source, model, and session to HTML generation", async () => {
+  const originalFetch = globalThis.fetch;
+  let captured;
+  globalThis.fetch = async (_url, init) => {
+    captured = init;
+    return responseFor([{ type: "done", title: "Test", count: 0 }]);
+  };
+  try {
+    await streamHtmlDeck(
+      {
+        topic: "test",
+        imageSource: "ai",
+        imageModel: "runware-premium",
+        sessionToken: "session-123",
+      },
+      () => {},
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(captured.headers["x-session-token"], "session-123");
+  assert.deepEqual(JSON.parse(captured.body), {
+    topic: "test",
+    imageSource: "ai",
+    imageModel: "runware-premium",
+  });
+});

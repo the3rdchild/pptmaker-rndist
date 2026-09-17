@@ -1209,6 +1209,7 @@ export default function EditorReactClient({
     topic: string,
     themeId: string,
     provider?: string,
+    imageSource: "ai" | "stock" = "ai",
   ): Promise<number> => {
     if (!token) return 0;
     const plannedSlideCount = (topic.match(/^##\s+\S/gm) ?? []).length;
@@ -1224,6 +1225,9 @@ export default function EditorReactClient({
         topic,
         theme: themeId,
         provider,
+        imageSource,
+        imageModel: imageModelRef.current,
+        sessionToken: token,
         slideCount: plannedSlideCount > 0 ? plannedSlideCount : undefined,
       },
       (event) => {
@@ -1261,6 +1265,7 @@ export default function EditorReactClient({
           // Same class of problem the vision review reports in template mode,
           // except the DOM measured it exactly. Surfaced, not fatal.
           console.warn(`[html-slides] slide ${event.slide}: ${event.message}`);
+          notify.warning(`Slide ${event.slide} perlu dicek`, event.message);
         }
       },
     );
@@ -2217,7 +2222,7 @@ export default function EditorReactClient({
     // engine the user actually chose rather than silently falling back.
     const build =
       modeFromParams(searchParams) === "html"
-        ? generateDeckFromHtml(topic, htmlThemeFromParams(searchParams), model)
+        ? generateDeckFromHtml(topic, htmlThemeFromParams(searchParams), model, imageSource)
         : generateDeckFromTopic(topic, language, model, withReview, providers, imageSource, pinnedThemeId);
     build
       .then((built) => {

@@ -26,6 +26,9 @@ export interface StockImageResult {
   creditUrl?: string;
   /** Link back to the photo page on the provider. */
   sourceUrl: string;
+  /** Provider-supplied semantic metadata used to reject unrelated photos. */
+  description?: string;
+  tags?: string[];
   /** Unsplash only — MUST be pinged when the photo is actually used. */
   downloadLocation?: string;
 }
@@ -73,6 +76,29 @@ export interface StockImageSearchResponse {
 
 export interface StockImageSearchResult extends StockImageSearchResponse {
   provider: StockImageProviderId;
+}
+
+/** Records an Unsplash download after a photo has actually been committed to
+ * a slide. The exact host check prevents attaching the API key to arbitrary
+ * URLs when this is called from server-side generation. */
+export async function trackUnsplashDownload(downloadLocation: string): Promise<boolean> {
+  let parsed: URL;
+  try {
+    parsed = new URL(downloadLocation);
+  } catch {
+    return false;
+  }
+  if (parsed.hostname !== "api.unsplash.com") return false;
+  const key = forKey("unsplash");
+  if (!key) return false;
+  try {
+    const response = await fetch(parsed, {
+      headers: { Authorization: `Client-ID ${key}` },
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
 
 /** Searches `preferredId` first (when it's configured), then falls through
@@ -123,6 +149,20 @@ export async function searchStockImages(
 
 type Rec = Record<string, unknown>;
 
+function normalizedTags(value: unknown): string[] {
+  if (typeof value === "string") {
+    return value.split(",").map((tag) => tag.trim()).filter(Boolean);
+  }
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((tag) => {
+    if (typeof tag === "string") return tag;
+    if (tag && typeof tag === "object" && "title" in tag) {
+      return String((tag as Rec).title ?? "");
+    }
+    return [];
+  }).filter(Boolean);
+}
+
 async function searchPexels(
   query: string,
   opts: StockImageSearchOptions,
@@ -154,6 +194,7 @@ async function searchPexels(
         credit: String(p.photographer ?? ""),
         creditUrl: p.photographer_url ? String(p.photographer_url) : undefined,
         sourceUrl: String(p.url ?? ""),
+        description: p.alt ? String(p.alt) : undefined,
       };
     }),
     total: Number(data.total_results) || photos.length,
@@ -199,6 +240,12 @@ async function searchUnsplash(
         credit: String(user.name ?? ""),
         creditUrl: userLinks.html ? String(userLinks.html) : undefined,
         sourceUrl: String(links.html ?? ""),
+        description: p.description
+          ? String(p.description)
+          : p.alt_description
+            ? String(p.alt_description)
+            : undefined,
+        tags: normalizedTags(p.tags),
         downloadLocation: links.download_location
           ? String(links.download_location)
           : undefined,
@@ -236,6 +283,8 @@ async function searchPixabay(
       height: Number(p.imageHeight) || 0,
       credit: String(p.user ?? ""),
       sourceUrl: String(p.pageURL ?? ""),
+      description: p.tags ? String(p.tags) : undefined,
+      tags: normalizedTags(p.tags),
     })),
     total: Number(data.totalHits) || hits.length,
   };

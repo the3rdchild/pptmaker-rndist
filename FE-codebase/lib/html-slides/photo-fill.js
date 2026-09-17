@@ -50,10 +50,6 @@ async function findPhoto(brief) {
       url = null;
     }
   }
-  if (!url) {
-    const seed = encodeURIComponent(brief.slice(0, 40));
-    url = `https://picsum.photos/seed/${seed}/1200/800`;
-  }
   cache.set(brief, url);
   return url;
 }
@@ -64,6 +60,10 @@ function attributes(tag) {
     out[match[1]] = match[2];
   }
   return out;
+}
+
+function escapeAttribute(value) {
+  return String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 }
 
 /** Makes a generated full-bleed photo deterministic. The model is invited to
@@ -80,24 +80,37 @@ export function ensureThemeBackgroundPlaceholder(sectionHtml, brief) {
   );
 }
 
-export async function fillPhotos(sectionHtml) {
+export async function fillPhotos(sectionHtml, { resolvePhoto = findPhoto, photoContext } = {}) {
   const placeholder = /<div([^>]*\bclass\s*=\s*"[^"]*\bphoto\b[^"]*"[^>]*)>\s*<\/div>/gi;
   const briefs = [];
   for (const match of sectionHtml.matchAll(placeholder)) {
     briefs.push(attributes(match[1])["data-brief"] || "abstract background texture");
   }
-  const urls = await Promise.all(briefs.map(findPhoto));
+  const resolvedPhotos = await Promise.all(
+    briefs.map((brief) => resolvePhoto(brief, photoContext)),
+  );
+  const unresolved = briefs.filter((_brief, briefIndex) => !resolvedPhotos[briefIndex]);
 
   let index = 0;
-  const filled = sectionHtml.replace(placeholder, (_full, attrs) => {
+  const filled = sectionHtml.replace(placeholder, (full, attrs) => {
     const parsed = attributes(attrs);
     const brief = parsed["data-brief"] || "abstract background texture";
+    const resolved = resolvedPhotos[index++];
+    if (!resolved) return full;
+    const url = typeof resolved === "string" ? resolved : resolved.url;
+    const extra = typeof resolved === "string" ? null : resolved.extra;
+    if (!url) return full;
     const style = parsed.style ? ` style="${parsed.style}"` : "";
     const className = parsed.class || "photo";
     const themeBackground = /\bdata-theme-background(?:\s|=|>)/i.test(attrs) ? " data-theme-background" : "";
     const themeOverlay = parsed["data-theme-overlay"] ? ` data-theme-overlay="${parsed["data-theme-overlay"]}"` : "";
-    return `<img class="${className}" data-brief="${brief}"${themeBackground}${themeOverlay}${style} src="${urls[index++]}" alt="">`;
+    const attribution = [
+      extra?.credit ? ` data-credit="${escapeAttribute(extra.credit)}"` : "",
+      extra?.credit_url ? ` data-credit-url="${escapeAttribute(extra.credit_url)}"` : "",
+      extra?.source_url ? ` data-source-url="${escapeAttribute(extra.source_url)}"` : "",
+    ].join("");
+    return `<img class="${className}" data-brief="${escapeAttribute(brief)}"${themeBackground}${themeOverlay}${attribution}${style} src="${escapeAttribute(url)}" alt="">`;
   });
 
-  return { html: filled, count: briefs.length };
+  return { html: filled, count: briefs.length - unresolved.length, unresolved };
 }

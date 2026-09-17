@@ -21,6 +21,8 @@ import { buildSafeFallbackFragment } from "./safe-fallback.js";
 import { buildSlidePrompt } from "./slide-prompt.js";
 import { buildSlideDocument, parseFragment } from "./slide-document.js";
 
+/** @typedef {{url: string, extra?: {credit?: string, credit_url?: string|null, source_url?: string}}} ResolvedPhoto */
+
 export async function mapWithConcurrency(items, limit, mapper) {
   if (!Number.isInteger(limit) || limit < 1) throw new Error("limit must be a positive integer");
   const results = new Array(items.length);
@@ -39,6 +41,17 @@ export async function mapWithConcurrency(items, limit, mapper) {
   return results;
 }
 
+/** Resolves image placeholders only after a fragment has passed layout review.
+ * This prevents AI-image charges and stock tracking pings from repeating on
+ * discarded repair attempts. */
+export async function resolveAcceptedFragmentPhotos(fragment, resolvePhoto, photoContext) {
+  const { html, unresolved } = await fillPhotos(
+    fragment.sectionHtml,
+    resolvePhoto ? { resolvePhoto, photoContext } : undefined,
+  );
+  return { ...fragment, sectionHtml: html, unresolvedPhotos: unresolved };
+}
+
 /**
  * @param {object} options
  * @param {string} options.topic Free-text prompt, or the approved outline markdown.
@@ -46,6 +59,7 @@ export async function mapWithConcurrency(items, limit, mapper) {
  * @param {object} options.theme A validated persisted HTML theme.
  * @param {string} [options.provider] Falls back to the first configured one.
  * @param {string|null} [options.outDir] Keeps the HTML and PNGs; a temp dir otherwise.
+ * @param {(brief: string, context?: {slideNumber?: number, heading?: string, subject?: string}) => Promise<string|ResolvedPhoto|null>} [options.resolvePhoto]
  * @param {(event: Record<string, unknown>) => void} [options.onEvent]
  */
 export async function generateDeck({
@@ -53,6 +67,7 @@ export async function generateDeck({
   slideCount = 5,
   theme,
   provider,
+  resolvePhoto,
   outDir = null,
   onEvent = () => {},
 }) {
@@ -105,8 +120,7 @@ export async function generateDeck({
               `cinematic documentary photograph for ${slide.heading}: ${slide.visual || slide.brief}`,
             )
           : fragment.sectionHtml;
-        const { html } = await fillPhotos(sectionHtml);
-        return { ...fragment, sectionHtml: html };
+        return { ...fragment, sectionHtml };
       };
 
     const renderSingleSlide = async (htmlPath, index) => {
@@ -143,8 +157,8 @@ export async function generateDeck({
       }
 
       if (!assessment.ok) {
-        const fallback = buildSafeFallbackFragment({ slide, index, total: outline.slides.length });
-        writeFileSync(htmlPath, buildSlideDocument(theme, fallback), "utf8");
+        fragment = buildSafeFallbackFragment({ slide, index, total: outline.slides.length });
+        writeFileSync(htmlPath, buildSlideDocument(theme, fragment), "utf8");
         ({ slide: rendered, warnings } = await renderSingleSlide(htmlPath, index));
         assessment = assessSlideLayout({
           elements: rendered.ui.elements,
@@ -152,6 +166,30 @@ export async function generateDeck({
         });
         if (!assessment.ok) throw new Error(`Safe fallback for slide ${index + 1} failed layout validation: ${assessment.feedback}`);
         onEvent({ type: "warning", slide: index + 1, message: "AI layout was replaced with a safe bounded layout." });
+      }
+
+      // The accepted geometry is now stable. Resolve its photos exactly once,
+      // then extract the final editor elements with image metadata included.
+      fragment = await resolveAcceptedFragmentPhotos(fragment, resolvePhoto, {
+        slideNumber: index + 1,
+        heading: slide.heading,
+        subject: slide.visual || slide.brief,
+      });
+      writeFileSync(htmlPath, buildSlideDocument(theme, fragment), "utf8");
+      ({ slide: rendered, warnings } = await renderSingleSlide(htmlPath, index));
+      assessment = assessSlideLayout({
+        elements: rendered.ui.elements,
+        warnings: warnings.map((warning) => warning.message),
+      });
+      if (!assessment.ok) {
+        throw new Error(`Resolved images made slide ${index + 1} fail layout validation: ${assessment.feedback}`);
+      }
+
+      if (fragment.unresolvedPhotos?.length) {
+        warnings.push({
+          slide: index + 1,
+          message: `No relevant image was found for: ${fragment.unresolvedPhotos.join("; ")}`,
+        });
       }
 
       const ui = rendered.ui;

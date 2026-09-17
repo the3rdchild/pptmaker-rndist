@@ -429,6 +429,9 @@ export function extractSlide() {
       is_frame: true,
     };
     if (el.dataset.brief) image.prompt = el.dataset.brief;
+    if (el.dataset.credit) image.credit = el.dataset.credit;
+    if (el.dataset.creditUrl) image.credit_url = el.dataset.creditUrl;
+    if (el.dataset.sourceUrl) image.source_url = el.dataset.sourceUrl;
     if (radius) image.border_radius = radius;
     return image;
   }

@@ -29,15 +29,59 @@ test("adds a generated background when the model uses single quotes", () => {
 });
 
 test("preserves the theme-background marker while filling its photo", async () => {
-  const previousKey = process.env.UNSPLASH_ACCESS_KEY;
-  const previousFetch = global.fetch;
-  process.env.UNSPLASH_ACCESS_KEY = "test-key";
-  global.fetch = async () => ({ ok: true, json: async () => ({ results: [{ urls: { regular: "https://example.test/forest.jpg" } }] }) });
-  try {
-    const result = await fillPhotos('<section class="slide"><div class="photo theme-background" data-theme-background="true" data-theme-overlay="0.42" data-brief="forest river"></div></section>');
-    assert.match(result.html, /<img class="photo theme-background"[^>]*data-theme-background/);
-  } finally {
-    process.env.UNSPLASH_ACCESS_KEY = previousKey;
-    global.fetch = previousFetch;
-  }
+  const result = await fillPhotos(
+    '<section class="slide"><div class="photo theme-background" data-theme-background="true" data-theme-overlay="0.42" data-brief="forest river"></div></section>',
+    { resolvePhoto: async () => "https://example.test/forest.jpg" },
+  );
+  assert.match(result.html, /<img class="photo theme-background"[^>]*data-theme-background/);
+});
+
+test("keeps an unresolved placeholder instead of inserting an unrelated random photo", async () => {
+  const original = '<section class="slide"><div class="photo" data-brief="specific mangrove restoration fieldwork"></div></section>';
+  const result = await fillPhotos(original, { resolvePhoto: async () => null });
+
+  assert.equal(result.html, original);
+  assert.deepEqual(result.unresolved, ["specific mangrove restoration fieldwork"]);
+  assert.doesNotMatch(result.html, /picsum\.photos/);
+});
+
+test("carries stock attribution into the extracted image markup", async () => {
+  const result = await fillPhotos(
+    '<section class="slide"><div class="photo" data-brief="coffee farmer"></div></section>',
+    {
+      resolvePhoto: async () => ({
+        url: "https://example.test/coffee.jpg",
+        extra: {
+          credit: "Ayu Photo",
+          credit_url: "https://photos.test/ayu",
+          source_url: "https://photos.test/image/1",
+        },
+      }),
+    },
+  );
+
+  assert.match(result.html, /data-credit="Ayu Photo"/);
+  assert.match(result.html, /data-credit-url="https:\/\/photos\.test\/ayu"/);
+  assert.match(result.html, /data-source-url="https:\/\/photos\.test\/image\/1"/);
+});
+
+test("passes authoritative slide context to every photo placeholder", async () => {
+  const received = [];
+  const photoContext = {
+    slideNumber: 3,
+    heading: "Jenis-Jenis Permainan Biliar",
+    subject: "Pool, snooker, dan carom di arena biliar",
+  };
+  await fillPhotos(
+    '<section class="slide"><div class="photo" data-brief="three billiards tables"></div></section>',
+    {
+      photoContext,
+      resolvePhoto: async (brief, context) => {
+        received.push({ brief, context });
+        return "https://example.test/billiards.jpg";
+      },
+    },
+  );
+
+  assert.deepEqual(received, [{ brief: "three billiards tables", context: photoContext }]);
 });

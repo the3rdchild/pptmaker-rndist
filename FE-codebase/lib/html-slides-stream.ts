@@ -15,6 +15,9 @@ export interface HtmlDeckRequest {
   slideCount?: number;
   theme?: string;
   provider?: string;
+  imageSource?: "ai" | "stock";
+  imageModel?: string;
+  sessionToken?: string;
   signal?: AbortSignal;
 }
 
@@ -23,13 +26,23 @@ export interface HtmlDeckRequest {
  *  slide it promised; a dropped response must not look like a ready deck.
  *  Throws on an `error` line so the caller's existing failure UI applies. */
 export async function streamHtmlDeck(
-  { topic, slideCount, theme, provider, signal }: HtmlDeckRequest,
+  { topic, slideCount, theme, provider, imageSource, imageModel, sessionToken, signal }: HtmlDeckRequest,
   onEvent: (event: HtmlSlideEvent) => void,
 ): Promise<number> {
   const response = await fetch("/api/html-slides/generate", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ topic, slideCount, theme, provider }),
+    headers: {
+      "Content-Type": "application/json",
+      ...(sessionToken ? { "x-session-token": sessionToken } : {}),
+    },
+    body: JSON.stringify({
+      topic,
+      ...(slideCount == null ? {} : { slideCount }),
+      ...(theme == null ? {} : { theme }),
+      ...(provider == null ? {} : { provider }),
+      ...(imageSource == null ? {} : { imageSource }),
+      ...(imageModel == null ? {} : { imageModel }),
+    }),
     signal,
   });
 

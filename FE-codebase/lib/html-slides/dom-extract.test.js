@@ -94,7 +94,7 @@ test("extracts absolutely positioned descendants from a zero-height wrapper", as
       <section class="slide">
         <section class="collage">
           <div class="tile">
-            <img class="photo" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='160'%3E%3Crect width='240' height='160' fill='blue'/%3E%3C/svg%3E">
+            <img class="photo" data-credit="Ayu Photo" data-credit-url="https://photos.test/ayu" data-source-url="https://photos.test/image/1" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='160'%3E%3Crect width='240' height='160' fill='blue'/%3E%3C/svg%3E">
             <div class="label"><p>Absolute card</p></div>
           </div>
         </section>
@@ -110,6 +110,10 @@ test("extracts absolutely positioned descendants from a zero-height wrapper", as
       extracted.elements.filter((element) => element.type === "image").length,
       1,
     );
+    const imageElement = extracted.elements.find((element) => element.type === "image");
+    assert.equal(imageElement.credit, "Ayu Photo");
+    assert.equal(imageElement.credit_url, "https://photos.test/ayu");
+    assert.equal(imageElement.source_url, "https://photos.test/image/1");
     assert.equal(
       extracted.elements
         .filter((element) => element.type === "text")

@@ -199,14 +199,47 @@ export function createPhotoResolver({
   searchStock: SearchStock;
   trackStockDownload?: (downloadLocation: string) => Promise<void>;
 }): (brief: string, context?: PhotoContext) => Promise<ResolvedPhoto | null> {
-  if (imageSource === "ai") {
-    return async (brief, context) => {
-      if (!sessionToken) return null;
-      const prompt = `${authoritativePrompt(brief, context)}. editorial photograph, cinematic natural lighting, cohesive color grading, no text, no watermark, no logo`;
+  const resolveWithAi = async (
+    brief: string,
+    context?: PhotoContext,
+    fallbackReason?: string,
+  ): Promise<ResolvedPhoto | null> => {
+    if (!sessionToken) {
+      logResolution("ai", brief, context, {
+        outcome: fallbackReason ? "fallback-skipped" : "generation-skipped",
+        fallbackReason,
+        reason: "missing-session",
+        model: imageModel,
+        resolved: false,
+      });
+      return null;
+    }
+    const prompt = `${authoritativePrompt(brief, context)}. editorial photograph, cinematic natural lighting, cohesive color grading, no text, no watermark, no logo`;
+    try {
       const url = await generateAi(sessionToken, prompt, { model: imageModel, size: "1344x768" });
-      logResolution("ai", brief, context, { model: imageModel, resolved: Boolean(url) });
+      logResolution("ai", brief, context, {
+        outcome: fallbackReason
+          ? url ? "fallback-resolved" : "fallback-no-image"
+          : url ? "resolved" : "no-image",
+        fallbackReason,
+        model: imageModel,
+        resolved: Boolean(url),
+      });
       return url ? { url } : null;
-    };
+    } catch (error) {
+      logResolution("ai", brief, context, {
+        outcome: fallbackReason ? "fallback-error" : "generation-error",
+        fallbackReason,
+        model: imageModel,
+        resolved: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  };
+
+  if (imageSource === "ai") {
+    return resolveWithAi;
   }
 
   return async (brief, context) => {
@@ -214,7 +247,7 @@ export function createPhotoResolver({
     const query = simplifyPhotoSearchQuery(brief, authoritativeText);
     if (!query) {
       logResolution("stock", brief, context, { outcome: "empty-query", resolved: false });
-      return null;
+      return resolveWithAi(brief, context, "empty-query");
     }
     try {
       const result = await searchStock(null, query, { page: 1, perPage: 8 });
@@ -238,7 +271,7 @@ export function createPhotoResolver({
           bestSubjectScore: photo?.subjectScore,
           bestGuidanceScore: photo?.guidanceScore,
         });
-        return null;
+        return resolveWithAi(brief, context, "no-relevant-result");
       }
       const selectedProvider = photo.provider || result.provider;
       logResolution("stock", brief, context, {
@@ -274,7 +307,7 @@ export function createPhotoResolver({
         provider: "configured-fallback-chain",
         error: error instanceof Error ? error.message : String(error),
       });
-      return null;
+      return resolveWithAi(brief, context, "search-error");
     }
   };
 }

@@ -88,11 +88,15 @@ test("AI image resolution treats the approved slide visual as authoritative", as
 test("stock resolution searches concise content keywords instead of a full instruction", async () => {
   assert.equal(typeof createPhotoResolver, "function");
   let query = "";
+  let aiCalls = 0;
   const tracked: string[] = [];
   const resolvePhoto = createPhotoResolver!({
     imageSource: "stock",
-    sessionToken: "",
-    generateAi: async () => null,
+    sessionToken: "session-123",
+    generateAi: async () => {
+      aiCalls += 1;
+      return "data:image/png;base64,unexpected";
+    },
     searchStock: async (_preferred: null, receivedQuery: string) => {
       query = receivedQuery;
       return { results: [{
@@ -119,6 +123,7 @@ test("stock resolution searches concise content keywords instead of a full instr
     },
   );
   assert.equal(query, "friendly barista pouring coffee modern cafe");
+  assert.equal(aiCalls, 0);
   assert.deepEqual(tracked, ["https://api.unsplash.com/photos/1/download"]);
 });
 
@@ -340,6 +345,105 @@ test("stock resolution leaves the slot unresolved when no result matches the sli
   );
 });
 
+test("stock resolution falls back to AI when no result matches the slide subject", async () => {
+  assert.equal(typeof createPhotoResolver, "function");
+  let received: Record<string, unknown> | undefined;
+  const resolvePhoto = createPhotoResolver!({
+    imageSource: "stock",
+    sessionToken: "session-123",
+    imageModel: "runware-premium",
+    generateAi: async (token: string, prompt: string, options: Record<string, unknown>) => {
+      received = { token, prompt, options };
+      return "data:image/png;base64,fallback";
+    },
+    searchStock: async () => ({ provider: "unsplash", results: [] }),
+  });
+
+  assert.deepEqual(
+    await resolvePhoto(
+      "Overhead food photograph with negative space on the left",
+      {
+        slideNumber: 2,
+        heading: "Ayam Goreng Rempah",
+        subject: "Ayam goreng berbumbu di atas piring keramik di meja restoran",
+      },
+    ),
+    { url: "data:image/png;base64,fallback" },
+  );
+  assert.deepEqual(received, {
+    token: "session-123",
+    prompt: "Ayam goreng berbumbu di atas piring keramik di meja restoran. Composition guidance: Overhead food photograph with negative space on the left. editorial photograph, cinematic natural lighting, cohesive color grading, no text, no watermark, no logo",
+    options: { model: "runware-premium", size: "1344x768" },
+  });
+});
+
+test("stock fallback logs when AI generation is skipped without a session", async () => {
+  assert.equal(typeof createPhotoResolver, "function");
+  const entries: string[] = [];
+  const previousInfo = console.info;
+  console.info = (...args: unknown[]) => { entries.push(args.map(String).join(" ")); };
+  try {
+    const resolvePhoto = createPhotoResolver!({
+      imageSource: "stock",
+      sessionToken: "",
+      generateAi: async () => "data:image/png;base64,unexpected",
+      searchStock: async () => ({ provider: "unsplash", results: [] }),
+    });
+
+    assert.equal(await resolvePhoto("restaurant food", { subject: "Ayam goreng di meja restoran" }), null);
+  } finally {
+    console.info = previousInfo;
+  }
+
+  assert.equal(entries.length, 2);
+  assert.match(entries[1], /"source":"ai"/);
+  assert.match(entries[1], /"outcome":"fallback-skipped"/);
+  assert.match(entries[1], /"reason":"missing-session"/);
+});
+
+test("stock fallback logs when AI returns no image", async () => {
+  assert.equal(typeof createPhotoResolver, "function");
+  const entries: string[] = [];
+  const previousInfo = console.info;
+  console.info = (...args: unknown[]) => { entries.push(args.map(String).join(" ")); };
+  try {
+    const resolvePhoto = createPhotoResolver!({
+      imageSource: "stock",
+      sessionToken: "session-123",
+      generateAi: async () => null,
+      searchStock: async () => ({ provider: "unsplash", results: [] }),
+    });
+
+    assert.equal(await resolvePhoto("restaurant food", { subject: "Ayam goreng di meja restoran" }), null);
+  } finally {
+    console.info = previousInfo;
+  }
+
+  assert.equal(entries.length, 2);
+  assert.match(entries[1], /"outcome":"fallback-no-image"/);
+  assert.match(entries[1], /"resolved":false/);
+});
+
+test("stock provider errors fall back to AI exactly once", async () => {
+  assert.equal(typeof createPhotoResolver, "function");
+  let aiCalls = 0;
+  const resolvePhoto = createPhotoResolver!({
+    imageSource: "stock",
+    sessionToken: "session-123",
+    generateAi: async () => {
+      aiCalls += 1;
+      return "data:image/png;base64,provider-error-fallback";
+    },
+    searchStock: async () => { throw new Error("provider timeout"); },
+  });
+
+  assert.deepEqual(
+    await resolvePhoto("restaurant food", { subject: "Ayam goreng di meja restoran" }),
+    { url: "data:image/png;base64,provider-error-fallback" },
+  );
+  assert.equal(aiCalls, 1);
+});
+
 test("returns null when the selected provider cannot produce a relevant image", async () => {
   assert.equal(typeof createPhotoResolver, "function");
   const resolvePhoto = createPhotoResolver!({
@@ -374,9 +478,11 @@ test("logs structured context when stock search throws", async () => {
     console.info = previousInfo;
   }
 
-  assert.equal(entries.length, 1);
+  assert.equal(entries.length, 2);
   assert.match(entries[0], /"slide":4/);
   assert.match(entries[0], /"approvedVisual":"Pemain biliar melakukan bridge tangan terbuka"/);
   assert.match(entries[0], /"outcome":"search-error"/);
   assert.match(entries[0], /provider timeout/);
+  assert.match(entries[1], /"outcome":"fallback-skipped"/);
+  assert.match(entries[1], /"reason":"missing-session"/);
 });

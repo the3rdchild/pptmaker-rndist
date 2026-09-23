@@ -3,16 +3,13 @@
 // of source resolution. Deterministic (no Math.random) so re-extracting the
 // same image gives the same palette.
 
+import { rgbToHex } from "@/lib/color-conversion";
+
 const SAMPLE_SIZE = 48;
 const MAX_ITERATIONS = 12;
 const MIN_ALPHA = 32;
 
 type Rgb = [number, number, number];
-
-function rgbToHex([r, g, b]: Rgb): string {
-  const toByte = (v: number) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
-  return `#${toByte(r)}${toByte(g)}${toByte(b)}`.toUpperCase();
-}
 
 async function loadPixels(src: string): Promise<Uint8ClampedArray> {
   const response = await fetch(src);

@@ -10,6 +10,7 @@ import {
   readNumber,
   readBoolean,
 } from "@/components/slide-editor/model/core";
+import { withHash } from "@/lib/color-conversion";
 
 type UnknownRecord = Record<string, any>;
 
@@ -1379,7 +1380,3 @@ function stripUndefined<T extends UnknownRecord>(value: T): T {
   ) as T;
 }
 
-function withHash(value: string | null | undefined) {
-  if (!value) return undefined;
-  return value.startsWith("#") || value.startsWith("rgb") ? value : `#${value}`;
-}

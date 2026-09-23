@@ -26,6 +26,7 @@ import {
   withHash,
   type RawElement,
 } from "@/components/slide-editor/model/core";
+import { contrastRatio } from "@/lib/color-conversion";
 
 type RawChartPoint = {
   x: number;
@@ -1609,12 +1610,6 @@ function relativeLuminance(channels: number[]) {
       : ((normalized + 0.055) / 1.055) ** 2.4;
   });
   return red * 0.2126 + green * 0.7152 + blue * 0.0722;
-}
-
-function contrastRatio(first: number, second: number) {
-  const lighter = Math.max(first, second);
-  const darker = Math.min(first, second);
-  return (lighter + 0.05) / (darker + 0.05);
 }
 
 function formatChartValue(value: number) {

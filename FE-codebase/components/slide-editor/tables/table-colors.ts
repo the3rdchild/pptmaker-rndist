@@ -1,3 +1,5 @@
+import { contrastRatio } from "@/lib/color-conversion";
+
 export function readableTableTextColor(
   color: string | null | undefined,
   fill: string | null | undefined,
@@ -10,12 +12,6 @@ export function readableTableTextColor(
   const contrast = contrastRatio(textLuminance, fillLuminance);
   if (contrast >= 3) return textColor;
   return fillLuminance > 0.5 ? "#111827" : "#FFFFFF";
-}
-
-function contrastRatio(left: number, right: number) {
-  const lighter = Math.max(left, right);
-  const darker = Math.min(left, right);
-  return (lighter + 0.05) / (darker + 0.05);
 }
 
 function colorLuminance(color: string | null | undefined) {

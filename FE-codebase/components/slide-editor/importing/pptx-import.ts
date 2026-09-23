@@ -39,6 +39,7 @@ import {
   loadGoogleFontOptions,
 } from "@/components/slide-editor/text/google-fonts";
 import { getGlobalFonts } from "@/lib/fonts/global-fonts";
+import { rgbToHex } from "@/lib/color-conversion";
 
 type Rec = Record<string, unknown>;
 
@@ -1953,10 +1954,6 @@ function hexToRgb(hex: string): [number, number, number] {
     parseInt(full.slice(2, 4), 16) || 0,
     parseInt(full.slice(4, 6), 16) || 0,
   ];
-}
-
-function rgbToHex(rgb: [number, number, number] | number[]): string {
-  return `#${rgb.map((c) => clampByte(c).toString(16).padStart(2, "0")).join("").toUpperCase()}`;
 }
 
 function rgbToHsl([r, g, b]: [number, number, number]): [number, number, number] {

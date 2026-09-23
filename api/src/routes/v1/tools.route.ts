@@ -19,6 +19,9 @@ const outlineSchema = z.object({
 	// and tables it contains. Passed through untouched, same as `manifest` —
 	// the worker decides how it enters the prompt.
 	source: z.string().max(200_000).optional(),
+	// The homepage "Transisi" toggle: the worker also plans how the deck moves
+	// into each slide (morph first) and writes it as a Transition: line.
+	transitions: z.boolean().optional(),
 })
 const aipptSchema = z.object({
 	content: z.string(),
@@ -258,6 +261,7 @@ tools.post('/aippt_outline', async (c) => {
 			model: parsed.data.model,
 			slideCount: parsed.data.slideCount,
 			source: parsed.data.source,
+			transitions: parsed.data.transitions ?? false,
 			stream_mode: 'raw',
 		}, (text) => {
 			s.write(text).catch(() => {})

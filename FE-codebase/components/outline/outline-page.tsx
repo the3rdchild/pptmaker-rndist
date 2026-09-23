@@ -44,6 +44,8 @@ import { useTemplateThemes } from "@/components/editor-react/theme-picker";
 import { LazyLayoutThumbnail } from "@/components/editor-react/lazy-layout-thumbnail";
 import { HtmlThemePicker } from "@/components/html-theme/html-theme-picker";
 import { OutlineChat } from "./outline-chat";
+import { OutlineTransitionChip, OutlineTransitionField } from "./outline-transition-field";
+import { TRANSITIONS_PARAM, transitionsFromParams } from "@/lib/transition-preference";
 import { Button } from "@/components/shared/button";
 import {
   SourceDocAttach,
@@ -75,6 +77,7 @@ export function OutlinePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const generationMode = modeFromParams(searchParams);
+  const transitionsOn = transitionsFromParams(searchParams);
   const token = useSessionStore((s) => s.token);
   const sessionReady = useSessionStore((s) => s.ready);
 
@@ -146,6 +149,7 @@ export function OutlinePage() {
         language,
         model: searchParams.get("gen") ?? undefined,
         slideCount,
+        transitions: transitionsOn,
       });
       if (!(res instanceof Response)) {
         setStreamError(res.message || "Gagal membuat outline");
@@ -177,7 +181,7 @@ export function OutlinePage() {
     } finally {
       setStreaming(false);
     }
-  }, [token, prompt, language, pageCountId, searchParams]);
+  }, [token, prompt, language, pageCountId, searchParams, transitionsOn]);
 
   // Auto-start once the session is ready. The ref guard mirrors the editor's
   // autoGenerateRan — React StrictMode double-invokes effects in dev.
@@ -320,7 +324,7 @@ export function OutlinePage() {
       // them again, both for the prose and to resolve figure/table ids.
       if (sourceDocs.ids) qs.set(SOURCE_PARAM, sourceDocs.ids);
       // Forward the homepage's provider/review/image/mode choices untouched.
-      for (const key of ["gen", "verify", "repair", "review", "images", "image-model", MODE_PARAM]) {
+      for (const key of ["gen", "verify", "repair", "review", "images", "image-model", MODE_PARAM, TRANSITIONS_PARAM]) {
         const v = searchParams.get(key);
         if (v) qs.set(key, v);
       }
@@ -464,10 +468,12 @@ export function OutlinePage() {
               strategy={verticalListSortingStrategy}
             >
               <div className="flex flex-col gap-2.5">
-                {outline.pages.map((page) => (
+                {outline.pages.map((page, pageIndex) => (
                   <SortableOutlineCard
                     key={page.id}
                     page={page}
+                    transitionsOn={transitionsOn}
+                    isFirst={pageIndex === 0}
                     expanded={page.id === expandedId}
                     disabled={streaming}
                     onToggle={() =>
@@ -672,6 +678,8 @@ function PillDropdown({
 
 function SortableOutlineCard({
   page,
+  transitionsOn,
+  isFirst,
   expanded,
   disabled,
   onToggle,
@@ -683,6 +691,8 @@ function SortableOutlineCard({
   onTextSelected,
 }: {
   page: OutlinePageModel;
+  transitionsOn: boolean;
+  isFirst: boolean;
   expanded: boolean;
   disabled: boolean;
   onToggle: () => void;
@@ -753,6 +763,7 @@ function SortableOutlineCard({
             <span className="text-[var(--text-muted)]">Slide tanpa judul…</span>
           )}
         </span>
+        {transitionsOn && !isFirst && <OutlineTransitionChip transition={page.transition} />}
         {expanded ? (
           <ChevronUp className="h-4 w-4 shrink-0 text-[var(--text-muted)]" />
         ) : (
@@ -794,6 +805,16 @@ function SortableOutlineCard({
               className="w-full resize-none bg-transparent text-sm text-[var(--text-secondary)] outline-none placeholder:text-[var(--text-muted)]"
             />
           </label>
+
+          {transitionsOn && (
+            <OutlineTransitionField
+              isFirst={isFirst}
+              transition={page.transition}
+              note={page.transitionNote}
+              disabled={disabled}
+              onChange={onUpdate}
+            />
+          )}
 
           <ul className="flex flex-col gap-1.5">
             {page.bullets.map((bullet, i) => (

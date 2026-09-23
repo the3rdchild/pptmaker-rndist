@@ -93,3 +93,34 @@ Visual: Keluarga menyeberang di zebra cross lebar dengan pepohonan dan jalur sep
   );
   assert.equal(revision?.description, "Ruang publik yang aman mendorong mobilitas aktif.");
 });
+
+test("reads a transition line as the plan, never as slide copy", () => {
+  const parsed = parseOutline(`# Deck
+## Dari Kebun
+Perjalanan biji kopi.
+Visual: Biji kopi dijemur.
+Transition: morph — judul cover mengecil ke pojok kiri atas
+- Poin satu`);
+
+  const page = parsed.pages[0];
+  assert.equal(page?.transition, "morph");
+  assert.equal(page?.transitionNote, "judul cover mengecil ke pojok kiri atas");
+  assert.equal(page?.description, "Perjalanan biji kopi.");
+  assert.deepEqual(page?.bullets, ["Poin satu"]);
+});
+
+test("serializes the transition right after the visual line", () => {
+  const text = serializeOutline({
+    title: "Deck",
+    pages: [{
+      id: "page-0", heading: "Dari Kebun", description: "Perjalanan.", imageBrief: "Biji kopi.",
+      bullets: ["Poin"], transition: "morph", transitionNote: "foto geser ke kanan",
+    }],
+  });
+  assert.match(text, /Visual: Biji kopi\.\nTransition: morph — foto geser ke kanan\n- Poin/);
+});
+
+test("a chat revision never turns a transition line into a bullet", () => {
+  const revision = parseSlideRevisionBlock("```slide\nJudul\nDeskripsi.\nTransition: fade-black\n- Poin\n```");
+  assert.deepEqual(revision?.bullets, ["Poin"]);
+});

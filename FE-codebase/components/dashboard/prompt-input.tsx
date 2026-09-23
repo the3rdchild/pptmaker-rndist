@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { Wand2, Plus, ChevronDown, Loader2, ScanEye, Check, ImageIcon, FilePlus2, Code2 } from 'lucide-react'
+import { Wand2, Plus, ChevronDown, Loader2, ScanEye, Check, ImageIcon, FilePlus2, Code2, Clapperboard } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useSessionStore } from '@/store/session.store'
 import { createDeck, saveDeck } from '@/lib/api'
@@ -16,6 +16,7 @@ import {
 	storeMode,
 	type GenerationMode,
 } from '@/lib/generation-mode'
+import { TRANSITIONS_PARAM, loadStoredTransitions, storeTransitions } from '@/lib/transition-preference'
 import {
 	DEFAULT_PAGE_COUNT_ID,
 	PAGE_COUNTS,
@@ -159,6 +160,11 @@ export function PromptInput() {
 	useEffect(() => {
 		setGenMode(loadStoredMode())
 	}, [])
+	// Whether the outline also plans a transition per slide (morph first).
+	const [transitions, setTransitions] = useState(false)
+	useEffect(() => {
+		setTransitions(loadStoredTransitions())
+	}, [])
 	const [submitting, setSubmitting] = useState(false)
 	const [importing, setImporting] = useState(false)
 	const [localError, setLocalError] = useState<string | null>(null)
@@ -213,6 +219,7 @@ export function PromptInput() {
 			if (genMode === 'html') {
 				qs.set(MODE_PARAM, 'html')
 			}
+			if (transitions) qs.set(TRANSITIONS_PARAM, 'on')
 			router.push(`/outline?${qs.toString()}`)
 			setSubmitting(false)
 		} catch (e) {
@@ -450,6 +457,27 @@ export function PromptInput() {
 					>
 						<span
 							className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${genMode === 'html' ? 'left-3.5' : 'left-0.5'}`}
+						/>
+					</span>
+				</button>
+
+				<button
+					type="button"
+					onClick={() => {
+						const next = !transitions
+						setTransitions(next)
+						storeTransitions(next)
+					}}
+					title="AI merencanakan transisi tiap slide saat menyusun outline — terutama morph (judul/foto/angka yang sama bergerak ke posisi barunya di slide berikutnya). Rencananya bisa dilihat dan diubah di halaman outline, lalu diputar di Present Mode."
+					className="flex items-center gap-1.5 rounded-lg border border-[#2d2e42] bg-[#1a1b2e] px-2.5 py-1.5 text-xs text-zinc-300 transition-colors hover:border-[#6c5ce7]"
+				>
+					<Clapperboard className={`h-3.5 w-3.5 ${transitions ? 'text-[#a29bfe]' : 'text-zinc-600'}`} />
+					<span>Transisi</span>
+					<span
+						className={`relative h-4 w-7 rounded-full transition-colors ${transitions ? 'bg-[#6c5ce7]' : 'bg-[#2d2e42]'}`}
+					>
+						<span
+							className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${transitions ? 'left-3.5' : 'left-0.5'}`}
 						/>
 					</span>
 				</button>

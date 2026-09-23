@@ -5,6 +5,7 @@
 //   ## <Slide title>
 //   <one plain-text description sentence>
 //   Visual: <specific image content for this page>
+//   Transition: <id> — <what carries across>   (only with the Transisi toggle)
 //   - <key point>
 //   - <key point>
 //
@@ -12,12 +13,23 @@
 // markdown is re-serialized only once — when the user clicks "Generate
 // Presentation" and the outline travels to the editor as ?prompt=.
 
+import {
+  formatTransitionLine,
+  isTransitionLine,
+  parseTransitionLine,
+  type TransitionId,
+} from "@/lib/outline-transition";
+
 export interface OutlinePage {
   id: string;
   heading: string;
   description: string;
   imageBrief: string;
   bullets: string[];
+  /** How the deck moves INTO this page; absent when transitions are off. */
+  transition?: TransitionId;
+  /** For morph: what carries across from the previous page, and how. */
+  transitionNote?: string;
 }
 
 export interface Outline {
@@ -75,6 +87,14 @@ export function parseOutline(markdown: string): Outline {
       current.imageBrief = stripEmphasis(visualMatch[1]);
       continue;
     }
+    if (isTransitionLine(line)) {
+      const parsed = parseTransitionLine(stripEmphasis(line));
+      if (parsed) {
+        current.transition = parsed.transition;
+        current.transitionNote = parsed.note;
+      }
+      continue;
+    }
     const bulletMatch = line.match(/^[-*•]\s+(.*)$/);
     if (bulletMatch) {
       current.bullets.push(stripEmphasis(bulletMatch[1]));
@@ -98,6 +118,9 @@ export function serializeOutline(outline: Outline): string {
     if (page.description.trim()) parts.push(page.description.trim());
     const imageBrief = page.imageBrief.replace(/\s+/g, " ").trim();
     if (imageBrief) parts.push(`Visual: ${imageBrief}`);
+    if (page.transition) {
+      parts.push(formatTransitionLine({ transition: page.transition, note: page.transitionNote }));
+    }
     for (const bullet of page.bullets) {
       if (bullet.trim()) parts.push(`- ${bullet.trim()}`);
     }
@@ -125,6 +148,8 @@ export function parseSlideRevisionBlock(
   const bullets: string[] = [];
   for (const line of lines.slice(1)) {
     const bulletMatch = line.match(/^[-*•]\s+(.*)$/);
+    // The chat revises copy, not the transition plan — the page keeps its own.
+    if (isTransitionLine(line)) continue;
     if (bulletMatch) bullets.push(stripEmphasis(bulletMatch[1]));
     else if (/^(?:visual|gambar|image)\s*:/i.test(line)) {
       imageBrief = stripEmphasis(line.replace(/^(?:visual|gambar|image)\s*:\s*/i, ""));

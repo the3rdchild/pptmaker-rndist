@@ -10,6 +10,11 @@ import re
 import time
 
 from services import llm_client
+from services.outline_transitions import (
+    TRANSITIONS_PROMPT,
+    insert_transition_lines,
+    split_transition_lines,
+)
 from services.pubsub import publish
 from core.db.repository import save_result
 
@@ -191,6 +196,7 @@ def process(ctx: dict):
     language = params.get("language", "Bahasa Indonesia")
     stream_mode = params.get("stream_mode")
     provider = params.get("model") or params.get("llm_provider")
+    transitions = bool(params.get("transitions"))
 
     logger.info("[outline_service] prompt=%r lang=%s stream=%s provider=%r", prompt[:80], language, stream_mode, provider)
 
@@ -207,7 +213,7 @@ def process(ctx: dict):
     user_msg += "\nGenerate the outline now."
 
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": SYSTEM_PROMPT + (TRANSITIONS_PROMPT if transitions else "")},
         {"role": "user", "content": user_msg},
     ]
 
@@ -228,12 +234,18 @@ def process(ctx: dict):
         publish(ctx["job_id"], {"type": "heartbeat", "phase": "visual-repair"})
     else:
         text = llm_client.chat(messages, provider=provider, temperature=0.7)
+    # Transition lines come out before the visual repair reads the structure
+    # (one above a description would pass for it) and go back canonical after.
+    # With the toggle off they are dropped even if the model wrote some.
+    text, transition_plan = split_transition_lines(text)
     text = ensure_outline_visuals(
         text,
         topic=prompt,
         language=language,
         provider=provider,
     )
+    if transitions:
+        text = insert_transition_lines(text, transition_plan)
 
     if stream_mode == "raw":
         publish(ctx["job_id"], {"type": "chunk", "text": text})

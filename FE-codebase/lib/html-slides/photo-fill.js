@@ -41,7 +41,10 @@ async function findPhoto(brief) {
     endpoint.searchParams.set("orientation", "landscape");
     endpoint.searchParams.set("content_filter", "high");
     try {
-      const response = await fetch(endpoint, { headers: { Authorization: `Client-ID ${key}` } });
+      const response = await fetch(endpoint, {
+        headers: { Authorization: `Client-ID ${key}` },
+        signal: AbortSignal.timeout(15_000),
+      });
       if (response.ok) {
         const data = await response.json();
         url = data?.results?.[0]?.urls?.regular ?? null;

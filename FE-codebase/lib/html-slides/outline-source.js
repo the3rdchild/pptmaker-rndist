@@ -67,7 +67,7 @@ export function normalizeOutline(raw) {
         : heading;
       const visual = typeof slide?.visual === "string" && slide.visual.trim()
         ? slide.visual.trim()
-        : `${heading} â€” ${brief}`;
+        : `${heading} — ${brief}`;
       return {
         ...slide,
         role: typeof slide?.role === "string" ? slide.role : ROLE_BY_POSITION(index, slides.length),
@@ -87,7 +87,7 @@ function parseOutlineReply(text) {
   return normalizeOutline(JSON.parse(cleaned.slice(start, end + 1)));
 }
 
-export async function buildOutline({ topic, slideCount, provider }) {
+export async function buildOutline({ topic, slideCount, provider, signal }) {
   if (looksLikeOutline(topic)) {
     return { outline: outlineFromMarkdown(topic), fromApprovedOutline: true };
   }
@@ -96,6 +96,7 @@ export async function buildOutline({ topic, slideCount, provider }) {
     prompt: buildOutlinePrompt(topic, slideCount),
     maxTokens: 1800,
     temperature: 0.8,
+    signal,
   });
   return { outline: parseOutlineReply(reply.text), fromApprovedOutline: false };
 }

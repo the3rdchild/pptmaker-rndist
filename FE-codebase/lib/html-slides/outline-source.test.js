@@ -28,7 +28,7 @@ test("normalizes a free-text outline reply that omitted the visual field", () =>
     slides: [{ role: "content", heading: "Mangrove", brief: "Akar menahan abrasi." }],
   });
 
-  assert.equal(normalized.slides[0].visual, "Mangrove â€” Akar menahan abrasi.");
+  assert.equal(normalized.slides[0].visual, "Mangrove — Akar menahan abrasi.");
 });
 
 test("derives a useful image brief for an older approved outline", () => {

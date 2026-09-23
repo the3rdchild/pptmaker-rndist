@@ -61,6 +61,8 @@ export async function resolveAcceptedFragmentPhotos(fragment, resolvePhoto, phot
  * @param {string|null} [options.outDir] Keeps the HTML and PNGs; a temp dir otherwise.
  * @param {(brief: string, context?: {slideNumber?: number, heading?: string, subject?: string}) => Promise<string|ResolvedPhoto|null>} [options.resolvePhoto]
  * @param {(event: Record<string, unknown>) => void} [options.onEvent]
+ * @param {AbortSignal} [options.signal] Aborts outstanding LLM calls and stops
+ *   scheduling new slides, e.g. when the client disconnects.
  */
 export async function generateDeck({
   topic,
@@ -70,6 +72,7 @@ export async function generateDeck({
   resolvePhoto,
   outDir = null,
   onEvent = () => {},
+  signal,
 }) {
   if (!theme) throw new Error("A valid HTML theme is required.");
   const resolvedProvider = firstConfiguredProvider(provider);
@@ -81,6 +84,7 @@ export async function generateDeck({
       topic,
       slideCount,
       provider: resolvedProvider,
+      signal,
     });
     if (!outline.slides?.length) throw new Error("Outline came back empty.");
     onEvent({
@@ -112,6 +116,7 @@ export async function generateDeck({
           }),
           maxTokens: 4000,
           temperature: 0.7,
+          signal,
         });
         const fragment = parseFragment(reply.text);
         const sectionHtml = theme.backgroundImageMode === "generated"
@@ -124,6 +129,7 @@ export async function generateDeck({
       };
 
     const renderSingleSlide = async (htmlPath, index) => {
+      signal?.throwIfAborted();
       const rendered = await renderAndExtract({
         htmlPaths: [htmlPath],
         outDir,
@@ -136,6 +142,7 @@ export async function generateDeck({
     };
 
     const generateSlide = async (slide, index) => {
+      signal?.throwIfAborted();
       onEvent({ type: "status", message: `Membuat slide ${index + 1}/${outline.slides.length}...` });
       let fragment = await createFragment(slide, index);
       const htmlPath = join(workDir, `slide-${index + 1}.html`);

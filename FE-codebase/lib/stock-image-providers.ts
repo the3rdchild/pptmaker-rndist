@@ -58,6 +58,10 @@ export function availableStockImageProviders(): AvailableStockImageProvider[] {
   );
 }
 
+// Deck generation awaits every photo on a slide together, so one provider that
+// never answers would stall the whole deck rather than just that search.
+const STOCK_TIMEOUT_MS = 15_000;
+
 function forKey(id: StockImageProviderId): string | null {
   const preset = STOCK_IMAGE_PRESETS.find((p) => p.id === id) ?? null;
   if (!preset) return null;
@@ -94,6 +98,7 @@ export async function trackUnsplashDownload(downloadLocation: string): Promise<b
   try {
     const response = await fetch(parsed, {
       headers: { Authorization: `Client-ID ${key}` },
+      signal: AbortSignal.timeout(STOCK_TIMEOUT_MS),
     });
     return response.ok;
   } catch {
@@ -174,7 +179,10 @@ async function searchPexels(
   const url = `https://api.pexels.com/v1/search?query=${encodeURIComponent(
     query,
   )}&page=${page}&per_page=${perPage}`;
-  const res = await fetch(url, { headers: { Authorization: key } });
+  const res = await fetch(url, {
+    headers: { Authorization: key },
+    signal: AbortSignal.timeout(STOCK_TIMEOUT_MS),
+  });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`Pexels API ${res.status}: ${text.slice(0, 200)}`);
@@ -217,6 +225,7 @@ async function searchUnsplash(
       Authorization: `Client-ID ${key}`,
       "Accept-Version": "v1",
     },
+    signal: AbortSignal.timeout(STOCK_TIMEOUT_MS),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -266,7 +275,7 @@ async function searchPixabay(
   const url = `https://pixabay.com/api/?key=${encodeURIComponent(
     key,
   )}&q=${encodeURIComponent(query)}&page=${page}&per_page=${perPage}`;
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(STOCK_TIMEOUT_MS) });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`Pixabay API ${res.status}: ${text.slice(0, 200)}`);

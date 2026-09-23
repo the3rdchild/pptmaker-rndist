@@ -82,22 +82,35 @@ export function firstConfiguredProvider(preferred) {
   throw new Error(`No LLM provider configured — set one of: ${PROVIDER_IDS.map((p) => PROVIDERS[p].key).join(", ")}`);
 }
 
-export async function chat({ provider, prompt, maxTokens = 4000, temperature = 0.7 }) {
+// A provider that goes quiet would otherwise hold the whole deck hostage: the
+// pipeline awaits every slide, so one hung call means the stream never ends.
+// Sized for reasoning models, which think before the first token.
+const CHAT_TIMEOUT_MS = 180_000;
+
+export async function chat({ provider, prompt, maxTokens = 4000, temperature = 0.7, signal }) {
   const { apiKey, baseUrl, model } = providerConfig(provider);
   const started = Date.now();
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      ...(provider === "deepinfra" ? { temperature } : {}),
-      max_tokens: maxTokens,
-      messages: [{ role: "user", content: prompt }],
-    }),
-  });
+  const timeout = AbortSignal.timeout(CHAT_TIMEOUT_MS);
+  let response;
+  try {
+    response = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        ...(provider === "deepinfra" ? { temperature } : {}),
+        max_tokens: maxTokens,
+        messages: [{ role: "user", content: prompt }],
+      }),
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    });
+  } catch (error) {
+    if (timeout.aborted) throw new Error(`${provider} timed out after ${CHAT_TIMEOUT_MS / 1000}s`);
+    throw error;
+  }
 
   if (!response.ok) {
     const body = await response.text();

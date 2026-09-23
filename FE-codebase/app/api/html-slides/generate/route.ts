@@ -78,10 +78,17 @@ export async function POST(request: NextRequest) {
     },
   });
 
+  // A reader that leaves (tab closed, navigation) must stop the LLM calls and
+  // Chrome renders too, not just the bytes — otherwise the deck keeps being
+  // paid for with nobody left to receive it.
+  const abort = new AbortController();
+  request.signal.addEventListener("abort", () => abort.abort(), { once: true });
+
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const send = (event: unknown) => {
+        if (abort.signal.aborted) return;
         controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
       };
       try {
@@ -92,6 +99,7 @@ export async function POST(request: NextRequest) {
           provider,
           resolvePhoto,
           onEvent: send,
+          signal: abort.signal,
         });
         send({ type: "done", title: deck.title, count: deck.slides.length });
       } catch (error) {
@@ -100,8 +108,11 @@ export async function POST(request: NextRequest) {
           message: error instanceof Error ? error.message : "HTML generation failed.",
         });
       } finally {
-        controller.close();
+        if (!abort.signal.aborted) controller.close();
       }
+    },
+    cancel() {
+      abort.abort();
     },
   });
 

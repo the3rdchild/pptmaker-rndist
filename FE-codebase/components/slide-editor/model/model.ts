@@ -368,12 +368,11 @@ export function deleteSelectionFromUi(sourceUi: RawUi, selection: Selection) {
       currentElements,
       selection.elementPath,
     );
-    if (elements !== currentElements) {
-      components[selection.componentIndex] = { ...component, elements };
-      return { ...sourceUi, components };
-    }
-
-    components.splice(selection.componentIndex, 1);
+    if (elements === currentElements) return sourceUi;
+    // Deleting a component's last element leaves nothing to select or see —
+    // drop the empty shell with it.
+    if (elements.length === 0) components.splice(selection.componentIndex, 1);
+    else components[selection.componentIndex] = { ...component, elements };
     return { ...sourceUi, components };
   }
   return sourceUi;

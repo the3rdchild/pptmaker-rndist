@@ -164,14 +164,23 @@ function collectPositionedElements(
   }
 }
 
-export function exportToPptx(
+export interface PptxExportResult {
+  blob: Blob;
+  /** Element types the exporter has no PPTX mapping for yet (chart, table,
+   *  media, formula, …), with how many were left out — so the caller can say
+   *  so instead of the file silently missing them. */
+  skipped: Record<string, number>;
+}
+
+export async function exportToPptx(
   title: string,
   slides: { ui?: Record<string, unknown> | null | undefined }[]
-) {
+): Promise<PptxExportResult> {
   const pptx = new pptxgen();
   pptx.defineLayout({ name: "PPT16x9", width: SLIDE_W_IN, height: SLIDE_H_IN });
   pptx.layout = "PPT16x9";
   pptx.title = title;
+  const skipped: Record<string, number> = {};
 
   for (const slide of slides) {
     const ui = slide.ui as Rec | null | undefined;
@@ -181,19 +190,21 @@ export function exportToPptx(
     const bgColor = resolveBackgroundHex(ui);
     if (bgColor) s.background = { color: bgColor };
 
-    const components = asArray(ui.components);
-    if (components.length === 0) continue;
+    // Root `ui.elements` (where HTML-mode decks keep everything) sit under
+    // the components on the canvas, so they are written first. Skipping them
+    // exported every HTML-mode slide as an empty background.
+    const containers = [
+      { x: 0, y: 0, elements: asArray(ui.elements) },
+      ...asArray(ui.components).map((comp) => ({
+        x: num((comp.position as Rec | undefined)?.x),
+        y: num((comp.position as Rec | undefined)?.y),
+        elements: asArray(comp.elements),
+      })),
+    ];
 
-    for (const comp of components) {
-      const cPos = comp.position as Rec | undefined;
-      const cSize = comp.size as Rec | undefined;
-      const cx = num(cPos?.x);
-      const cy = num(cPos?.y);
-      const cw = num(cSize?.width);
-      const ch = num(cSize?.height);
-
+    for (const { x: cx, y: cy, elements } of containers) {
       const positioned: PositionedElement[] = [];
-      for (const el of asArray(comp.elements)) {
+      for (const el of elements) {
         collectPositionedElements(el, elementBox(el as RawElement), cx, cy, positioned);
       }
 
@@ -294,13 +305,15 @@ export function exportToPptx(
             h: Math.abs(ty - sy) * PX_TO_IN_Y,
             line: { color: fillHex(el.stroke) ?? "333333", width: num((el.stroke as Rec)?.width) * PX_TO_IN_X || 0.02 },
           });
+        } else if (!childArrayInfo(el as RawElement)) {
+          // Containers are fine: their children were walked into `positioned`.
+          const key = typeof type === "string" && type ? type : "unknown";
+          skipped[key] = (skipped[key] ?? 0) + 1;
         }
       }
-
-      void cw;
-      void ch;
     }
   }
 
-  return pptx.write({ outputType: "blob" }) as Promise<Blob>;
+  const blob = (await pptx.write({ outputType: "blob" })) as Blob;
+  return { blob, skipped };
 }

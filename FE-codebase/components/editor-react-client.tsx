@@ -56,9 +56,10 @@ import {
 import type { SlideData } from "@/store/presentationGeneration";
 import { adaptDeckToPresentation } from "@/components/editor-react/deck-adapt";
 import { useSessionStore } from "@/store/session.store";
-import { getDeck, saveDeck, streamAipptDeck, fetchThemeManifest, chooseThemeForTopic, generateImage, type AgentAction } from "@/lib/api";
+import { getDeck, streamAipptDeck, fetchThemeManifest, chooseThemeForTopic, generateImage, type AgentAction } from "@/lib/api";
 import { getGlobalFonts } from "@/lib/fonts/global-fonts";
 import { streamHtmlDeck } from "@/lib/html-slides-stream";
+import { useDeckAutosave } from "@/components/editor-react/use-deck-autosave";
 import { htmlThemeFromParams, modeFromParams } from "@/lib/generation-mode";
 import { insertHtmlSlideAt } from "@/components/editor-react/html-slide-insertion";
 import { buildSlidePhotoRequest } from "@/components/editor-react/slide-image-brief";
@@ -399,9 +400,6 @@ export default function EditorReactClient({
   /** Maps physical canvas positions to outline indices while HTML workers
    * finish out of order. Reset before every generation run. */
   const htmlSlideLogicalIndicesRef = useRef<number[]>([]);
-  const [saveState, setSaveState] = useState<
-    "idle" | "pending" | "saving" | "saved"
-  >("idle");
   const [pdfExportSlides, setPdfExportSlides] = useState<
     PdfExportSlide[] | null
   >(null);
@@ -480,7 +478,6 @@ export default function EditorReactClient({
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
   const canvasAreaRef = useRef<HTMLDivElement>(null);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /** Panning only makes sense once the slide is larger than its viewport. */
   const canPan = zoom > 1;
@@ -579,7 +576,6 @@ export default function EditorReactClient({
   };
 
   const onCanvasMouseUp = () => setIsPanning(false);
-  const isFirstSave = useRef(true);
 
   // Template mode opens either a whole theme or an empty canvas.
   //
@@ -721,51 +717,13 @@ export default function EditorReactClient({
   }, [deckId, token, dispatch, templateMode, searchParams]);
 
   // Persist edits back to the API (debounced) whenever the deck changes.
-  // Template mode saves explicitly to disk instead — an autosave here would
-  // write half-finished layouts into the repo on every drag.
-  useEffect(() => {
-    if (templateMode) return;
-    if (!presentationData || !token) return;
-    if (isFirstSave.current) {
-      isFirstSave.current = false;
-      return;
-    }
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    setSaveState("pending");
-    saveTimer.current = setTimeout(async () => {
-      setSaveState("saving");
-      try {
-        await saveDeck(token, deckId, {
-          title: presentationData.title ?? "Untitled",
-          payload: {
-            title: presentationData.title ?? "Untitled",
-            slides: presentationData.slides,
-            // The font map (theme typefaces + uploaded fonts) is part of the
-            // deck — dropping it here is what made uploaded/theme fonts
-            // vanish on reload. adaptDeckToPresentation already reads
-            // payload.fonts back; the write side was the missing half.
-            ...(presentationData.fonts
-              ? { fonts: presentationData.fonts }
-              : {}),
-            // Same idea for the theme id generation resolved to — read back
-            // on load (above) so add_slide/regenerate_slide can pin to the
-            // deck's real template across reloads, not just within the
-            // session that generated it.
-            ...(currentThemeIdRef.current
-              ? { deckThemeId: currentThemeIdRef.current }
-              : {}),
-          },
-        } as unknown as Parameters<typeof saveDeck>[2]);
-        setSaveState("saved");
-      } catch {
-        // Swallow — save errors are non-critical here.
-        setSaveState("pending");
-      }
-    }, 1500);
-    return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-    };
-  }, [presentationData, token, deckId, templateMode]);
+  const saveState = useDeckAutosave({
+    presentationData,
+    token,
+    deckId,
+    disabled: templateMode,
+    deckThemeIdRef: currentThemeIdRef,
+  });
 
   // Keep activeIndex in bounds after delete.
   const slides = presentationData?.slides ?? [];
@@ -1007,10 +965,17 @@ export default function EditorReactClient({
     setActiveIndex(match.slideIndex);
   };
   const handleExport = async () => {
-    const blob = await exportToPptx(
+    const { blob, skipped } = await exportToPptx(
       presentationData?.title ?? "Untitled Presentation",
       slides
     );
+    const missing = Object.entries(skipped);
+    if (missing.length) {
+      notify.warning(
+        "Sebagian elemen tidak ikut ter-export",
+        `Belum didukung di PPTX: ${missing.map(([type, count]) => `${type} (${count})`).join(", ")}`,
+      );
+    }
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;

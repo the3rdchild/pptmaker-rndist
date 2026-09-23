@@ -110,10 +110,18 @@ export function deleteLayoutChildFromArray(elements: unknown[], path: number[]) 
   if (!Number.isInteger(index) || index < 0 || index >= elements.length) {
     return elements;
   }
+  // The path ends here: the selected element itself goes, whatever it
+  // contains. Without this base case a leaf (text, image, shape…) was never
+  // removed — callers then deleted the whole component or did nothing.
+  if (rest.length === 0) {
+    const next = [...elements];
+    next.splice(index, 1);
+    return next;
+  }
   const current = asRecord(elements[index]);
   const childInfo = current ? childArrayInfo(current) : null;
   if (!current || !childInfo) return elements;
-  if (rest.length >= 1 && isFlowLayoutElement(current)) {
+  if (isFlowLayoutElement(current)) {
     if (childInfo.key === "children") {
       const minChildren = Math.max(0, readNumber(current.min_children) ?? 0);
       if (childInfo.items.length <= minChildren) return elements;

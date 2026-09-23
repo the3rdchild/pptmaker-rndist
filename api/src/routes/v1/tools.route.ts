@@ -105,12 +105,21 @@ const agentSchema = z.object({
 	}).optional(),
 })
 
+type JobSubscription = {
+	subscriber: Redis
+	/** Delivers every message, including any that arrived before this call. */
+	onMessage: (handler: (message: string) => void) => void
+}
+
 /**
  * Create + connect + subscribe to the job's Redis pub/sub channel.
  * MUST be awaited before enqueueing the job, so no publishes are missed.
- * Returns the subscriber (caller must disconnect it).
+ *
+ * The listener is attached here, not by the reader: the worker can publish
+ * between the enqueue and the reader wiring itself up, and an EventEmitter
+ * drops events nobody is listening for yet — so early messages are buffered.
  */
-async function subscribeToJob(jobId: string): Promise<Redis> {
+async function subscribeToJob(jobId: string): Promise<JobSubscription> {
 	const subscriber = new Redis({
 		host: env.REDIS_HOST,
 		port: Number(env.REDIS_PORT),
@@ -118,19 +127,36 @@ async function subscribeToJob(jobId: string): Promise<Redis> {
 		maxRetriesPerRequest: null,
 		lazyConnect: true,
 	})
-	await subscriber.connect()
-	await subscriber.subscribe(`ppt:stream:${jobId}`)
-	return subscriber
+	const early: string[] = []
+	let deliver: ((message: string) => void) | null = null
+	subscriber.on('message', (_channel, message) => {
+		if (deliver) deliver(message)
+		else early.push(message)
+	})
+	try {
+		await subscriber.connect()
+		await subscriber.subscribe(`ppt:stream:${jobId}`)
+	} catch (err) {
+		subscriber.disconnect()
+		throw err
+	}
+	return {
+		subscriber,
+		onMessage(handler) {
+			deliver = handler
+			for (const message of early.splice(0)) handler(message)
+		},
+	}
 }
 
 /**
- * Read loop: listen on the subscriber for chunk/done/error events.
+ * Read loop: listen on the subscription for chunk/done/error events.
  * - onChunk is called for every {type:'chunk', text} message.
  * - Idle timeout resets on every message (60s default) — protects long generations.
  * - Absolute cap (10 min) prevents infinite hangs.
  */
 async function readJobStream(
-	subscriber: Redis,
+	subscription: JobSubscription,
 	onChunk: (text: string) => void,
 	onError?: (message: string) => void,
 	idleMs = 60000,
@@ -147,7 +173,7 @@ async function readJobStream(
 			idle = setTimeout(cleanup, idleMs)
 		}
 
-		subscriber.on('message', (_ch, message) => {
+		subscription.onMessage((message) => {
 			resetIdle()
 			try {
 				const data = JSON.parse(message)
@@ -172,9 +198,43 @@ async function readJobStream(
 			}
 		})
 	}).finally(() => {
-		// Always disconnect — no connection leak even if createPoolRequest throws
-		try { subscriber.disconnect() } catch {}
+		try { subscription.subscriber.disconnect() } catch {}
 	})
+}
+
+/**
+ * Subscribe, record + enqueue the job, then stream its output. The pool row and
+ * the queue payload carry the same params — the worker reads the payload, the
+ * row is the audit trail.
+ *
+ * A failed insert/enqueue disconnects the subscriber here: the reader that
+ * would otherwise disconnect it is never reached, and each failure would leak
+ * one Redis connection.
+ */
+async function runStreamingJob(
+	sessionId: string,
+	params: Record<string, unknown>,
+	onChunk: (text: string) => void,
+	onError: ((message: string) => void) | undefined,
+	idleMs: number,
+): Promise<void> {
+	const jobId = crypto.randomUUID()
+	const subscription = await subscribeToJob(jobId)
+	try {
+		const request = await createPoolRequest({
+			job_id: jobId,
+			session_id: sessionId,
+			status: 'pending',
+			params,
+		})
+		await QueueClient.enqueueJob(jobId, { request_id: request.id, session_id: sessionId, ...params })
+	} catch (err) {
+		try { subscription.subscriber.disconnect() } catch {}
+		console.error(`[tools] failed to enqueue ${String(params.type)} job`, err)
+		onError?.('Could not start the job')
+		return
+	}
+	await readJobStream(subscription, onChunk, onError, idleMs)
 }
 
 function requireSession(c: { var: { sessionId?: string } }): string | null {
@@ -191,26 +251,12 @@ tools.post('/aippt_outline', async (c) => {
 	const sessionId = requireSession(c)
 	if (!sessionId) return c.json({ state: -1, message: 'Missing session' }, 401)
 
-	const jobId = crypto.randomUUID()
-
 	c.header('Content-Type', 'text/event-stream')
 	c.header('Cache-Control', 'no-cache')
 	c.header('Connection', 'keep-alive')
 
 	return stream(c, async (s) => {
-		// 1. Subscribe FIRST (await it — truly listening before enqueue)
-		const subscriber = await subscribeToJob(jobId)
-
-		// 2. Enqueue the job
-		const request = await createPoolRequest({
-			job_id: jobId,
-			session_id: sessionId,
-			status: 'pending',
-			params: { type: 'outline', prompt: parsed.data.content, language: parsed.data.language, model: parsed.data.model, slideCount: parsed.data.slideCount, source: parsed.data.source, stream_mode: 'raw' },
-		})
-		await QueueClient.enqueueJob(jobId, {
-			request_id: request.id,
-			session_id: sessionId,
+		await runStreamingJob(sessionId, {
 			type: 'outline',
 			prompt: parsed.data.content,
 			language: parsed.data.language,
@@ -218,11 +264,7 @@ tools.post('/aippt_outline', async (c) => {
 			slideCount: parsed.data.slideCount,
 			source: parsed.data.source,
 			stream_mode: 'raw',
-		})
-
-		// 3. Read loop (disconnects in finally). Reasoning models (GLM) can go
-		// quiet for >60s before their first chunk — idle window is generous.
-		await readJobStream(subscriber, (text) => {
+		}, (text) => {
 			s.write(text).catch(() => {})
 		}, (message) => {
 			// Raw markdown stream needs a tiny out-of-band marker. The outline UI
@@ -243,33 +285,12 @@ tools.post('/aippt', async (c) => {
 	const sessionId = requireSession(c)
 	if (!sessionId) return c.json({ state: -1, message: 'Missing session' }, 401)
 
-	const jobId = crypto.randomUUID()
-
 	c.header('Content-Type', 'text/event-stream')
 	c.header('Cache-Control', 'no-cache')
 	c.header('Connection', 'keep-alive')
 
 	return stream(c, async (s) => {
-		const subscriber = await subscribeToJob(jobId)
-
-		const request = await createPoolRequest({
-			job_id: jobId,
-			session_id: sessionId,
-			status: 'pending',
-			params: {
-				type: 'deck',
-				outline: parsed.data.content,
-				language: parsed.data.language,
-				model: parsed.data.model,
-				manifest: parsed.data.manifest,
-				source: parsed.data.source,
-				slideCount: parsed.data.slideCount,
-				stream_mode: 'raw',
-			},
-		})
-		await QueueClient.enqueueJob(jobId, {
-			request_id: request.id,
-			session_id: sessionId,
+		await runStreamingJob(sessionId, {
 			type: 'deck',
 			outline: parsed.data.content,
 			language: parsed.data.language,
@@ -278,9 +299,7 @@ tools.post('/aippt', async (c) => {
 			source: parsed.data.source,
 			slideCount: parsed.data.slideCount,
 			stream_mode: 'raw',
-		})
-
-		await readJobStream(subscriber, (text) => {
+		}, (text) => {
 			// JSONL: write each slide object on its own line
 			s.write(text + '\n').catch(() => {})
 		}, (message) => {
@@ -300,34 +319,20 @@ tools.post('/ai_writing', async (c) => {
 	const sessionId = requireSession(c)
 	if (!sessionId) return c.json({ state: -1, message: 'Missing session' }, 401)
 
-	const jobId = crypto.randomUUID()
-
 	c.header('Content-Type', 'text/event-stream')
 	c.header('Cache-Control', 'no-cache')
 	c.header('Connection', 'keep-alive')
 
 	return stream(c, async (s) => {
-		const subscriber = await subscribeToJob(jobId)
-
-		const request = await createPoolRequest({
-			job_id: jobId,
-			session_id: sessionId,
-			status: 'pending',
-			params: { type: 'writing', content: parsed.data.content, command: parsed.data.command, model: parsed.data.model, stream_mode: 'raw' },
-		})
-		await QueueClient.enqueueJob(jobId, {
-			request_id: request.id,
-			session_id: sessionId,
+		await runStreamingJob(sessionId, {
 			type: 'writing',
 			content: parsed.data.content,
 			command: parsed.data.command,
 			model: parsed.data.model,
 			stream_mode: 'raw',
-		})
-
-		await readJobStream(subscriber, (text) => {
+		}, (text) => {
 			s.write(text).catch(() => {})
-		}, undefined, 30000) // shorter idle for writing
+		}, undefined, 30000)
 	})
 })
 
@@ -348,43 +353,23 @@ tools.post('/agent', async (c) => {
 	const sessionId = requireSession(c)
 	if (!sessionId) return c.json({ state: -1, message: 'Missing session' }, 401)
 
-	const jobId = crypto.randomUUID()
-
 	c.header('Content-Type', 'text/event-stream')
 	c.header('Cache-Control', 'no-cache')
 	c.header('Connection', 'keep-alive')
 
 	return stream(c, async (s) => {
-		const subscriber = await subscribeToJob(jobId)
-
-		const request = await createPoolRequest({
-			job_id: jobId,
-			session_id: sessionId,
-			status: 'pending',
-			params: {
-				type: 'agent',
-				message: parsed.data.message,
-				model: parsed.data.model,
-				history: parsed.data.history,
-				deckSummary: parsed.data.deckSummary,
-				stream_mode: 'raw',
-			},
-		})
-		await QueueClient.enqueueJob(jobId, {
-			request_id: request.id,
-			session_id: sessionId,
+		await runStreamingJob(sessionId, {
 			type: 'agent',
 			message: parsed.data.message,
 			model: parsed.data.model,
 			history: parsed.data.history,
 			deckSummary: parsed.data.deckSummary,
 			stream_mode: 'raw',
-		})
-
-		await readJobStream(subscriber, (text) => {
-			// JSONL: one action (or {tool:'_reply', args:{text}}) per line
+		}, (text) => {
+			// JSONL: one action (or {tool:'_reply', args:{text}}) per line.
+			// Single-turn tool-call-or-reply, no need for the long idle window.
 			s.write(text + '\n').catch(() => {})
-		}, undefined, 30000) // single-turn tool-call-or-reply, no need for the long idle window
+		}, undefined, 30000)
 	})
 })
 
@@ -398,32 +383,12 @@ tools.post('/outline_chat', async (c) => {
 	const sessionId = requireSession(c)
 	if (!sessionId) return c.json({ state: -1, message: 'Missing session' }, 401)
 
-	const jobId = crypto.randomUUID()
-
 	c.header('Content-Type', 'text/event-stream')
 	c.header('Cache-Control', 'no-cache')
 	c.header('Connection', 'keep-alive')
 
 	return stream(c, async (s) => {
-		const subscriber = await subscribeToJob(jobId)
-
-		const request = await createPoolRequest({
-			job_id: jobId,
-			session_id: sessionId,
-			status: 'pending',
-			params: {
-				type: 'outline_chat',
-				message: parsed.data.message,
-				language: parsed.data.language,
-				model: parsed.data.model,
-				history: parsed.data.history,
-				context: parsed.data.context,
-				stream_mode: 'raw',
-			},
-		})
-		await QueueClient.enqueueJob(jobId, {
-			request_id: request.id,
-			session_id: sessionId,
+		await runStreamingJob(sessionId, {
 			type: 'outline_chat',
 			message: parsed.data.message,
 			language: parsed.data.language,
@@ -431,9 +396,7 @@ tools.post('/outline_chat', async (c) => {
 			history: parsed.data.history,
 			context: parsed.data.context,
 			stream_mode: 'raw',
-		})
-
-		await readJobStream(subscriber, (text) => {
+		}, (text) => {
 			s.write(text).catch(() => {})
 		}, undefined, 30000)
 	})

@@ -250,6 +250,10 @@ def chat_stream(
         **_extra_body(provider),
     )
     for chunk in stream:
+        # Some OpenAI-compatible gateways end with a usage-only chunk whose
+        # `choices` is empty; indexing it would fail the whole job at the end.
+        if not chunk.choices:
+            continue
         delta = chunk.choices[0].delta.content
         if delta:
             yield delta

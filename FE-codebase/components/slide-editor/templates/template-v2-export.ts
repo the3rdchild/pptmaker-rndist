@@ -25,6 +25,7 @@ import {
   MAX_ANIMATION_FLIGHTS,
   parseElementAnimations,
 } from "@/components/slide-editor/animation/animation-meta";
+import { isRecord } from "@/components/slide-editor/model/core";
 
 type Rec = Record<string, unknown>;
 
@@ -63,10 +64,6 @@ export type ExportResult = {
   layout: ExportedLayout;
   warnings: ExportWarning[];
 };
-
-function isRecord(value: unknown): value is Rec {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
 
 function roundNumber(value: number): number {
   if (!Number.isFinite(value)) return 0;

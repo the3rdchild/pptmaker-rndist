@@ -17,6 +17,7 @@
 // the template engine's save target both depend on knowing that.
 
 import { normalizeBackendAssetUrls } from "@/utils/api";
+import { asRecord } from "@/components/slide-editor/model/core";
 
 /** Fallback theme ids. Nothing ships in the repo any more, so this only
  *  covers the window where index.json has not been written yet. */
@@ -72,12 +73,6 @@ export type TemplateTheme = {
   layouts: TemplateLayout[];
   mergedComponents: unknown[];
 };
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
 
 function readString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;

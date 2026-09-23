@@ -6,6 +6,7 @@ import {
   placeGridChildren,
   type FlowLayoutDeps,
 } from "@/components/slide-editor/layout/flowLayout";
+import { readArray, asRecord, isRecord, readString } from "@/components/slide-editor/model/core";
 
 type RawRecord = Record<string, any>;
 type Direction = "row" | "column";
@@ -530,24 +531,6 @@ function readSize(value: unknown, fallback: Size = { width: 1, height: 1 }): Siz
     width: Math.max(1, readNumber(record.width) ?? fallback.width),
     height: Math.max(1, readNumber(record.height) ?? fallback.height),
   };
-}
-
-function readArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
-
-function asRecord(value: unknown): RawRecord | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as RawRecord)
-    : null;
-}
-
-function isRecord(value: unknown): value is RawRecord {
-  return Boolean(asRecord(value));
-}
-
-function readString(value: unknown): string | null {
-  return typeof value === "string" ? value : null;
 }
 
 function readNumber(value: unknown): number | null {

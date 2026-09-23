@@ -8,6 +8,7 @@
 
 import { parseSlotMeta, type SlotMeta } from "@/components/slide-editor/templates/slot-meta";
 import { isImageFrameElement } from "@/components/editor-react/image-frames";
+import { isRecord } from "@/components/slide-editor/model/core";
 
 type Rec = Record<string, unknown>;
 
@@ -30,10 +31,6 @@ export type OutlineEntry = {
   /** Text/text-list elements are the ones the generator fills. */
   fillable: boolean;
 };
-
-function isRecord(value: unknown): value is Rec {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
 
 /** Mirrors model.ts childArrayInfo so paths stay in sync with the canvas. */
 function childItems(element: Rec): unknown[] | null {

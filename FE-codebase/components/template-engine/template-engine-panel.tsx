@@ -18,6 +18,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { TemplateSelectionPayload } from "@/components/slide-editor/surface/TemplateV2KonvaSlide";
 import type { RawElement } from "@/components/slide-editor/model/core";
+import { isRecord } from "@/components/slide-editor/model/core";
 import {
   SLIDE_ROLES,
   SLOT_FILL_CONDITIONS,
@@ -75,10 +76,6 @@ type LayoutDraft = {
   description: string;
   meta: LayoutMeta;
 };
-
-function isRecord(value: unknown): value is Rec {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
 
 /** The three things being edited here apply at different scopes, and mixing
  *  them in one column made it unclear what a given field would affect. */

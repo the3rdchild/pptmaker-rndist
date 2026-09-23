@@ -1,3 +1,5 @@
+import { readNumber } from "@/components/slide-editor/model/core";
+
 type RawRecord = Record<string, unknown>;
 
 export type LayoutItemStats = {
@@ -93,8 +95,4 @@ function defaultLayoutItem(): RawRecord {
       color: "#1A1A1A",
     },
   };
-}
-
-function readNumber(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }

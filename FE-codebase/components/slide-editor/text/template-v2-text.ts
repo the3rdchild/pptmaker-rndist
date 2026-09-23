@@ -3,6 +3,13 @@ import type { Font, TextRun } from "@/components/slide-editor/types";
 import { effectiveLineHeight } from "@/components/slide-editor/text/text-line-height";
 import { textRunsContent } from "@/components/slide-editor/text/text-runs";
 import type { TemplateV2TextEditStyle } from "@/components/slide-editor/text/template-v2-text-editing";
+import {
+  readArray,
+  asRecord,
+  readString,
+  readNumber,
+  readBoolean,
+} from "@/components/slide-editor/model/core";
 
 type UnknownRecord = Record<string, any>;
 
@@ -1366,32 +1373,10 @@ function readVerticalAlignment(
   return "top";
 }
 
-function readArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
-
 function stripUndefined<T extends UnknownRecord>(value: T): T {
   return Object.fromEntries(
     Object.entries(value).filter(([, entry]) => entry !== undefined),
   ) as T;
-}
-
-function asRecord(value: unknown): UnknownRecord | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as UnknownRecord)
-    : null;
-}
-
-function readString(value: unknown): string | null {
-  return typeof value === "string" ? value : null;
-}
-
-function readNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function readBoolean(value: unknown): boolean | null {
-  return typeof value === "boolean" ? value : null;
 }
 
 function withHash(value: string | null | undefined) {

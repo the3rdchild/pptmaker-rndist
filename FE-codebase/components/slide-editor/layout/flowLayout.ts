@@ -4,6 +4,7 @@ import {
   rawTextContent,
 } from "@/components/slide-editor/text/template-v2-text";
 import { layoutWrappedFlexChildren } from "@/components/slide-editor/layout/wrappedFlexLayout";
+import { readArray, asRecord, readString } from "@/components/slide-editor/model/core";
 
 export type FlowLayoutElement = Record<string, any>;
 export type FlowDirection = "row" | "column";
@@ -694,20 +695,6 @@ function readPadding(value: unknown): Padding {
     bottom: readNumber(record?.bottom) ?? y ?? 0,
     left: readNumber(record?.left) ?? x ?? 0,
   };
-}
-
-function readArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
-
-function asRecord(value: unknown): FlowLayoutElement | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as FlowLayoutElement)
-    : null;
-}
-
-function readString(value: unknown): string | null {
-  return typeof value === "string" ? value : null;
 }
 
 function readNumber(value: unknown): number | null {

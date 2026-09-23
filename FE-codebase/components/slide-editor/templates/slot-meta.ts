@@ -7,6 +7,8 @@
 // template engine and travels with the template, and is the payload the
 // generator hands the model.
 
+import { isRecord } from "@/components/slide-editor/model/core";
+
 /** What kind of content a text slot expects. Drives both the model's prose
  *  and the fallback behaviour when a slot can't be filled. */
 export type SlotRole =
@@ -164,10 +166,6 @@ function readPositiveInt(value: unknown): number | null {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n) || n <= 0) return null;
   return Math.min(Math.round(n), 10_000);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 /** Parses authoring metadata off a raw template element. Returns null when

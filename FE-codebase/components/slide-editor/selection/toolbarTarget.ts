@@ -18,6 +18,7 @@ import type {
   TemplateV2ToolbarElementSelection,
   TemplateV2ToolbarSelection,
 } from "@/components/slide-editor/selection/toolbarTypes";
+import { readArray, asRecord } from "@/components/slide-editor/model/core";
 
 type RawRecord = Record<string, unknown>;
 
@@ -298,16 +299,6 @@ export function getTemplateV2SelectionEditorToolbarTarget({
     : null;
   return box && toolbarElement
     ? { selection: elementSelection, element: toolbarElement, box }
-    : null;
-}
-
-function readArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
-
-function asRecord(value: unknown): RawRecord | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as RawRecord)
     : null;
 }
 

@@ -2,6 +2,7 @@ import type {
   DesignVariable,
   SlideElement,
 } from "@/components/slide-editor/types";
+import { isRecord } from "@/components/slide-editor/model/core";
 
 type ElementWithChildren = Extract<SlideElement, { children: SlideElement[] }>;
 type ElementWithChild = Extract<SlideElement, { child?: SlideElement | null }>;
@@ -248,10 +249,6 @@ function hasChildren(element: SlideElement): element is ElementWithChildren {
 
 function hasChild(element: SlideElement): element is ElementWithChild {
   return "child" in element;
-}
-
-function isRecord(value: unknown): value is UnknownRecord {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function pathParts(path: string) {

@@ -16,6 +16,7 @@ import {
   resolveUnresolvedFonts,
   type FontSubstitution,
 } from "@/components/slide-editor/importing/pptx-import";
+import { isRecord } from "@/components/slide-editor/model/core";
 
 type Rec = Record<string, unknown>;
 
@@ -53,10 +54,6 @@ export type TemplateImportOptions = {
    *  still-missing families get AI-substituted. */
   onMissingFonts?: (families: string[]) => Promise<boolean>;
 };
-
-function isRecord(value: unknown): value is Rec {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
 
 /** Every distinct `data:` URL held by an image/media element in the tree. */
 function collectDataUrls(value: unknown, into: Set<string>): void {

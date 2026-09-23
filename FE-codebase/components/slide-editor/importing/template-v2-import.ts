@@ -30,6 +30,7 @@ import {
   type TextListItem,
   type TextRun,
 } from "@/components/slide-editor/types";
+import { asRecord, isRecord, readString } from "@/components/slide-editor/model/core";
 
 const MIN_ELEMENT_SIZE = 1;
 const MAX_BORDER_RADIUS = 128;
@@ -1648,22 +1649,10 @@ function readLayoutAlignment(
     : null;
 }
 
-function readString(value: unknown): string | null {
-  return typeof value === "string" ? value : null;
-}
-
 function readColor(value: unknown): string | null {
   const color = readString(value)?.trim();
   if (!color) return null;
   return /^#?[0-9A-Fa-f]{6}$/.test(color) ? color : null;
-}
-
-function asRecord(value: unknown): UnknownRecord | null {
-  return isRecord(value) ? value : null;
-}
-
-function isRecord(value: unknown): value is UnknownRecord {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function stripNullish<T extends UnknownRecord>(value: T): T {

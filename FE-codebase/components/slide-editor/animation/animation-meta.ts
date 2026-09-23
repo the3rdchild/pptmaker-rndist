@@ -8,6 +8,8 @@
 // generator's fill pass can DELETE elements (`prune_if_unfilled`), which would
 // silently re-point any slide-level list that addresses elements by path.
 
+import { isRecord } from "@/components/slide-editor/model/core";
+
 /** What phase of an element's life an effect belongs to. Entrance steps make
  *  the element start hidden; exit steps make it end hidden. Emphasis is a
  *  temporary beat that returns the element to rest. */
@@ -102,10 +104,6 @@ export const ANIMATION_KIND_ORDER: AnimationKind[] = [
   "emphasis",
   "exit",
 ];
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
 
 function readIntInRange(
   value: unknown,

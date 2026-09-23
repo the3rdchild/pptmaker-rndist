@@ -18,12 +18,9 @@ import {
 	lineRenderHeight,
 	type RenderTextRun,
 } from "@/components/slide-editor/text/template-v2-text";
+import { isRecord } from "@/components/slide-editor/model/core";
 
 type Rec = Record<string, unknown>;
-
-function isRecord(value: unknown): value is Rec {
-	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
 
 /** Mirrors element-outline.ts childItems so paths stay in sync. */
 function childItems(element: Rec): Rec[] | null {

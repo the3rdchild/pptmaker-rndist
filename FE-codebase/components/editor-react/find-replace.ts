@@ -5,13 +5,10 @@
 // same way agent-dispatch.ts's walkUi does.
 
 import { ROOT_ELEMENTS_COMPONENT_INDEX } from "@/components/slide-editor/model/model";
+import { isRecord } from "@/components/slide-editor/model/core";
 import type { SlideData } from "@/store/presentationGeneration";
 
 type AnyRecord = Record<string, unknown>;
-
-function isRecord(v: unknown): v is AnyRecord {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
-}
 
 export type TextTransform = (text: string) => { text: string; count: number };
 

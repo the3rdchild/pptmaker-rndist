@@ -20,6 +20,7 @@ import {
   ROOT_ELEMENTS_COMPONENT_INDEX,
   readNumber,
   readString,
+  isRecord,
   type Box,
   type RawElement,
   type RawUi,
@@ -27,10 +28,6 @@ import {
 } from "@/components/slide-editor/model/core";
 
 type Rec = Record<string, unknown>;
-
-function isRecord(value: unknown): value is Rec {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
 
 /** Mirrors model.ts childArrayInfo so walked paths stay in sync with the
  *  canvas (and with absoluteBoxForSelection / nodeRefs keys). */

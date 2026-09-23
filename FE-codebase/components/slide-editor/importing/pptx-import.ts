@@ -33,6 +33,7 @@ import {
 } from "@/components/slide-editor/importing/pptx-geometry";
 import { EDITOR_STAGE_WIDTH, EDITOR_STAGE_HEIGHT } from "@/components/slide-editor/types";
 import { childArrayInfo, readString } from "@/components/slide-editor/model/model";
+import { asRecord } from "@/components/slide-editor/model/core";
 import {
   isGoogleFontFamily,
   loadGoogleFontOptions,
@@ -2121,10 +2122,6 @@ function readAttrBoolean(rec: Rec | null, attr: string): boolean | null {
   if (value === "1" || value === "true") return true;
   if (value === "0" || value === "false") return false;
   return null;
-}
-
-function asRecord(value: unknown): Rec | null {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Rec) : null;
 }
 
 function asArray(value: unknown): unknown[] {

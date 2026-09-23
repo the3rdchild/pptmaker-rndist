@@ -1,3 +1,5 @@
+import { readArray, isRecord } from "@/components/slide-editor/model/core";
+
 export type TemplateV2ClipboardRecord = Record<string, unknown>;
 
 export type TemplateV2ClipboardBox = {
@@ -105,10 +107,6 @@ function payloadItems(payload: TemplateV2ClipboardPayload): TemplateV2ClipboardI
   );
 }
 
-function readArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
-
 function withUniquePastedComponentIdentity(
   component: TemplateV2ClipboardRecord,
   siblings: unknown[],
@@ -152,10 +150,6 @@ function normalizeId(value: string) {
 
 function readString(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
 function cloneJson<T>(value: T): T {

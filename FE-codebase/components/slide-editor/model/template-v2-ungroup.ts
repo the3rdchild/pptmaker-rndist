@@ -1,3 +1,5 @@
+import { readArray, asRecord, isRecord, readString } from "@/components/slide-editor/model/core";
+
 type RawRecord = Record<string, any>;
 
 export type TemplateV2UngroupBox = {
@@ -190,24 +192,6 @@ function isFlowLayoutType(type: string | null) {
 
 function isUngroupableLayoutType(type: string | null) {
   return isFlowLayoutType(type) || type === "group";
-}
-
-function readArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
-
-function asRecord(value: unknown): RawRecord | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as RawRecord)
-    : null;
-}
-
-function isRecord(value: unknown): value is RawRecord {
-  return Boolean(asRecord(value));
-}
-
-function readString(value: unknown): string | null {
-  return typeof value === "string" ? value : null;
 }
 
 function normalizeId(value: string) {

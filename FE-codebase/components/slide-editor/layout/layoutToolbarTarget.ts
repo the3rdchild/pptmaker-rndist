@@ -3,6 +3,7 @@ import {
   isTemplateV2LayoutElement,
   type TemplateV2LayoutElement,
 } from "@/components/slide-editor/layout/LayoutToolbar";
+import { asRecord } from "@/components/slide-editor/model/core";
 
 type RawRecord = Record<string, unknown>;
 
@@ -10,12 +11,6 @@ export type ComponentLayoutElementTarget = {
   element: TemplateV2LayoutElement;
   elementPath: number[];
 };
-
-function asRecord(value: unknown): RawRecord | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as RawRecord)
-    : null;
-}
 
 function childElements(element: RawRecord): unknown[] {
   if (Array.isArray(element.children)) return element.children;

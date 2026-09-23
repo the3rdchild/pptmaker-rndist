@@ -11,6 +11,13 @@ import {
   computeMergedCoverage,
   effectiveSpan,
 } from "@/components/slide-editor/tables/table-merge";
+import {
+  readArray,
+  asRecord,
+  readString,
+  readNumber,
+  readBoolean,
+} from "@/components/slide-editor/model/core";
 
 type UnknownRecord = Record<string, any>;
 type RawElement = UnknownRecord;
@@ -859,28 +866,6 @@ function strokeColor(stroke: unknown) {
 function strokeWidth(stroke: unknown) {
   const value = asRecord(stroke);
   return readNumber(value?.width) ?? 0;
-}
-
-function readArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
-
-function asRecord(value: unknown): UnknownRecord | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as UnknownRecord)
-    : null;
-}
-
-function readString(value: unknown): string | null {
-  return typeof value === "string" ? value : null;
-}
-
-function readNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function readBoolean(value: unknown): boolean | null {
-  return typeof value === "boolean" ? value : null;
 }
 
 function withHash(value: string | null | undefined) {

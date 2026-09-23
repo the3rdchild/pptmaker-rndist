@@ -26,6 +26,7 @@ import {
   recommendHarmony,
   toPaletteSpec,
 } from "@/lib/templates/palette-engine";
+import { isRecord } from "@/components/slide-editor/model/core";
 
 type Rec = Record<string, unknown>;
 
@@ -116,10 +117,6 @@ function buildConstraints(theme: TemplateTheme): ThemeConstraints {
       note: "Use the theme's font family as-is. Size and weight may be adjusted to make text fit, but never substitute a different family.",
     },
   };
-}
-
-function isRecord(value: unknown): value is Rec {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function readString(value: unknown): string | undefined {

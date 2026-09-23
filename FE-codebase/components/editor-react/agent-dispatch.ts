@@ -27,6 +27,7 @@ import { isImageFrameElement } from "@/components/editor-react/image-frames";
 import type { BackgroundStyle } from "@/components/slide-editor/surface/SlideBackground";
 import { PresentationGenerationApi } from "@/app/(presentation-generator)/services/api/presentation-generation";
 import type { RawUi, RawElement } from "@/components/slide-editor/model/core";
+import { isRecord } from "@/components/slide-editor/model/core";
 import {
   setComponentPositionsInUi,
   componentBox,
@@ -34,10 +35,6 @@ import {
 } from "@/components/slide-editor/model/model";
 
 type AnyRecord = Record<string, unknown>;
-
-function isRecord(v: unknown): v is AnyRecord {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
-}
 
 // Recursively visits every element in a component tree (container.child is
 // singular, flex/grid/group.children is an array) — matches the exact

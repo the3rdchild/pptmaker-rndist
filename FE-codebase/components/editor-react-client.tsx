@@ -61,6 +61,8 @@ import { getGlobalFonts } from "@/lib/fonts/global-fonts";
 import { streamHtmlDeck } from "@/lib/html-slides-stream";
 import { useDeckAutosave } from "@/components/editor-react/use-deck-autosave";
 import { htmlThemeFromParams, modeFromParams } from "@/lib/generation-mode";
+import { transitionsFromParams } from "@/lib/transition-preference";
+import { linkMorphAnchors, plannedTransitions } from "@/components/editor-react/template-transitions";
 import { insertHtmlSlideAt } from "@/components/editor-react/html-slide-insertion";
 import { buildSlidePhotoRequest } from "@/components/editor-react/slide-image-brief";
 import { parseOutline } from "@/components/outline/outline-markdown";
@@ -1193,6 +1195,7 @@ export default function EditorReactClient({
         provider,
         imageSource,
         imageModel: imageModelRef.current,
+        transitions: transitionsFromParams(searchParams),
         sessionToken: token,
         slideCount: plannedSlideCount > 0 ? plannedSlideCount : undefined,
       },
@@ -1219,7 +1222,7 @@ export default function EditorReactClient({
               slides: current.slides,
             },
             event.index,
-            { ui: event.ui } as SlideData,
+            { ui: event.ui, ...(event.transition ? { transition: event.transition } : {}) } as SlideData,
           );
           htmlSlideLogicalIndicesRef.current = inserted.logicalIndices;
           if (!inserted.inserted) return;
@@ -2193,12 +2196,13 @@ export default function EditorReactClient({
     setIsGenerating(true);
     // The mode lives in the URL, so a reload or a "Try Again" re-runs whichever
     // engine the user actually chose rather than silently falling back.
-    const build =
-      modeFromParams(searchParams) === "html"
-        ? generateDeckFromHtml(topic, htmlThemeFromParams(searchParams), model, imageSource)
-        : generateDeckFromTopic(topic, language, model, withReview, providers, imageSource, pinnedThemeId);
+    const htmlMode = modeFromParams(searchParams) === "html";
+    const build = htmlMode
+      ? generateDeckFromHtml(topic, htmlThemeFromParams(searchParams), model, imageSource)
+      : generateDeckFromTopic(topic, language, model, withReview, providers, imageSource, pinnedThemeId);
     build
       .then((built) => {
+        if (!htmlMode && built > 0 && transitionsFromParams(searchParams)) applyTemplateTransitions(topic);
         // Settle the denominator against what actually shipped. `planned` is
         // the outline's page count and drives the bar WHILE streaming, but a
         // model that returns one slide fewer used to leave the panel reading
@@ -2220,6 +2224,27 @@ export default function EditorReactClient({
         setIsGenerating(false);
         setGenerationStatus(null);
       });
+  };
+
+  // Template decks get the outline's transition plan once every slide exists:
+  // the type on each slide, plus headline/hero morph links for morph pairs.
+  // (HTML mode carries its transitions on each streamed slide instead.)
+  const applyTemplateTransitions = (topic: string) => {
+    const current = reduxStore.getState().presentationGeneration.presentationData;
+    if (!current?.slides.length) return;
+    const plan = plannedTransitions(current.slides.length, parseOutline(topic).pages);
+    const slides = current.slides.map((slide) => ({ ...slide }));
+    plan.forEach((transition, index) => {
+      slides[index].transition = transition;
+      const previousUi = slides[index - 1]?.ui;
+      const ui = slides[index].ui;
+      if (transition === "morph" && previousUi && ui) {
+        const linked = linkMorphAnchors(previousUi, ui);
+        slides[index - 1] = { ...slides[index - 1], ui: linked.a };
+        slides[index] = { ...slides[index], ui: linked.b };
+      }
+    });
+    dispatch(setPresentationData({ ...current, slides }));
   };
 
   const retryGeneration = () => {

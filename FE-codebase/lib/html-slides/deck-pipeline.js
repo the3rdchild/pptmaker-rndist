@@ -17,6 +17,13 @@ import { firstConfiguredProvider, chat } from "./llm-client.js";
 import { buildOutline } from "./outline-source.js";
 import { ensureThemeBackgroundPlaceholder, fillPhotos } from "./photo-fill.js";
 import { assessSlideLayout } from "./layout-quality.js";
+import {
+  ensureMorphAnchor,
+  groupMorphChains,
+  morphAnchorsFrom,
+  pairHeadingsIfUnmatched,
+  sharedMorphIds,
+} from "./morph-chain.js";
 import { describeElements, renderAndExtract } from "./render-extract.js";
 import { buildSafeFallbackFragment } from "./safe-fallback.js";
 import { buildSlidePrompt } from "./slide-prompt.js";
@@ -45,12 +52,22 @@ export async function mapWithConcurrency(items, limit, mapper) {
 /** Resolves image placeholders only after a fragment has passed layout review.
  * This prevents AI-image charges and stock tracking pings from repeating on
  * discarded repair attempts. */
-export async function resolveAcceptedFragmentPhotos(fragment, resolvePhoto, photoContext) {
-  const { html, unresolved } = await fillPhotos(
+export async function resolveAcceptedFragmentPhotos(fragment, resolvePhoto, photoContext, reusePhotos = {}) {
+  const { html, unresolved, morphPhotos } = await fillPhotos(
     fragment.sectionHtml,
-    resolvePhoto ? { resolvePhoto, photoContext } : undefined,
+    resolvePhoto ? { resolvePhoto, photoContext, reusePhotos } : { reusePhotos },
   );
-  return { ...fragment, sectionHtml: html, unresolvedPhotos: unresolved };
+  return { ...fragment, sectionHtml: html, unresolvedPhotos: unresolved, morphPhotos };
+}
+
+/** The transition each slide enters with. Off: none recorded at all. On: the
+ *  outline's plan, with the first slide forced to none (nothing precedes it)
+ *  and an unplanned slide given a neutral fade. */
+function withPlannedTransitions(slides, transitions) {
+  return slides.map((slide, index) => ({
+    ...slide,
+    transition: !transitions ? undefined : index === 0 ? "none" : slide.transition ?? "fade-black",
+  }));
 }
 
 /** The AI designs the deck's theme; a saved theme stands in when that fails,
@@ -90,6 +107,9 @@ async function resolveFreestyleTheme({ outline, provider, signal, loadFallbackTh
  * @param {(event: Record<string, unknown>) => void} [options.onEvent]
  * @param {AbortSignal} [options.signal] Aborts outstanding LLM calls and stops
  *   scheduling new slides, e.g. when the client disconnects.
+ * @param {boolean} [options.transitions] Apply the outline's transition plan;
+ *   slides joined by morph are then generated in order, each written against
+ *   what the slide before it actually rendered.
  */
 export async function generateDeck({
   topic,
@@ -101,6 +121,7 @@ export async function generateDeck({
   outDir = null,
   onEvent = () => {},
   signal,
+  transitions = false,
 }) {
   const resolvedProvider = firstConfiguredProvider(provider);
   const workDir = outDir ?? mkdtempSync(join(tmpdir(), "html-slides-"));
@@ -112,8 +133,10 @@ export async function generateDeck({
       slideCount,
       provider: resolvedProvider,
       signal,
+      transitions,
     });
     if (!outline.slides?.length) throw new Error("Outline came back empty.");
+    const plannedSlides = withPlannedTransitions(outline.slides, transitions);
     onEvent({
       type: "outline",
       title: outline.title,
@@ -130,9 +153,9 @@ export async function generateDeck({
       type: "status",
       message: `Mendesain ${outline.slides.length} slide sebagai HTML…`,
     });
-    // One call per slide, in parallel. Short replies are what let a cheap model
-    // hold the layout rules in mind for a whole slide.
-    const createFragment = async (slide, index, repairFeedback = "") => {
+    // One call per slide. Short replies are what let a cheap model hold the
+    // layout rules in mind for a whole slide.
+    const createFragment = async (slide, index, repairFeedback = "", morph = undefined) => {
         const recipe = selectRecipe(theme, slide.role, index);
         const reply = await chat({
           provider: resolvedProvider,
@@ -144,6 +167,7 @@ export async function generateDeck({
             index,
             total: outline.slides.length,
             repairFeedback,
+            morph,
           }),
           maxTokens: 4000,
           temperature: 0.7,
@@ -172,10 +196,10 @@ export async function generateDeck({
       };
     };
 
-    const generateSlide = async (slide, index) => {
+    const generateSlide = async (slide, index, morph) => {
       signal?.throwIfAborted();
       onEvent({ type: "status", message: `Membuat slide ${index + 1}/${outline.slides.length}...` });
-      let fragment = await createFragment(slide, index);
+      let fragment = await createFragment(slide, index, "", morph);
       const htmlPath = join(workDir, `slide-${index + 1}.html`);
       writeFileSync(htmlPath, buildSlideDocument(theme, fragment), "utf8");
       let { slide: rendered, warnings } = await renderSingleSlide(htmlPath, index);
@@ -185,13 +209,39 @@ export async function generateDeck({
       });
 
       for (let attempt = 0; !assessment.ok && attempt < 2; attempt += 1) {
-        fragment = await createFragment(slide, index, assessment.feedback);
+        fragment = await createFragment(slide, index, assessment.feedback, morph);
         writeFileSync(htmlPath, buildSlideDocument(theme, fragment), "utf8");
         ({ slide: rendered, warnings } = await renderSingleSlide(htmlPath, index));
         assessment = assessSlideLayout({
           elements: rendered.ui.elements,
           warnings: warnings.map((warning) => warning.message),
         });
+      }
+
+      // A morph that pairs nothing plays as a plain crossfade. One more try,
+      // kept only if it both pairs something and still passes layout review.
+      const anchors = morph?.from?.anchors ?? [];
+      if (assessment.ok && anchors.length && !sharedMorphIds(anchors, rendered.ui).length) {
+        const retry = await createFragment(
+          slide,
+          index,
+          `Slide ini seharusnya MORPH dari slide sebelumnya, tapi tidak ada elemen yang memakai ulang data-morph (${anchors.map((anchor) => anchor.id).join(", ")}). Pakai ulang minimal satu id itu pada elemen yang sama.`,
+          morph,
+        );
+        writeFileSync(htmlPath, buildSlideDocument(theme, retry), "utf8");
+        const retried = await renderSingleSlide(htmlPath, index);
+        const retriedAssessment = assessSlideLayout({
+          elements: retried.slide.ui.elements,
+          warnings: retried.warnings.map((warning) => warning.message),
+        });
+        if (retriedAssessment.ok && sharedMorphIds(anchors, retried.slide.ui).length) {
+          fragment = retry;
+          ({ slide: rendered, warnings } = retried);
+          assessment = retriedAssessment;
+        } else {
+          // Keep the first render; the headings get paired below instead.
+          writeFileSync(htmlPath, buildSlideDocument(theme, fragment), "utf8");
+        }
       }
 
       if (!assessment.ok) {
@@ -212,7 +262,7 @@ export async function generateDeck({
         slideNumber: index + 1,
         heading: slide.heading,
         subject: slide.visual || slide.brief,
-      });
+      }, morph?.from?.photos);
       writeFileSync(htmlPath, buildSlideDocument(theme, fragment), "utf8");
       ({ slide: rendered, warnings } = await renderSingleSlide(htmlPath, index));
       assessment = assessSlideLayout({
@@ -230,21 +280,48 @@ export async function generateDeck({
         });
       }
 
-      const ui = rendered.ui;
+      // The model's own tags win; the heading only stands in when a planned
+      // morph would otherwise pair nothing.
+      let ui = rendered.ui;
+      if (morph?.from) ui = pairHeadingsIfUnmatched(anchors, ui);
+      if (morph?.toNext) ui = ensureMorphAnchor(ui);
       onEvent({
         type: "slide",
         index,
         ui,
+        ...(slide.transition ? { transition: slide.transition } : {}),
         heading: slide.heading ?? "",
         elementCount: ui.elements.length,
         summary: describeElements(ui.elements),
       });
       for (const warning of warnings) onEvent({ type: "warning", ...warning });
-      return { slide: rendered, warnings };
+      return {
+        slide: { ...rendered, ui },
+        warnings,
+        anchors: morphAnchorsFrom(ui),
+        morphPhotos: fragment.morphPhotos ?? {},
+      };
     };
 
+    // Two chains at a time; inside a chain each slide waits for the one it
+    // morphs from, and tags its own anchors when the next slide morphs from it.
     onEvent({ type: "status", message: "Merender dan mencontek layout…" });
-    const completed = await mapWithConcurrency(outline.slides, 2, generateSlide);
+    const completed = new Array(plannedSlides.length);
+    await mapWithConcurrency(groupMorphChains(plannedSlides), 2, async (chain) => {
+      let previous = null;
+      for (const index of chain) {
+        const slide = plannedSlides[index];
+        const next = plannedSlides[index + 1];
+        const morph = {
+          ...(previous && slide.transition === "morph"
+            ? { from: { note: slide.transitionNote ?? "", anchors: previous.anchors, photos: previous.morphPhotos } }
+            : {}),
+          ...(next?.transition === "morph" ? { toNext: { note: next.transitionNote ?? "" } } : {}),
+        };
+        completed[index] = await generateSlide(slide, index, morph);
+        previous = completed[index];
+      }
+    });
     const slides = completed.map((entry) => entry.slide);
     const warnings = completed.flatMap((entry) => entry.warnings);
 

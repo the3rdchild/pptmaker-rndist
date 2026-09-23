@@ -5,6 +5,7 @@
 // be exactly those pages in that order. Only a bare topic — the chat's
 // "create_deck", say — earns an outline call of its own.
 
+import { isTransitionLine, normalizeTransitionId, parseTransitionLine } from "../outline-transition.js";
 import { chat } from "./llm-client.js";
 import { buildOutlinePrompt } from "./slide-prompt.js";
 
@@ -30,12 +31,18 @@ export function outlineFromMarkdown(markdown) {
     const line = rawLine.trim();
     if (!line) continue;
     if (line.startsWith("## ")) {
-      current = { heading: line.slice(3).trim(), description: "", imageBrief: "", bullets: [] };
+      current = { heading: line.slice(3).trim(), description: "", imageBrief: "", bullets: [], transition: null, transitionNote: "" };
       pages.push(current);
     } else if (line.startsWith("# ")) {
       if (!title) title = line.slice(2).trim();
     } else if (/^(?:visual|gambar|image)\s*:/i.test(line) && current) {
       current.imageBrief = line.replace(/^(?:visual|gambar|image)\s*:\s*/i, "").trim();
+    } else if (isTransitionLine(line) && current) {
+      const parsed = parseTransitionLine(line);
+      if (parsed) {
+        current.transition = parsed.transition;
+        current.transitionNote = parsed.note;
+      }
     } else if (line.startsWith("- ") && current) {
       current.bullets.push(line.slice(2).trim());
     } else if (current) {
@@ -50,6 +57,7 @@ export function outlineFromMarkdown(markdown) {
       heading: page.heading,
       brief: [page.description, ...page.bullets.map((b) => `- ${b}`)].filter(Boolean).join("\n") || page.heading,
       visual: page.imageBrief || [page.heading, page.description].filter(Boolean).join(" — "),
+      ...(page.transition ? { transition: page.transition, transitionNote: page.transitionNote } : {}),
     })),
   };
 }
@@ -68,12 +76,15 @@ export function normalizeOutline(raw) {
       const visual = typeof slide?.visual === "string" && slide.visual.trim()
         ? slide.visual.trim()
         : `${heading} — ${brief}`;
+      const transition = normalizeTransitionId(slide?.transition);
       return {
         ...slide,
         role: typeof slide?.role === "string" ? slide.role : ROLE_BY_POSITION(index, slides.length),
         heading,
         brief,
         visual,
+        transition: transition ?? undefined,
+        transitionNote: typeof slide?.transitionNote === "string" ? slide.transitionNote.trim() : "",
       };
     }),
   };
@@ -87,13 +98,13 @@ function parseOutlineReply(text) {
   return normalizeOutline(JSON.parse(cleaned.slice(start, end + 1)));
 }
 
-export async function buildOutline({ topic, slideCount, provider, signal }) {
+export async function buildOutline({ topic, slideCount, provider, signal, transitions = false }) {
   if (looksLikeOutline(topic)) {
     return { outline: outlineFromMarkdown(topic), fromApprovedOutline: true };
   }
   const reply = await chat({
     provider,
-    prompt: buildOutlinePrompt(topic, slideCount),
+    prompt: buildOutlinePrompt(topic, slideCount, { transitions }),
     maxTokens: 1800,
     temperature: 0.8,
     signal,

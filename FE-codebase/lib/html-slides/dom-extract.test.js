@@ -156,3 +156,39 @@ test("maps the locked theme image to slide background instead of a canvas elemen
     await rm(fixturePath, { force: true });
   }
 });
+
+test("carries data-morph onto the extracted element, once per source node", async () => {
+  const fixturePath = join(tmpdir(), `dom-extract-morph-${process.pid}.html`);
+  await writeFile(
+    fixturePath,
+    `<!doctype html>
+      <style>
+        * { box-sizing: border-box; margin: 0; padding: 0 }
+        .slide { position: relative; width: 1280px; height: 720px; background: white }
+        h1 { position: absolute; left: 64px; top: 64px; font: 700 48px/1.2 Arial }
+        .card { position: absolute; left: 64px; top: 300px; width: 400px; height: 200px;
+                background: rgb(230, 230, 250); border-left: 6px solid rgb(90, 60, 200) }
+      </style>
+      <section class="slide">
+        <h1 data-morph="title">Kopi Nusantara</h1>
+        <div class="card" data-morph="card"></div>
+        <p style="position:absolute;left:600px;top:300px;font:16px Arial">Tanpa morph</p>
+      </section>`,
+  );
+
+  const chrome = await ChromeSession.launch();
+  try {
+    await chrome.loadFile(fixturePath);
+    const extracted = await chrome.evaluate(`(${extractSlide.toString()})()`);
+    const ids = extracted.elements.map((element) => element.morph_id ?? null);
+    assert.ok(ids.includes("title"));
+    assert.ok(ids.includes("card"));
+    const plain = extracted.elements.find((element) => element.runs?.[0]?.text === "Tanpa morph");
+    assert.equal(plain.morph_id, undefined);
+    const tagged = ids.filter(Boolean);
+    assert.equal(new Set(tagged).size, tagged.length, "no id appears twice on one slide");
+  } finally {
+    await chrome.close();
+    await rm(fixturePath, { force: true });
+  }
+});

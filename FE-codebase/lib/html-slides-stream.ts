@@ -2,11 +2,13 @@
 // callbacks. Kept out of the editor component so the parsing has one home and
 // the component only decides what to do with each event.
 
+import type { SlideTransition } from "@/store/presentationGeneration";
+
 export type HtmlSlideEvent =
   | { type: "status"; message: string }
   | { type: "outline"; title: string; slides: string[]; provider: string }
   | { type: "theme"; name: string; description: string; source: "ai" | "fallback"; reason?: string }
-  | { type: "slide"; index: number; ui: Record<string, unknown>; heading: string; summary: string }
+  | { type: "slide"; index: number; ui: Record<string, unknown>; heading: string; summary: string; transition?: SlideTransition }
   | { type: "warning"; slide: number; message: string }
   | { type: "done"; title: string; count: number }
   | { type: "error"; message: string };
@@ -18,6 +20,8 @@ export interface HtmlDeckRequest {
   provider?: string;
   imageSource?: "ai" | "stock";
   imageModel?: string;
+  /** Apply the outline's transition plan (morph chains included). */
+  transitions?: boolean;
   sessionToken?: string;
   signal?: AbortSignal;
 }
@@ -27,7 +31,7 @@ export interface HtmlDeckRequest {
  *  slide it promised; a dropped response must not look like a ready deck.
  *  Throws on an `error` line so the caller's existing failure UI applies. */
 export async function streamHtmlDeck(
-  { topic, slideCount, theme, provider, imageSource, imageModel, sessionToken, signal }: HtmlDeckRequest,
+  { topic, slideCount, theme, provider, imageSource, imageModel, transitions, sessionToken, signal }: HtmlDeckRequest,
   onEvent: (event: HtmlSlideEvent) => void,
 ): Promise<number> {
   const response = await fetch("/api/html-slides/generate", {
@@ -43,6 +47,7 @@ export async function streamHtmlDeck(
       ...(provider == null ? {} : { provider }),
       ...(imageSource == null ? {} : { imageSource }),
       ...(imageModel == null ? {} : { imageModel }),
+      ...(transitions ? { transitions: true } : {}),
     }),
     signal,
   });

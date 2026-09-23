@@ -3,6 +3,7 @@
 //
 //   node FE-codebase/lib/html-slides/generate.js --topic "..." --slides 5 --theme paper
 //   node FE-codebase/lib/html-slides/generate.js --topic "..." --theme ai   # AI designs the theme
+//   node FE-codebase/lib/html-slides/generate.js --topic "..." --transitions # plan + build morph chains
 //   node FE-codebase/lib/html-slides/generate.js --reuse
 //
 // --reuse re-renders the HTML already in out/ instead of generating it again,
@@ -70,6 +71,7 @@ async function fresh() {
     slideCount,
     theme: theme ? parseHtmlTheme(theme) : null,
     loadFallbackTheme: async () => parseHtmlTheme(STARTER_HTML_THEMES[0]),
+    transitions: process.argv.includes("--transitions"),
     provider,
     outDir: OUT_DIR,
     onEvent: (event) => {
@@ -79,7 +81,9 @@ async function fresh() {
         event.slides.forEach((heading, i) => log(`  ${i + 1}. ${heading}`));
       }
       if (event.type === "slide") {
+        const morphIds = event.ui.elements.map((element) => element.morph_id).filter(Boolean);
         log(`  slide ${event.index + 1}: ${event.elementCount} elements (${event.summary})`);
+        if (event.transition) log(`    transition ${event.transition}${morphIds.length ? `, morph ids: ${morphIds.join(", ")}` : ""}`);
       }
       if (event.type === "theme") {
         log(`  theme "${event.name}" (${event.source})${event.reason ? ` — ${event.reason}` : ""}`);

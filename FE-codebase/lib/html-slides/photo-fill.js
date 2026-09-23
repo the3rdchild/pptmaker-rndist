@@ -83,16 +83,32 @@ export function ensureThemeBackgroundPlaceholder(sectionHtml, brief) {
   );
 }
 
-export async function fillPhotos(sectionHtml, { resolvePhoto = findPhoto, photoContext } = {}) {
+/**
+ * @param {string} sectionHtml
+ * @param {object} [options]
+ * @param {Record<string, string|{url: string, extra?: object}>} [options.reusePhotos]
+ *   Photos already resolved on the previous slide, by `data-morph` id. A
+ *   placeholder carrying one of those ids takes that exact photo instead of a
+ *   new search — a morph between two different pictures reads as a glitch.
+ */
+export async function fillPhotos(sectionHtml, { resolvePhoto = findPhoto, photoContext, reusePhotos = {} } = {}) {
   const placeholder = /<div([^>]*\bclass\s*=\s*"[^"]*\bphoto\b[^"]*"[^>]*)>\s*<\/div>/gi;
-  const briefs = [];
+  const slots = [];
   for (const match of sectionHtml.matchAll(placeholder)) {
-    briefs.push(attributes(match[1])["data-brief"] || "abstract background texture");
+    const parsed = attributes(match[1]);
+    slots.push({ brief: parsed["data-brief"] || "abstract background texture", morph: parsed["data-morph"] || "" });
   }
   const resolvedPhotos = await Promise.all(
-    briefs.map((brief) => resolvePhoto(brief, photoContext)),
+    slots.map(({ brief, morph }) => (morph && reusePhotos[morph]) || resolvePhoto(brief, photoContext)),
   );
-  const unresolved = briefs.filter((_brief, briefIndex) => !resolvedPhotos[briefIndex]);
+  const unresolved = slots
+    .filter((_slot, slotIndex) => !resolvedPhotos[slotIndex])
+    .map((slot) => slot.brief);
+  /** Resolved photos by morph id, for the next slide in a morph chain. */
+  const morphPhotos = {};
+  slots.forEach(({ morph }, slotIndex) => {
+    if (morph && resolvedPhotos[slotIndex]) morphPhotos[morph] = resolvedPhotos[slotIndex];
+  });
 
   let index = 0;
   const filled = sectionHtml.replace(placeholder, (full, attrs) => {
@@ -107,13 +123,14 @@ export async function fillPhotos(sectionHtml, { resolvePhoto = findPhoto, photoC
     const className = parsed.class || "photo";
     const themeBackground = /\bdata-theme-background(?:\s|=|>)/i.test(attrs) ? " data-theme-background" : "";
     const themeOverlay = parsed["data-theme-overlay"] ? ` data-theme-overlay="${parsed["data-theme-overlay"]}"` : "";
+    const morph = parsed["data-morph"] ? ` data-morph="${escapeAttribute(parsed["data-morph"])}"` : "";
     const attribution = [
       extra?.credit ? ` data-credit="${escapeAttribute(extra.credit)}"` : "",
       extra?.credit_url ? ` data-credit-url="${escapeAttribute(extra.credit_url)}"` : "",
       extra?.source_url ? ` data-source-url="${escapeAttribute(extra.source_url)}"` : "",
     ].join("");
-    return `<img class="${className}" data-brief="${escapeAttribute(brief)}"${themeBackground}${themeOverlay}${attribution}${style} src="${escapeAttribute(url)}" alt="">`;
+    return `<img class="${className}" data-brief="${escapeAttribute(brief)}"${themeBackground}${themeOverlay}${morph}${attribution}${style} src="${escapeAttribute(url)}" alt="">`;
   });
 
-  return { html: filled, count: briefs.length - unresolved.length, unresolved };
+  return { html: filled, count: slots.length - unresolved.length, unresolved, morphPhotos };
 }

@@ -85,3 +85,21 @@ test("passes authoritative slide context to every photo placeholder", async () =
 
   assert.deepEqual(received, [{ brief: "three billiards tables", context: photoContext }]);
 });
+
+test("a morphed photo reuses the previous slide's picture and keeps its id", async () => {
+  const searched = [];
+  const { html, morphPhotos } = await fillPhotos(
+    '<section class="slide"><div class="photo" data-morph="hero" data-brief="harbour"></div><div class="photo" data-brief="market"></div></section>',
+    {
+      resolvePhoto: async (brief) => {
+        searched.push(brief);
+        return `https://img.example/${brief}.jpg`;
+      },
+      reusePhotos: { hero: "https://img.example/previous-hero.jpg" },
+    },
+  );
+
+  assert.deepEqual(searched, ["market"], "only the new photo is searched");
+  assert.match(html, /<img class="photo" data-brief="harbour" data-morph="hero" src="https:\/\/img\.example\/previous-hero\.jpg"/);
+  assert.deepEqual(morphPhotos, { hero: "https://img.example/previous-hero.jpg" });
+});

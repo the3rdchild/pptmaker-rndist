@@ -306,8 +306,24 @@ export function extractSlide() {
     };
   }
 
+  // `data-morph="<id>"` marks an element as the same object as the one with
+  // that id on the neighbouring slide; Present Mode's morph pairs them by
+  // `morph_id`. One source node can emit several elements (a card's fill plus
+  // its accent bars, or loose text) — only the first takes the bare id, the
+  // rest get a suffix, so an id never appears twice on one slide.
+  const morphEmits = new Map();
+  function morphIdFor(el) {
+    const id = el.dataset && el.dataset.morph ? el.dataset.morph.trim() : "";
+    if (!id) return null;
+    const count = morphEmits.get(el) || 0;
+    morphEmits.set(el, count + 1);
+    return count === 0 ? id : id + "~" + count;
+  }
+
   function emit(element, el) {
     if (rotations.has(el)) element.rotation = rotations.get(el);
+    const morphId = morphIdFor(el);
+    if (morphId) element.morph_id = morphId;
     elements.push(element);
   }
 

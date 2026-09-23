@@ -9,7 +9,7 @@
 //   {"type":"status","message":"..."}
 //   {"type":"outline","title":"...","slides":["..."]}
 //   {"type":"theme","name":"...","description":"...","source":"ai"|"fallback","reason"?:"..."}
-//   {"type":"slide","index":0,"ui":{...},"heading":"..."}
+//   {"type":"slide","index":0,"ui":{...},"heading":"...","transition"?:"morph"}
 //   {"type":"warning","slide":1,"message":"..."}
 //   {"type":"done","title":"...","count":5}
 //   {"type":"error","message":"..."}
@@ -38,6 +38,7 @@ type Body = {
   provider?: unknown;
   imageSource?: unknown;
   imageModel?: unknown;
+  transitions?: unknown;
 };
 
 export async function POST(request: NextRequest) {
@@ -69,6 +70,7 @@ export async function POST(request: NextRequest) {
       ? Math.round(body.slideCount)
       : 5;
   const provider = typeof body.provider === "string" ? body.provider : undefined;
+  const transitions = body.transitions === true;
   const imageSource = body.imageSource === "stock" ? "stock" : "ai";
   const imageModel = resolveImageModelId(
     typeof body.imageModel === "string" ? body.imageModel : undefined,
@@ -111,6 +113,7 @@ export async function POST(request: NextRequest) {
           resolvePhoto,
           onEvent: send,
           signal: abort.signal,
+          transitions,
         });
         send({ type: "done", title: deck.title, count: deck.slides.length });
       } catch (error) {

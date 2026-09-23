@@ -7,17 +7,24 @@
 import { compileThemePrompt } from "./theme-prompt.js";
 import { STAGE_HEIGHT, STAGE_WIDTH } from "./slide-document.js";
 
-export function buildOutlinePrompt(topic, slideCount) {
+export function buildOutlinePrompt(topic, slideCount, { transitions = false } = {}) {
+  const transitionFields = transitions
+    ? ',"transition":"<morph|fade-black|fade-white|slide-left|slide-right|none>","transitionNote":"<untuk morph: elemen apa yang sama dengan slide sebelumnya dan bagaimana ia bergerak/berubah ukuran>"'
+    : "";
+  const transitionRules = transitions
+    ? `
+- "transition" = cara masuk KE slide itu. Slide pertama "none". Utamakan "morph" bila dua slide berurutan bisa berbagi elemen (judul mengecil jadi header, foto bergeser dari penuh ke separuh, angka besar jadi label) — kira-kira separuh slide. "fade-black" untuk ganti bagian, "slide-left"/"slide-right" untuk langkah berurutan.`
+    : "";
   return `Kamu perancang presentasi. Buat outline untuk deck ${slideCount} slide tentang: "${topic}".
 
 Balas HANYA JSON (tanpa fence, tanpa komentar):
-{"title":"<judul deck>","slides":[{"role":"<cover|content|stat|comparison|quote|closing>","heading":"<judul slide>","brief":"<2-3 kalimat: poin konkret yang harus muncul, termasuk angka/nama nyata bila relevan>","visual":"<isi gambar konkret: subjek, aktivitas, dan latar yang terlihat>"}]}
+{"title":"<judul deck>","slides":[{"role":"<cover|content|stat|comparison|quote|closing>","heading":"<judul slide>","brief":"<2-3 kalimat: poin konkret yang harus muncul, termasuk angka/nama nyata bila relevan>","visual":"<isi gambar konkret: subjek, aktivitas, dan latar yang terlihat>"${transitionFields}}]}
 
 Aturan:
 - Tepat ${slideCount} slide. Slide pertama role "cover", terakhir "closing".
 - Setiap visual harus konkret dan dapat difoto; hindari konsep abstrak, logo, watermark, atau instruksi generik seperti "buat menarik".
 - Variasikan role dan komposisi antar slide — jangan lima slide bentuk yang sama.
-- Bahasa Indonesia. Konkret, bukan generik.`;
+- Bahasa Indonesia. Konkret, bukan generik.${transitionRules}`;
 }
 
 const BANNED = [
@@ -30,7 +37,41 @@ const BANNED = [
   "ukuran font literal — SEMUA font-size wajib var(--fs-*)",
 ];
 
-export function buildSlidePrompt({ theme, recipe, deckTitle, slide, index, total, repairFeedback = "" }) {
+function describeAnchor(anchor) {
+  const what = anchor.kind === "text" ? `teks "${anchor.text}"` : anchor.kind === "photo" ? "foto" : "bentuk";
+  const { x, y, width, height } = anchor.box;
+  return `- data-morph="${anchor.id}" — ${what}, x=${x} y=${y} lebar=${width} tinggi=${height}`;
+}
+
+/**
+ * The morph part of a slide prompt. `from` is set when this slide morphs in
+ * from the previous one (its anchors are what that slide actually rendered);
+ * `toNext` when the next slide will morph from this one.
+ * @param {{ from?: { note: string, anchors: object[] }, toNext?: { note: string } } | undefined} morph
+ */
+export function buildMorphSection(morph) {
+  const parts = [];
+  if (morph?.from) {
+    parts.push(`TRANSISI MORPH DARI SLIDE SEBELUMNYA:
+Rencana: ${morph.from.note || "elemen utama slide sebelumnya berlanjut dan berpindah posisi"}
+Elemen slide sebelumnya yang bisa dilanjutkan:
+${morph.from.anchors.map(describeAnchor).join("\n") || "- (tidak ada)"}
+Aturan morph:
+- Pakai ULANG atribut data-morph yang sama pada elemen yang merupakan benda yang sama di slide ini (judul yang sama, foto yang sama, bentuk aksen yang sama). Minimal satu.
+- Ubah posisi dan/atau ukurannya sesuai rencana — itulah yang membuat morph terasa. Jangan taruh di koordinat yang persis sama.
+- Foto dengan data-morph yang sama otomatis memakai gambar yang sama; tetap tulis data-brief-nya.
+- Teks yang dipakai ulang boleh diringkas atau diperkecil, tapi tetap satu elemen daun.`);
+  }
+  if (morph?.toNext) {
+    parts.push(`SLIDE BERIKUTNYA AKAN MORPH DARI SLIDE INI:
+Rencana: ${morph.toNext.note || "elemen utama berlanjut ke slide berikutnya"}
+Tandai 1-3 elemen kunci yang akan berlanjut dengan atribut data-morph="<id-pendek>" (huruf kecil, mis. title, hero, stat, accent). Pasang langsung pada elemen daunnya: <h1>/<p>, <div class="photo">, atau <div> bentuk dekoratif — bukan pada pembungkus.`);
+  }
+  return parts.join("\n\n");
+}
+
+export function buildSlidePrompt({ theme, recipe, deckTitle, slide, index, total, repairFeedback = "", morph }) {
+  const morphSection = buildMorphSection(morph);
   return `Kamu desainer presentasi. Hasilkan SATU slide sebagai fragmen HTML.
 
 DECK: "${deckTitle}"
@@ -71,7 +112,7 @@ FOTO:
 - data-brief WAJIB mempertahankan subjek pada ISI GAMBAR. Theme/recipe hanya menentukan komposisi dan tidak boleh mengganti subjeknya.
 - Beri elemen itu ukuran nyata lewat CSS (width/height atau flex + aspect-ratio). Server yang mengisi gambarnya.
 
-${repairFeedback ? `PERBAIKAN WAJIB DARI RENDER SEBELUMNYA:
+${morphSection ? `${morphSection}\n\n` : ""}${repairFeedback ? `PERBAIKAN WAJIB DARI RENDER SEBELUMNYA:
 ${repairFeedback}
 Jangan menambah konten. Ringkas teks, kecilkan tipe, atau ubah grid sampai seluruh elemen terlihat di dalam kanvas.` : ""}
 

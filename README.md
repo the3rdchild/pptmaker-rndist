@@ -52,9 +52,9 @@ Four pieces: a **Next.js** app (dashboard + editor + template authoring), a
   API :8081 (Hono + Bun) ──────────────  NEXT.JS SERVER ROUTES ────────────
     POST /session                          /api/ai/*             theme pick,
     /decks   CRUD + versions                                     enhance,
-    /tools/* enqueue a job                                       visual review
-    /status/:jobId                         /api/template-engine/*  authoring
-    /stream/:jobId   SSE  ◄──────┐         /api/templates/*        asset proxy
+    /tools/* job + SSE stream ◄──┐                               visual review
+    /status/:jobId               │         /api/template-engine/*  authoring
+                                 │         /api/templates/*        asset proxy
          │                       │         /api/fonts/*  /api/elements
          ▼                       │         /api/stock-images/*
     Postgres 16  ·  Redis 7      │              │
@@ -63,7 +63,7 @@ Four pieces: a **Next.js** app (dashboard + editor + template authoring), a
   WORKER (Python) ───────────────┘              │
     BRPOP → dispatch on params.type             │
     outline · deck · outline_chat               │
-    agent · writing · image (FLUX)              │
+    agent · image (FLUX)                        │
          │                                      │
          ▼                                      ▼
     LLM providers                        S3 / DO Spaces
@@ -122,7 +122,8 @@ cp api/.env.example api/.env && cp api/.env.example api/.env.docker && cp worker
 the remapped ports). `.env.docker` is for processes run **inside** Docker
 (container networking: service names `postgres` / `redis` on their default
 internal ports). They are not interchangeable — see [Ports](#ports). Fill in
-DB/Redis URLs, at least one LLM key, and the `CDN_*` block in all of them.
+DB/Redis URLs and at least one LLM key in all of them, plus the `CDN_*` block in
+`FE-codebase/.env.local`.
 
 ### 2. Infrastructure
 
@@ -195,7 +196,7 @@ files are the authority, this is the map.
 ### `api/.env` / `api/.env.docker`
 
 `DATABASE_URL`, `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD`, `PORT`,
-`ORIGIN`, the `CDN_*` block (used for image uploads), and `PPT_QUEUE_NAME` /
+`ORIGIN`, and `PPT_QUEUE_NAME` /
 `PPT_JOB_NAME` — the last two **must match the worker's**.
 
 ### `worker/.env` / `worker/.env.docker`
@@ -257,13 +258,14 @@ generator otherwise sees only the outline text and merges pages down to its own
 ```
 POST /tools/*  →  pool_request row  →  BullMQ add  →  worker BRPOP
                                                           │
-browser  ←── SSE /stream/:jobId ←── API subscribes ←── worker publishes
-                                     ppt:stream:<jobId>
+browser  ←── SSE (same response) ←── API subscribes ←── worker publishes
+                                      ppt:stream:<jobId>
 ```
 
-The API subscribes **before** enqueueing and applies an idle timeout, so a fast
-job cannot finish before the client is listening. Job types the worker
-dispatches: `outline`, `deck`, `outline_chat`, `agent`, `writing`, `image`.
+The API subscribes **before** enqueueing, buffers anything published before the
+reader attaches, and applies an idle timeout, so a fast job cannot finish before
+the client is listening. Job types the worker dispatches: `outline`, `deck`,
+`outline_chat`, `agent`, `image`.
 
 ---
 
@@ -438,11 +440,8 @@ an anonymous token the browser generates and keeps in `localStorage`.
 | `POST` | `/tools/aippt` | → job. JSONL `AIPPTSlide` stream |
 | `POST` | `/tools/outline_chat` | → job. Outline refinement chat |
 | `POST` | `/tools/agent` | → job. JSONL `{tool, args}` action stream |
-| `POST` | `/tools/ai_writing` | → job |
 | `POST` | `/tools/image` | → job. FLUX via DeepInfra |
-| `POST` | `/tools/img_search` | **Stub** — always `{data: [], total: 0}`. Working stock search lives in the Next.js routes instead |
-| `GET` | `/status/:jobId` | Poll fallback |
-| `GET` | `/stream/:jobId` | SSE. Rejects a job the session does not own |
+| `GET` | `/status/:jobId` | Poll a job (used for image generation) |
 
 Next.js server routes (same origin as the app, not the Hono API):
 `/api/ai/{choose-theme,enhance-prompt,providers,visual-review}`,
@@ -483,7 +482,7 @@ Next.js server routes (same origin as the app, not the Hono API):
 ├── api/                             # Hono + Bun
 │   └── src/routes/v1/               # health, session, deck, tools, status, stream
 ├── worker/                          # Python worker
-│   ├── services/                    # outline, deck, agent, writing, image, llm_client
+│   ├── services/                    # outline, deck, agent, image, llm_client
 │   └── core/                        # configs (provider registry), db, queue, logging
 ├── docker/                          # Dockerfiles
 ├── docs/                            # storage notes, React-editor feasibility study
@@ -600,15 +599,12 @@ of what exists here.)
 - Shape-icon elements (triangle / star / polygon / arrows / diamond) are `image`
   elements holding self-contained SVG data URIs, so they are **not** recolorable
   through the shape fill/stroke toolbar — only through the image toolbar.
-  `lib/svg-color.ts` references an `/api/update-svg` route that **does not exist
-  in this codebase**; don't assume that pipeline works.
 - Resize snapping is single-component only; spacing badges fire on drag, not on
   resize.
 - "Recently used" / "Recently uploaded" are in-memory React state — reset on
   reload, never persisted.
-- "Magic Write" (Text tab) and "Magic Media" are visible stubs.
-- `/tools/img_search` is a stub; the working stock search is
-  `/api/stock-images/*`.
+- "Magic Write" (Text tab) and "Magic Media" are visible stubs with no backend
+  behind them.
 
 ---
 

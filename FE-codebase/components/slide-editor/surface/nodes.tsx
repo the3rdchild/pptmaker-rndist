@@ -2168,10 +2168,7 @@ function isSafeSvgClipPathData(value: string) {
 }
 
 // Fetches the source SVG text and recolors it client-side via
-// transformSvgMarkup, instead of round-tripping through a server-side
-// proxy route (this app has no Next.js API routes at all — /api/update-svg
-// referenced by lib/svg-color.ts's buildSvgUpdateUrl was never implemented).
-// Cached by src+color so repeated selections of the same icon/color don't
+// transformSvgMarkup — there is no server-side recolour route. Cached by src+color so repeated selections of the same icon/color don't
 // refetch.
 const recoloredSvgCache = new Map<string, string>();
 

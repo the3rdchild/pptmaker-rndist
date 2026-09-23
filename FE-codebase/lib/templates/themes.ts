@@ -181,21 +181,6 @@ export async function loadDefaultTheme(): Promise<TemplateTheme | null> {
   return all.find((theme) => theme.layouts.length > 0) ?? null;
 }
 
-/** Recovers the theme a layout came from. Layouts loaded through this module
- *  carry the tag; anything older falls back to the first shipped theme. */
-export function themeIdOfLayout(layout: unknown): string {
-  const record = asRecord(layout);
-  return readString(record?.[LAYOUT_THEME_KEY]) ?? BUILTIN_THEME_IDS[0];
-}
-
-/** Drops the registry tag before a layout is written back to disk. */
-export function stripLayoutThemeTag<T extends Record<string, unknown>>(
-  layout: T
-): Omit<T, typeof LAYOUT_THEME_KEY> {
-  const { [LAYOUT_THEME_KEY]: _theme, ...rest } = layout;
-  return rest;
-}
-
 /** Test seam — the browser caches themes for the page's lifetime, but the
  *  template engine has to see a layout it just saved. */
 export function invalidateThemeCache(id?: string): void {

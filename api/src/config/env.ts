@@ -10,13 +10,6 @@ export const env = {
 	REDIS_PORT: Number(process.env.REDIS_PORT) || 6379,
 	REDIS_PASSWORD: process.env.REDIS_PASSWORD,
 
-	CDN_BUCKET_NAME: process.env.CDN_BUCKET_NAME,
-	CDN_ENDPOINT: process.env.CDN_ENDPOINT,
-	CDN_PUBLIC_URL: process.env.CDN_PUBLIC_URL,
-	CDN_ACCESS_KEY_ID: process.env.CDN_ACCESS_KEY_ID,
-	CDN_SECRET_ACCESS_KEY: process.env.CDN_SECRET_ACCESS_KEY,
-	CDN_REGION: process.env.CDN_REGION,
-
 	SERVICE_URL: process.env.SERVICE_URL,
 
 	DEEPINFRA_API_KEY: process.env.DEEPINFRA_API_KEY,

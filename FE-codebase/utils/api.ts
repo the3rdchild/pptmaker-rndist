@@ -1,51 +1,5 @@
-import { extractApiErrorMessage } from "@/utils/apiErrorMessages";
-
 function isAbsoluteHttpUrl(path: string): boolean {
   return /^https?:\/\//i.test(path);
-}
-
-export async function getApiErrorMessage(
-  response: Response,
-  fallbackMessage: string
-): Promise<string> {
-  try {
-    const errorData: unknown = await response.clone().json();
-    return extractApiErrorMessage(errorData, fallbackMessage, response.status);
-  } catch {
-    try {
-      const text = await response.text();
-      return extractApiErrorMessage(text, fallbackMessage, response.status);
-    } catch {
-      return fallbackMessage;
-    }
-  }
-}
-
-function withLeadingSlash(path: string): string {
-  return path.startsWith("/") ? path : `/${path}`;
-}
-
-export function getFastAPIUrl(): string {
-  if (typeof window !== "undefined") {
-    return window.location.origin;
-  }
-  return "http://127.0.0.1:8081";
-}
-
-export function getApiUrl(path: string): string {
-  if (isAbsoluteHttpUrl(path)) return path;
-  return withLeadingSlash(path);
-}
-
-export function buildAbsoluteApiRequestUrl(
-  path: string,
-  baseForRelative: string = typeof window !== "undefined" && window.location?.origin
-    ? window.location.origin
-    : "http://127.0.0.1:8081"
-): string {
-  const resolved = getApiUrl(path);
-  if (isAbsoluteHttpUrl(resolved)) return resolved;
-  return new URL(resolved, baseForRelative).toString();
 }
 
 /** Theme a bare `static/...` asset path belongs to when no theme is supplied.

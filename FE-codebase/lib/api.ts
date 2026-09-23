@@ -1,4 +1,3 @@
-import type { Presentation } from './types/presentation'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8081'
 
@@ -31,10 +30,15 @@ export async function ensureSession(token: string): Promise<SessionInfo> {
 
 // ── Deck CRUD ──
 
+/** The `deck.payload` jsonb column, stored as the editor wrote it: title,
+ *  slides (each carrying its `ui`), fonts and the resolved theme id. Readers
+ *  narrow it themselves (see adaptDeckToPresentation), so it stays open here. */
+export type DeckPayload = Record<string, unknown>
+
 export type DeckRow = {
 	id: string
 	title: string
-	payload: Presentation | null
+	payload: DeckPayload | null
 	thumbnail: string | null
 	is_favorite: boolean
 	created_at: string
@@ -61,7 +65,7 @@ export async function getDeck(token: string, id: string): Promise<DeckRow> {
 
 export async function createDeck(
 	token: string,
-	body: { title?: string; payload?: Presentation },
+	body: { title?: string; payload?: DeckPayload },
 ): Promise<DeckRow> {
 	const res = await fetch(`${API_BASE}/api/v1/decks`, {
 		method: 'POST',
@@ -74,7 +78,7 @@ export async function createDeck(
 export async function saveDeck(
 	token: string,
 	id: string,
-	body: { title?: string; payload?: Presentation; thumbnail?: string | null },
+	body: { title?: string; payload?: DeckPayload; thumbnail?: string | null },
 ): Promise<DeckRow> {
 	const res = await fetch(`${API_BASE}/api/v1/decks/${id}`, {
 		method: 'PUT',
@@ -349,52 +353,3 @@ export async function pollStatus(token: string, jobId: string): Promise<StatusRe
 	return unwrap<StatusResult>(res)
 }
 
-// ── SSE stream ──
-
-export type StreamEvent =
-	| { type: 'done'; result: unknown; resultType: string }
-	| { type: 'error'; message: string }
-	| { type: 'timeout' }
-	| { type: 'ping' }
-
-export function openStream(
-	jobId: string,
-	onEvent: (event: StreamEvent) => void,
-	timeoutMs = 120000,
-): () => void {
-	const es = new EventSource(`${API_BASE}/api/v1/stream/${jobId}`)
-	let settled = false
-
-	const timer = setTimeout(() => {
-		if (settled) return
-		settled = true
-		es.close()
-		onEvent({ type: 'timeout' })
-	}, timeoutMs)
-
-	es.onmessage = (e) => {
-		try {
-			const data = JSON.parse(e.data) as StreamEvent
-			onEvent(data)
-			if (data.type === 'done' || data.type === 'error' || data.type === 'timeout') {
-				settled = true
-				clearTimeout(timer)
-				es.close()
-			}
-		} catch {}
-	}
-
-	es.onerror = () => {
-		if (settled) return
-		settled = true
-		clearTimeout(timer)
-		es.close()
-		onEvent({ type: 'error', message: 'Connection lost' })
-	}
-
-	return () => {
-		settled = true
-		clearTimeout(timer)
-		es.close()
-	}
-}

@@ -1031,7 +1031,8 @@ Primary files:
 Konva. `resolveBackendAssetSource()` and related helpers normalize backend
 asset URLs for browser/runtime differences.
 
-SVG icon recoloring uses `buildSvgUpdateUrl()` from `lib/svg-color.ts`.
+SVG icon recoloring fetches the SVG and rewrites it client-side with
+`transformSvgMarkup()` from `lib/svg-color.ts`.
 
 ## File and Function Mapping by Feature
 

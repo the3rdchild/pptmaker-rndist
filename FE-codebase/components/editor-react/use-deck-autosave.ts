@@ -35,7 +35,7 @@ function bodyFor(data: PresentationData, deckThemeId: string | null): SaveBody {
       // add_slide/regenerate_slide pin to the deck's real template.
       ...(deckThemeId ? { deckThemeId } : {}),
     },
-  } as unknown as SaveBody;
+  };
 }
 
 export function useDeckAutosave({

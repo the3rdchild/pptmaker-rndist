@@ -1,6 +1,7 @@
-export const SVG_UPDATE_ROUTE = "/api/update-svg";
+// Recolours SVG markup in place (icon fill/stroke/opacity/line caps) with
+// every value sanitised before it reaches an attribute.
 
-export interface SvgUpdateQuery {
+export interface SvgPaintOptions {
     color?: string | null;
     stroke?: string | null;
     fill?: string | null;
@@ -42,18 +43,6 @@ const VALID_STROKE_LINEJOIN_VALUES = new Set([
     "arcs",
     "inherit",
 ]);
-
-const SVG_UPDATE_QUERY_KEYS = [
-    "color",
-    "stroke",
-    "fill",
-    "strokeWidth",
-    "opacity",
-    "strokeOpacity",
-    "fillOpacity",
-    "strokeLinecap",
-    "strokeLinejoin",
-] as const;
 
 const ROOT_SVG_TAG_PATTERN = /<svg\b([^>]*)>/i;
 
@@ -205,58 +194,6 @@ const upsertRootAttribute = (
     });
 };
 
-const getMergedInput = (
-    incomingValue: string | null | undefined,
-    existingValue: string | undefined
-): string | null | undefined => {
-    if (incomingValue === undefined) {
-        return existingValue;
-    }
-
-    return incomingValue;
-};
-
-const normalizeSvgSourceForTransport = (
-    rawSource: string,
-    baseUrl: string
-): string => {
-    if (/^(?:[a-z][a-z0-9+.-]*:|\/)/i.test(rawSource)) {
-        return rawSource;
-    }
-
-    try {
-        return new URL(rawSource, baseUrl).toString();
-    } catch {
-        return rawSource;
-    }
-};
-
-const readSvgUpdateParams = (
-    rawSource: string,
-    baseUrl: string
-): Partial<Record<(typeof SVG_UPDATE_QUERY_KEYS)[number], string>> => {
-    try {
-        const parsedUrl = new URL(rawSource, baseUrl);
-        if (parsedUrl.pathname !== SVG_UPDATE_ROUTE) {
-            return {};
-        }
-
-        const output: Partial<
-            Record<(typeof SVG_UPDATE_QUERY_KEYS)[number], string>
-        > = {};
-        for (const key of SVG_UPDATE_QUERY_KEYS) {
-            const value = parsedUrl.searchParams.get(key);
-            if (value) {
-                output[key] = value;
-            }
-        }
-
-        return output;
-    } catch {
-        return {};
-    }
-};
-
 export const normalizeSvgColor = (value?: string | null): string | null => {
     if (typeof value !== "string") {
         return null;
@@ -321,141 +258,9 @@ export const normalizeStrokeLinejoin = (
     return VALID_STROKE_LINEJOIN_VALUES.has(normalized) ? normalized : null;
 };
 
-export const unwrapSvgUpdateUrl = (
-    rawSource: string,
-    baseUrl: string
-): string | null => {
-    let currentSource = rawSource.trim();
-    if (!currentSource) {
-        return null;
-    }
-
-    for (let depth = 0; depth < 5; depth += 1) {
-        try {
-            const parsedUrl = new URL(currentSource, baseUrl);
-            if (parsedUrl.pathname !== SVG_UPDATE_ROUTE) {
-                return currentSource;
-            }
-
-            const nestedSource = parsedUrl.searchParams.get("url");
-            if (!nestedSource) {
-                return null;
-            }
-
-            currentSource = nestedSource.trim();
-            if (!currentSource) {
-                return null;
-            }
-        } catch {
-            return currentSource;
-        }
-    }
-
-    return null;
-};
-
-export const isSvgImageSource = (
-    rawSource: string,
-    baseUrl: string
-): boolean => {
-    try {
-        const parsedRawUrl = new URL(rawSource, baseUrl);
-        if (parsedRawUrl.pathname === SVG_UPDATE_ROUTE) {
-            return true;
-        }
-    } catch {
-        // Ignore parse errors and fall through to the looser checks below.
-    }
-
-    const source = unwrapSvgUpdateUrl(rawSource, baseUrl) ?? rawSource.trim();
-    if (!source) {
-        return false;
-    }
-
-    if (/^data:image\/svg\+xml/i.test(source)) {
-        return true;
-    }
-
-    try {
-        const parsedUrl = new URL(source, baseUrl);
-        return /\.svg$/i.test(parsedUrl.pathname);
-    } catch {
-        return /\.svg(?:$|[?#])/i.test(source);
-    }
-};
-
-export const buildSvgUpdateUrl = (
-    rawSource: string,
-    baseUrl: string,
-    options: SvgUpdateQuery
-): string | null => {
-    const source = unwrapSvgUpdateUrl(rawSource, baseUrl);
-    if (!source) {
-        return null;
-    }
-
-    const transportSource = normalizeSvgSourceForTransport(source, baseUrl);
-
-    const existingParams = readSvgUpdateParams(rawSource, baseUrl);
-    const mergedInputs = {
-        color: getMergedInput(options.color, existingParams.color),
-        stroke: getMergedInput(options.stroke, existingParams.stroke),
-        fill: getMergedInput(options.fill, existingParams.fill),
-        strokeWidth: getMergedInput(
-            options.strokeWidth,
-            existingParams.strokeWidth
-        ),
-        opacity: getMergedInput(options.opacity, existingParams.opacity),
-        strokeOpacity: getMergedInput(
-            options.strokeOpacity,
-            existingParams.strokeOpacity
-        ),
-        fillOpacity: getMergedInput(
-            options.fillOpacity,
-            existingParams.fillOpacity
-        ),
-        strokeLinecap: getMergedInput(
-            options.strokeLinecap,
-            existingParams.strokeLinecap
-        ),
-        strokeLinejoin: getMergedInput(
-            options.strokeLinejoin,
-            existingParams.strokeLinejoin
-        ),
-    };
-
-    const normalizedParams = {
-        color: normalizeSvgColor(mergedInputs.color),
-        stroke: normalizeSvgColor(mergedInputs.stroke),
-        fill: normalizeSvgColor(mergedInputs.fill),
-        strokeWidth: normalizeSvgNumberish(mergedInputs.strokeWidth),
-        opacity: normalizeSvgNumberish(mergedInputs.opacity),
-        strokeOpacity: normalizeSvgNumberish(mergedInputs.strokeOpacity),
-        fillOpacity: normalizeSvgNumberish(mergedInputs.fillOpacity),
-        strokeLinecap: normalizeStrokeLinecap(mergedInputs.strokeLinecap),
-        strokeLinejoin: normalizeStrokeLinejoin(mergedInputs.strokeLinejoin),
-    };
-
-    const searchParams = new URLSearchParams();
-    searchParams.set("url", transportSource);
-
-    let hasTransforms = false;
-    for (const key of SVG_UPDATE_QUERY_KEYS) {
-        const value = normalizedParams[key];
-        if (value) {
-            searchParams.set(key, value);
-            hasTransforms = true;
-        }
-    }
-
-    return hasTransforms
-        ? `${SVG_UPDATE_ROUTE}?${searchParams.toString()}`
-        : transportSource;
-};
-
 export const transformSvgMarkup = (
     svgContent: string,
-    options: SvgUpdateQuery
+    options: SvgPaintOptions
 ): string => {
     let output = svgContent;
 

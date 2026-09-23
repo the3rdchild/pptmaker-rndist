@@ -15,7 +15,6 @@ export type HtmlThemeId = string;
 export const DEFAULT_HTML_THEME_ID = "corporate-tech-glass";
 
 const MODE_STORAGE_KEY = "ppt_generation_mode";
-const HTML_THEME_STORAGE_KEY = "ppt_html_theme";
 
 export function isGenerationMode(value: unknown): value is GenerationMode {
   return value === "template" || value === "html";
@@ -62,22 +61,5 @@ export function storeMode(mode: GenerationMode) {
     else localStorage.setItem(MODE_STORAGE_KEY, mode);
   } catch {
     // a browser that blocks storage still gets a working toggle for this visit
-  }
-}
-
-export function loadStoredHtmlTheme(): HtmlThemeId {
-  try {
-    const raw = localStorage.getItem(HTML_THEME_STORAGE_KEY);
-    return normalizeHtmlThemeId(raw) ?? DEFAULT_HTML_THEME_ID;
-  } catch {
-    return DEFAULT_HTML_THEME_ID;
-  }
-}
-
-export function storeHtmlTheme(theme: HtmlThemeId) {
-  try {
-    localStorage.setItem(HTML_THEME_STORAGE_KEY, theme);
-  } catch {
-    // as above
   }
 }

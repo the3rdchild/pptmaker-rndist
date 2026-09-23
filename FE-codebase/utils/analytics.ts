@@ -24,13 +24,3 @@ export function bucketFileSize(bytes: number | null | undefined): string {
   return "100MB+";
 }
 
-export function bucketMessageLength(length: number): string {
-  if (!Number.isFinite(length) || length <= 0) return "0";
-  if (length < 50) return "<50";
-  if (length < 200) return "50-199";
-  if (length < 500) return "200-499";
-  if (length < 1000) return "500-999";
-  if (length < 2000) return "1000-1999";
-  return "2000+";
-}
-

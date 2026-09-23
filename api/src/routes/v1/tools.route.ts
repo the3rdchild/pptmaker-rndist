@@ -36,11 +36,6 @@ const aipptSchema = z.object({
 	// outline job's same-named hint. Absent for free-text prompts.
 	slideCount: z.number().int().min(1).max(30).optional(),
 })
-const writingSchema = z.object({
-	content: z.string(),
-	command: z.string().optional().default('polish'),
-	model: z.string().optional(),
-})
 const imageSchema = z.object({
 	prompt: z.string(),
 	size: z.string().optional(),
@@ -309,33 +304,6 @@ tools.post('/aippt', async (c) => {
 	})
 })
 
-// ── POST /tools/ai_writing — raw text stream ──
-
-tools.post('/ai_writing', async (c) => {
-	const body = await c.req.json().catch(() => ({}))
-	const parsed = writingSchema.safeParse(body)
-	if (!parsed.success) return c.json({ state: -1, message: 'Invalid body' }, 400)
-
-	const sessionId = requireSession(c)
-	if (!sessionId) return c.json({ state: -1, message: 'Missing session' }, 401)
-
-	c.header('Content-Type', 'text/event-stream')
-	c.header('Cache-Control', 'no-cache')
-	c.header('Connection', 'keep-alive')
-
-	return stream(c, async (s) => {
-		await runStreamingJob(sessionId, {
-			type: 'writing',
-			content: parsed.data.content,
-			command: parsed.data.command,
-			model: parsed.data.model,
-			stream_mode: 'raw',
-		}, (text) => {
-			s.write(text).catch(() => {})
-		}, undefined, 30000)
-	})
-})
-
 // ── POST /tools/agent — structured action stream (JSONL) ──
 //
 // The LLM only decides + describes actions (e.g. {"tool":"set_font","args":{...}}).
@@ -435,13 +403,6 @@ tools.post('/image', async (c) => {
 	})
 
 	return c.json({ message: 'sukses', data: { jobId } })
-})
-
-// ── POST /tools/img_search — returns PPTist-expected shape ──
-
-tools.post('/img_search', (c) => {
-	// PPTist expects { data: [...], total: number }
-	return c.json({ data: [], total: 0 })
 })
 
 export default tools

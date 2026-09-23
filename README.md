@@ -232,7 +232,8 @@ match what the API's SSE route subscribes to), plus:
    named slots with the model's text, kicks off photo generation for the image
    slots, and (optionally) runs a visual review + repair pass.
 4. Everything after that is normal editing. Edits go through Redux and autosave
-   is debounced 1.5s to `PUT /decks/:id`. That endpoint snapshots the
+   is debounced 1.5s to `PUT /decks/:id` (flushed when the editor unmounts;
+   closing the tab with an unsaved edit asks first). That endpoint snapshots the
    about-to-be-overwritten payload into `deck_version` — throttled to one
    checkpoint per deck per 10 minutes, not one per autosave.
 
@@ -240,6 +241,30 @@ The approved outline's page count rides the **deck** request as well as the
 outline one (`slideCount`, counted from `^## ` headings), because the deck
 generator otherwise sees only the outline text and merges pages down to its own
 6-9 default.
+
+### HTML mode, AI themes and planned transitions
+
+- **Mode HTML** (dashboard toggle) swaps step 3 for `POST /api/html-slides/generate`:
+  the model writes each slide as 1280x720 HTML, headless Chrome renders it, and
+  the resolved DOM is read back as editable elements (`lib/html-slides/`).
+- **AI Bebas** — on `/outline` in HTML mode, leaving the theme unpicked (the
+  default card) has the model design the deck's theme from the outline: palette,
+  font pair, effects, art direction and a layout recipe per slide role. It must
+  pass the same validator as saved themes plus a text-contrast check; failures
+  go back as repair feedback twice, then the registry default is used
+  (`lib/html-slides/freestyle-theme.js`).
+- **Transisi** (dashboard toggle) makes the outline plan how the deck moves into
+  each slide, one line per page — `Transition: morph — <what carries across>` —
+  shown and editable on `/outline`. The worker normalises the lines
+  (`worker/services/outline_transitions.py`); `lib/outline-transition.js` parses
+  them on the FE side.
+  - In HTML mode, slides joined by morph are generated in order: the slide before
+    tags anchors with `data-morph`, the slide after is shown where they rendered
+    and reuses the ids (`lib/html-slides/morph-chain.js`). The extractor copies
+    `data-morph` onto `morph_id`, which Present Mode's morph pairs on.
+  - In template mode the plan is applied once the deck exists; morph pairs link
+    the headline slot and a hero photo (`components/editor-react/template-transitions.ts`).
+  - Transitions play in Present Mode only — PPTX export does not write them yet.
 
 ### Other entry points
 

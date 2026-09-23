@@ -1172,7 +1172,8 @@ export default function EditorReactClient({
    *  its photos were already settled in the browser that rendered them. */
   const generateDeckFromHtml = async (
     topic: string,
-    themeId: string,
+    /** null: the user pinned no theme, so the model designs one. */
+    themeId: string | null,
     provider?: string,
     imageSource: "ai" | "stock" = "ai",
   ): Promise<number> => {
@@ -1188,7 +1189,7 @@ export default function EditorReactClient({
     return streamHtmlDeck(
       {
         topic,
-        theme: themeId,
+        theme: themeId ?? undefined,
         provider,
         imageSource,
         imageModel: imageModelRef.current,
@@ -1197,6 +1198,13 @@ export default function EditorReactClient({
       },
       (event) => {
         if (event.type === "status") setGenerationStatus(event.message);
+        if (event.type === "theme") {
+          if (event.source === "ai") {
+            setGenerationStatus(`Tema AI: ${event.name}`);
+          } else {
+            notify.warning("Tema AI gagal dirancang", `Memakai tema "${event.name}". ${event.reason ?? ""}`.trim());
+          }
+        }
         if (event.type === "outline") {
           setExpectedSlideCount(event.slides.length);
           const current = reduxStore.getState().presentationGeneration.presentationData;

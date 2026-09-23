@@ -12,8 +12,6 @@ export type GenerationMode = "template" | "html";
  *  outline picker and the server; this module only keeps old URLs safe. */
 export type HtmlThemeId = string;
 
-export const DEFAULT_HTML_THEME_ID = "corporate-tech-glass";
-
 const MODE_STORAGE_KEY = "ppt_generation_mode";
 
 export function isGenerationMode(value: unknown): value is GenerationMode {
@@ -40,8 +38,10 @@ export function modeFromParams(params: { get(name: string): string | null }): Ge
   return isGenerationMode(raw) ? raw : "template";
 }
 
-export function htmlThemeFromParams(params: { get(name: string): string | null }): HtmlThemeId {
-  return normalizeHtmlThemeId(params.get(HTML_THEME_PARAM)) ?? DEFAULT_HTML_THEME_ID;
+/** The HTML theme the user pinned on /outline, or null when they picked none
+ *  — the pipeline then has the model design the deck's theme itself. */
+export function htmlThemeFromParams(params: { get(name: string): string | null }): HtmlThemeId | null {
+  return normalizeHtmlThemeId(params.get(HTML_THEME_PARAM));
 }
 
 /** The homepage remembers the last choice; localStorage can throw in a

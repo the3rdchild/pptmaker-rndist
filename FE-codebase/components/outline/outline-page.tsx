@@ -529,14 +529,17 @@ export function OutlinePage() {
               </button>
             </div>
 
-            {/* HTML mode designs each slide from its own locked palette and
-                font pair, so a template theme picked here would be ignored —
-                say so rather than letting the click look broken. */}
+            {/* HTML mode picks from saved HTML themes, not template themes.
+                No pick means the model designs this deck's theme itself. */}
             {generationMode === "html" && (
-              <><HtmlThemePicker requestedId={searchParams.get(HTML_THEME_PARAM)} value={htmlThemeId} onChange={setHtmlThemeId} /><p className="hidden mb-3 rounded-lg border border-[var(--border)] bg-[var(--bg-base)] p-2.5 text-[11px] leading-relaxed text-[var(--text-muted)]">
-                Mode HTML aktif — deck ini didesain AI dari nol, jadi theme di
-                bawah tidak dipakai. Ganti terang/gelap di halaman depan.
-              </p></>
+              <>
+                <HtmlThemePicker requestedId={searchParams.get(HTML_THEME_PARAM)} value={htmlThemeId} onChange={setHtmlThemeId} />
+                <p className="mt-3 text-[11px] leading-relaxed text-[var(--text-muted)]">
+                  {htmlThemeId
+                    ? "Tema terpilih dikunci untuk semua slide."
+                    : "AI Bebas: AI merancang palet, font, dan layout sendiri dari topik deck ini."}
+                </p>
+              </>
             )}
 
             {generationMode === "template" && (themesLoading ? (

@@ -5,6 +5,7 @@
 export type HtmlSlideEvent =
   | { type: "status"; message: string }
   | { type: "outline"; title: string; slides: string[]; provider: string }
+  | { type: "theme"; name: string; description: string; source: "ai" | "fallback"; reason?: string }
   | { type: "slide"; index: number; ui: Record<string, unknown>; heading: string; summary: string }
   | { type: "warning"; slide: number; message: string }
   | { type: "done"; title: string; count: number }

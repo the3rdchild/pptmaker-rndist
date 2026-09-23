@@ -8,6 +8,7 @@
 // Line shapes:
 //   {"type":"status","message":"..."}
 //   {"type":"outline","title":"...","slides":["..."]}
+//   {"type":"theme","name":"...","description":"...","source":"ai"|"fallback","reason"?:"..."}
 //   {"type":"slide","index":0,"ui":{...},"heading":"..."}
 //   {"type":"warning","slide":1,"message":"..."}
 //   {"type":"done","title":"...","count":5}
@@ -15,8 +16,8 @@
 
 import { NextRequest } from "next/server";
 import { generateDeck } from "@/lib/html-slides/deck-pipeline.js";
-import { DEFAULT_HTML_THEME_ID, normalizeHtmlThemeId } from "@/lib/generation-mode";
-import { readHtmlTheme } from "@/lib/html-themes/server/store";
+import { normalizeHtmlThemeId } from "@/lib/generation-mode";
+import { listHtmlThemeRegistry, readHtmlTheme } from "@/lib/html-themes/server/store";
 import { createPhotoResolver } from "@/lib/html-slides/photo-resolver";
 import { generateImage } from "@/lib/api";
 import { resolveImageModelId } from "@/lib/image-models";
@@ -46,14 +47,23 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "topic is required" }, { status: 400 });
   }
 
-  const requestedThemeId = body.theme == null ? DEFAULT_HTML_THEME_ID : normalizeHtmlThemeId(body.theme);
-  if (!requestedThemeId) {
-    return Response.json({ error: "theme must be a valid HTML theme id" }, { status: 400 });
+  // No theme means the user picked none on /outline: the model designs one
+  // for this outline, with the registry default standing by if it fails.
+  let theme: Awaited<ReturnType<typeof readHtmlTheme>> = null;
+  if (body.theme != null) {
+    const requestedThemeId = normalizeHtmlThemeId(body.theme);
+    if (!requestedThemeId) {
+      return Response.json({ error: "theme must be a valid HTML theme id" }, { status: 400 });
+    }
+    theme = await readHtmlTheme(requestedThemeId);
+    if (!theme) {
+      return Response.json({ error: `HTML theme "${requestedThemeId}" was not found. Seed or choose a saved theme first.` }, { status: 400 });
+    }
   }
-  const theme = await readHtmlTheme(requestedThemeId);
-  if (!theme) {
-    return Response.json({ error: `HTML theme "${requestedThemeId}" was not found. Seed or choose a saved theme first.` }, { status: 400 });
-  }
+  const loadFallbackTheme = async () => {
+    const { defaultThemeId } = await listHtmlThemeRegistry();
+    return defaultThemeId ? readHtmlTheme(defaultThemeId) : null;
+  };
   const slideCount =
     typeof body.slideCount === "number" && body.slideCount >= 1 && body.slideCount <= 20
       ? Math.round(body.slideCount)
@@ -96,6 +106,7 @@ export async function POST(request: NextRequest) {
           topic,
           slideCount,
           theme,
+          loadFallbackTheme,
           provider,
           resolvePhoto,
           onEvent: send,

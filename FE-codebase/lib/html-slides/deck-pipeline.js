@@ -4,7 +4,7 @@
 // it and the API route can stream it to the editor without either owning the
 // other's formatting.
 //
-// Events: {type:"status"|"outline"|"slide"|"warning"}, and the return value
+// Events: {type:"status"|"outline"|"theme"|"slide"|"warning"}, and the return value
 // carries the finished deck.
 
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { selectRecipe } from "../html-themes/schema.js";
+import { designFreestyleTheme } from "./freestyle-theme.js";
 import { firstConfiguredProvider, chat } from "./llm-client.js";
 import { buildOutline } from "./outline-source.js";
 import { ensureThemeBackgroundPlaceholder, fillPhotos } from "./photo-fill.js";
@@ -52,11 +53,37 @@ export async function resolveAcceptedFragmentPhotos(fragment, resolvePhoto, phot
   return { ...fragment, sectionHtml: html, unresolvedPhotos: unresolved };
 }
 
+/** The AI designs the deck's theme; a saved theme stands in when that fails,
+ *  so a flaky theme reply costs the look, never the deck. */
+async function resolveFreestyleTheme({ outline, provider, signal, loadFallbackTheme, onEvent }) {
+  onEvent({ type: "status", message: "AI merancang tema visual dari topik…" });
+  try {
+    const theme = await designFreestyleTheme({ outline, provider, signal });
+    onEvent({ type: "theme", name: theme.name, description: theme.description, source: "ai" });
+    return theme;
+  } catch (error) {
+    signal?.throwIfAborted();
+    const fallback = loadFallbackTheme ? await loadFallbackTheme() : null;
+    if (!fallback) throw error;
+    onEvent({
+      type: "theme",
+      name: fallback.name,
+      description: fallback.description,
+      source: "fallback",
+      reason: error instanceof Error ? error.message : String(error),
+    });
+    return fallback;
+  }
+}
+
 /**
  * @param {object} options
  * @param {string} options.topic Free-text prompt, or the approved outline markdown.
  * @param {number} [options.slideCount] Only consulted when there is no approved outline.
- * @param {object} options.theme A validated persisted HTML theme.
+ * @param {object|null} [options.theme] A validated persisted HTML theme, or
+ *   null to have the model design one for this outline.
+ * @param {() => Promise<object|null>} [options.loadFallbackTheme] A saved theme
+ *   to use when the AI-designed one cannot be validated.
  * @param {string} [options.provider] Falls back to the first configured one.
  * @param {string|null} [options.outDir] Keeps the HTML and PNGs; a temp dir otherwise.
  * @param {(brief: string, context?: {slideNumber?: number, heading?: string, subject?: string}) => Promise<string|ResolvedPhoto|null>} [options.resolvePhoto]
@@ -67,14 +94,14 @@ export async function resolveAcceptedFragmentPhotos(fragment, resolvePhoto, phot
 export async function generateDeck({
   topic,
   slideCount = 5,
-  theme,
+  theme = null,
+  loadFallbackTheme,
   provider,
   resolvePhoto,
   outDir = null,
   onEvent = () => {},
   signal,
 }) {
-  if (!theme) throw new Error("A valid HTML theme is required.");
   const resolvedProvider = firstConfiguredProvider(provider);
   const workDir = outDir ?? mkdtempSync(join(tmpdir(), "html-slides-"));
 
@@ -94,6 +121,10 @@ export async function generateDeck({
       fromApprovedOutline,
       provider: resolvedProvider,
     });
+
+    if (!theme) {
+      theme = await resolveFreestyleTheme({ outline, provider: resolvedProvider, signal, loadFallbackTheme, onEvent });
+    }
 
     onEvent({
       type: "status",

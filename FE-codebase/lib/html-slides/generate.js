@@ -2,6 +2,7 @@
 // toggle runs, driven from a terminal so it can be watched and iterated on.
 //
 //   node FE-codebase/lib/html-slides/generate.js --topic "..." --slides 5 --theme paper
+//   node FE-codebase/lib/html-slides/generate.js --topic "..." --theme ai   # AI designs the theme
 //   node FE-codebase/lib/html-slides/generate.js --reuse
 //
 // --reuse re-renders the HTML already in out/ instead of generating it again,
@@ -53,9 +54,11 @@ async function reuse() {
 
 async function fresh() {
   const topic = arg("topic", "Kopi specialty Indonesia: dari kebun ke cangkir");
-  const themeId = resolveHtmlThemeId(arg("theme", "corporate-tech-glass"));
-  const theme = STARTER_HTML_THEMES.find((candidate) => candidate.id === themeId);
-  if (!theme) throw new Error(`Unknown bundled HTML theme "${themeId}". Use the API for a saved custom theme.`);
+  const requested = arg("theme", "corporate-tech-glass");
+  const freestyle = requested === "ai";
+  const themeId = freestyle ? "ai" : resolveHtmlThemeId(requested);
+  const theme = freestyle ? null : STARTER_HTML_THEMES.find((candidate) => candidate.id === themeId);
+  if (!freestyle && !theme) throw new Error(`Unknown bundled HTML theme "${themeId}". Use the API for a saved custom theme.`);
   const provider = arg("provider", undefined);
   const slideCount = Number(arg("slides", "5"));
 
@@ -65,7 +68,8 @@ async function fresh() {
   const deck = await generateDeck({
     topic,
     slideCount,
-    theme: parseHtmlTheme(theme),
+    theme: theme ? parseHtmlTheme(theme) : null,
+    loadFallbackTheme: async () => parseHtmlTheme(STARTER_HTML_THEMES[0]),
     provider,
     outDir: OUT_DIR,
     onEvent: (event) => {
@@ -76,6 +80,9 @@ async function fresh() {
       }
       if (event.type === "slide") {
         log(`  slide ${event.index + 1}: ${event.elementCount} elements (${event.summary})`);
+      }
+      if (event.type === "theme") {
+        log(`  theme "${event.name}" (${event.source})${event.reason ? ` — ${event.reason}` : ""}`);
       }
       if (event.type === "warning") log(`  ! slide ${event.slide}: ${event.message}`);
     },

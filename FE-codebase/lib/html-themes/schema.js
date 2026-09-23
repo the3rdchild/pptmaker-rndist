@@ -34,8 +34,8 @@ export const GOOGLE_FONT_FAMILIES = [
   "Oswald", "Merriweather", "Bebas Neue", "Anton", "Archivo Black",
 ];
 
-const COLOR_KEYS = ["background", "surface", "primary", "secondary", "accent", "text", "muted", "border"];
-const EFFECTS = {
+export const HTML_THEME_COLOR_KEYS = ["background", "surface", "primary", "secondary", "accent", "text", "muted", "border"];
+export const HTML_THEME_EFFECTS = {
   surface: ["flat", "translucent", "gradient"],
   radius: ["none", "soft", "round"],
   shadow: ["none", "subtle", "elevated"],
@@ -43,11 +43,11 @@ const EFFECTS = {
   grid: ["none", "subtle", "technical"],
   slideNumber: ["none", "minimal", "rule"],
 };
-const BACKGROUND_IMAGE_MODES = ["none", "locked", "generated"];
-const REGION_KINDS = ["heading", "body", "bullets", "metric", "image", "quote", "label", "footer"];
-const REGION_PLACEMENTS = ["left", "center", "right", "top", "bottom", "background"];
-const REGION_EMPHASIS = ["primary", "secondary", "supporting"];
-const DECORATIONS = ["accent-rule", "grid", "pill", "slide-number", "section-index", "icon-box"];
+export const BACKGROUND_IMAGE_MODES = ["none", "locked", "generated"];
+export const REGION_KINDS = ["heading", "body", "bullets", "metric", "image", "quote", "label", "footer"];
+export const REGION_PLACEMENTS = ["left", "center", "right", "top", "bottom", "background"];
+export const REGION_EMPHASIS = ["primary", "secondary", "supporting"];
+export const DECORATIONS = ["accent-rule", "grid", "pill", "slide-number", "section-index", "icon-box"];
 
 function record(value, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} must be an object`);
@@ -93,7 +93,7 @@ export function resolveHtmlThemeId(value) {
 
 function parseColors(value) {
   const colors = record(value, "colors");
-  return Object.fromEntries(COLOR_KEYS.map((key) => {
+  return Object.fromEntries(HTML_THEME_COLOR_KEYS.map((key) => {
     const color = text(colors[key], `colors.${key}`, 7);
     if (!HEX_PATTERN.test(color)) throw new Error(`colors.${key} must be a six-digit hex colour`);
     return [key, color.toUpperCase()];
@@ -161,7 +161,7 @@ export function parseHtmlTheme(value) {
       bodyFont,
       scale: choice(typography.scale, "typography.scale", ["compact", "balanced", "expressive"]),
     },
-    effects: Object.fromEntries(Object.entries(EFFECTS).map(([key, values]) => [key, choice(effects[key], `effects.${key}`, values)])),
+    effects: Object.fromEntries(Object.entries(HTML_THEME_EFFECTS).map(([key, values]) => [key, choice(effects[key], `effects.${key}`, values)])),
     guidance: {
       artDirection: text(guidance.artDirection ?? "", "guidance.artDirection", 1600, { allowEmpty: true }),
       dos: textList(guidance.dos ?? [], "guidance.dos"),

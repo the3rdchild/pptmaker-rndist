@@ -63,6 +63,7 @@ import { useDeckAutosave } from "@/components/editor-react/use-deck-autosave";
 import { htmlThemeFromParams, modeFromParams } from "@/lib/generation-mode";
 import { transitionsFromParams } from "@/lib/transition-preference";
 import { linkMorphAnchors, plannedTransitions } from "@/components/editor-react/template-transitions";
+import { applyAutoEntrance } from "@/components/editor-react/auto-entrance";
 import { insertHtmlSlideAt } from "@/components/editor-react/html-slide-insertion";
 import { buildSlidePhotoRequest } from "@/components/editor-react/slide-image-brief";
 import { parseOutline } from "@/components/outline/outline-markdown";
@@ -1222,7 +1223,11 @@ export default function EditorReactClient({
               slides: current.slides,
             },
             event.index,
-            { ui: event.ui, ...(event.transition ? { transition: event.transition } : {}) } as SlideData,
+            {
+              // With the Transisi toggle on, each slide also builds itself in.
+              ui: (event.transition ? applyAutoEntrance(event.ui) : null) ?? event.ui,
+              ...(event.transition ? { transition: event.transition } : {}),
+            } as SlideData,
           );
           htmlSlideLogicalIndicesRef.current = inserted.logicalIndices;
           if (!inserted.inserted) return;
@@ -2227,7 +2232,8 @@ export default function EditorReactClient({
   };
 
   // Template decks get the outline's transition plan once every slide exists:
-  // the type on each slide, plus headline/hero morph links for morph pairs.
+  // the type on each slide, headline/hero morph links for morph pairs, and an
+  // automatic entrance build.
   // (HTML mode carries its transitions on each streamed slide instead.)
   const applyTemplateTransitions = (topic: string) => {
     const current = reduxStore.getState().presentationGeneration.presentationData;
@@ -2244,6 +2250,12 @@ export default function EditorReactClient({
         slides[index] = { ...slides[index], ui: linked.b };
       }
     });
+    // Every slide also builds itself in; morph-carried elements are left to
+    // Present Mode's morph-wins rule.
+    for (const slide of slides) {
+      const animated = applyAutoEntrance(slide.ui);
+      if (animated) slide.ui = animated;
+    }
     dispatch(setPresentationData({ ...current, slides }));
   };
 

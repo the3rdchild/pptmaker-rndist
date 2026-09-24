@@ -22,7 +22,9 @@ import {
 } from "@/components/slide-editor/model/model";
 import {
   ROOT_ELEMENTS_COMPONENT_INDEX,
+  type Box,
   type ElementSelection,
+  type RawElement,
   type RawUi,
 } from "@/components/slide-editor/model/core";
 
@@ -155,11 +157,15 @@ export interface AnimateAllTiming {
  *  animating a container together with its contents double-transforms the
  *  contents, so each subtree contributes its topmost animatable level only.
  *  Existing steps on covered elements are replaced: a preset is a statement
- *  about the whole slide, not a merge. */
+ *  about the whole slide, not a merge.
+ *
+ *  `options.skip` leaves extra elements out (their children stay candidates);
+ *  the panel passes none, automatic builds use it to spare backdrops. */
 export function applyAnimateAllPreset(
   ui: Record<string, unknown> | null | undefined,
   effect: AnimationEffect,
   timing: AnimateAllTiming,
+  options: { skip?: (element: RawElement, box: Box | null) => boolean } = {},
 ): Record<string, unknown> | null {
   if (!ui) return null;
 
@@ -197,6 +203,7 @@ export function applyAnimateAllPreset(
     // content inside a decorative frame is still content.
     if (ref.element.decorative === true) continue;
     const box = absoluteBoxForSelection(ui as RawUi, ref.selection);
+    if (options.skip?.(ref.element, box)) continue;
     ranked.push({
       key: ref.key,
       beat: beatKey(ref.selection.componentIndex, ref.selection.elementPath),

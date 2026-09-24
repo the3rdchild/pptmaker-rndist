@@ -168,10 +168,7 @@ export function readBoolean(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null;
 }
 
-export function withHash(value: string | null | undefined) {
-  if (!value) return undefined;
-  return value.startsWith("#") || value.startsWith("rgb") ? value : `#${value}`;
-}
+export { withHash } from "@/lib/color-conversion";
 
 export function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);

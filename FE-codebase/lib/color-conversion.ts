@@ -1,9 +1,7 @@
-// Shared colour-conversion primitives pulled out of the several files that
-// each carried their own byte-identical copy. Only genuinely-duplicated,
-// signature-compatible functions live here — see the refactor notes for the
-// several other hex/rgb/hsl/hsv variants that were deliberately left where
-// they were because they differ in behaviour (rounding, validation, hue
-// units, thresholds) from every other copy.
+// Shared colour-conversion primitives, pulled out of the files that each
+// carried a byte-identical copy. Only exact duplicates live here: the other
+// hex/rgb/hsl/hsv variants in the codebase differ in behaviour (rounding,
+// validation, hue units, fallbacks) and were deliberately left where they are.
 
 export function rgbToHex([r, g, b]: [number, number, number] | number[]): string {
   const toByte = (v: number) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");

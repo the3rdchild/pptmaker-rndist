@@ -6,7 +6,7 @@ import {
   Square,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { withHash } from "@/components/slide-editor/utils/color";
+import { withHash } from "@/components/slide-editor/color/color";
 import {
   averageBorderRadius,
   elementBox,

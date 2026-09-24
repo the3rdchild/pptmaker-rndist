@@ -44,7 +44,7 @@ import {
   type FloatingToolbarBox,
 } from "@/components/slide-editor/toolbar/FloatingToolbar";
 import { OpacitySwatchIcon } from "@/components/slide-editor/toolbar/OpacitySwatchIcon";
-import { resolveBackendAssetSource } from "@/utils/api";
+import { resolveBackendAssetSource } from "@/lib/asset-urls";
 
 type ImagePanel = "fit" | "crop" | "radius" | "opacity" | "shape" | null;
 type ImageFit = "contain" | "cover" | "fill";

@@ -55,7 +55,7 @@ import {
   sizedColoredSvg,
 } from "@/components/slide-editor/formula/latex-to-svg";
 import { svgToDataUri } from "@/components/slide-editor/surface/exportAssets";
-import { resolveBackendAssetSource } from "@/utils/api";
+import { resolveBackendAssetSource } from "@/lib/asset-urls";
 import {
   ALL_THEMES,
   ThemeFilterBar,

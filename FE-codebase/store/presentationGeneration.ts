@@ -1,6 +1,6 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
-import { applyPaletteToUi } from "@/components/slide-editor/utils/ai-palette";
-import type { GeneratedPalette } from "@/components/slide-editor/utils/color-theory";
+import { applyPaletteToUi } from "@/components/slide-editor/color/ai-palette";
+import type { GeneratedPalette } from "@/components/slide-editor/color/color-theory";
 
 /** Per-slide entrance transition, played in Present Mode when navigating
  *  *to* the slide that carries it (PowerPoint-style semantics). */

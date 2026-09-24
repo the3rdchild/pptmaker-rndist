@@ -62,9 +62,9 @@ import {
 
 
 import { updateSlideUi } from "@/store/slices/presentationGeneration";
-import { resolveBackendAssetSource } from "@/utils/api";
-import { bucketFileSize, sanitizeAnalyticsError } from "@/utils/analytics";
-import { MixpanelEvent, trackEvent } from "@/utils/mixpanel";
+import { resolveBackendAssetSource } from "@/lib/asset-urls";
+import { bucketFileSize, sanitizeAnalyticsError } from "@/lib/analytics/analytics";
+import { MixpanelEvent, trackEvent } from "@/lib/analytics/mixpanel";
 import { ImagesApi } from "@/app/(presentation-generator)/services/api/images";
 import IconsEditor from "@/components/slide-editor/images/IconsEditor";
 import StockPhotoEditor from "@/components/slide-editor/images/StockPhotoEditor";
@@ -103,7 +103,7 @@ import {
 } from "@/components/slide-editor/selection/layering";
 import { AlignDistributeToolbar } from "@/components/slide-editor/selection/AlignDistributeToolbar";
 import { TemplateV2SelectionTransformers } from "@/components/slide-editor/selection/SelectionTransformers";
-import { extractDominantColors } from "@/components/slide-editor/utils/extract-image-colors";
+import { extractDominantColors } from "@/components/slide-editor/color/extract-image-colors";
 import { useFontLoadState } from "@/components/slide-editor/surface/fontLoading";
 import { SlideBackground } from "@/components/slide-editor/surface/SlideBackground";
 import {

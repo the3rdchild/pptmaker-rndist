@@ -7,8 +7,8 @@
 // "item slots" — so a title next to a colored card grid in the same
 // component doesn't get miscolored just because its sibling has a shape.
 
-import { hexLightness } from "@/components/slide-editor/utils/extract-image-colors";
-import { contrastColor, type GeneratedPalette } from "@/components/slide-editor/utils/color-theory";
+import { hexLightness } from "@/components/slide-editor/color/extract-image-colors";
+import { contrastColor, type GeneratedPalette } from "@/components/slide-editor/color/color-theory";
 
 type Rec = Record<string, unknown>;
 

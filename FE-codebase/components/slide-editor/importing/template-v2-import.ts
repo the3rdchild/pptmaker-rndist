@@ -1,4 +1,4 @@
-import { resolveBackendAssetUrl } from "@/utils/api";
+import { resolveBackendAssetUrl } from "@/lib/asset-urls";
 import { chartDataFromSeriesWithColors } from "@/components/slide-editor/charts/chart-data";
 import { renderMarkdownTextRuns } from "@/components/slide-editor/text/markdown-text";
 import {

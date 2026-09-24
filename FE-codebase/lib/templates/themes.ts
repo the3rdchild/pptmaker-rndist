@@ -16,7 +16,7 @@
 // with the theme it came from before it reaches the editor — asset paths and
 // the template engine's save target both depend on knowing that.
 
-import { normalizeBackendAssetUrls } from "@/utils/api";
+import { normalizeBackendAssetUrls } from "@/lib/asset-urls";
 import { asRecord } from "@/components/slide-editor/model/core";
 
 /** Fallback theme ids. Nothing ships in the repo any more, so this only

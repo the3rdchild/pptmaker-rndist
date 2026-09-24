@@ -11,7 +11,7 @@ import {
   type ComponentActionsMenuActions,
 } from "@/components/slide-editor/selection/ComponentActionsMenu";
 import { OpacitySwatchIcon } from "@/components/slide-editor/toolbar/OpacitySwatchIcon";
-import { withHash } from "@/components/slide-editor/utils/color";
+import { withHash } from "@/components/slide-editor/color/color";
 import {
   ColorField,
   Divider,

@@ -8,7 +8,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { withHash } from "@/components/slide-editor/utils/color";
+import { withHash } from "@/components/slide-editor/color/color";
 import type { Font, TextRun } from "@/components/slide-editor/types";
 import {
   type TemplateV2InlineEditBox,

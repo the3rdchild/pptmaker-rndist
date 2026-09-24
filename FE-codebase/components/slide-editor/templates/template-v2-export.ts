@@ -7,7 +7,7 @@
 // toolbar mutation rewrites that same shape. So exporting is a matter of
 // cleaning and annotating the ui record, not rebuilding it.
 
-import { toStoredTemplateAssetUrl } from "@/utils/api";
+import { toStoredTemplateAssetUrl } from "@/lib/asset-urls";
 import { LAYOUT_THEME_KEY } from "@/lib/templates/themes";
 import {
   parseLayoutMeta,

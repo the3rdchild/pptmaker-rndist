@@ -7,7 +7,7 @@ import {
   useState,
   type InputHTMLAttributes,
 } from "react";
-import { withoutHash, withHash } from "@/components/slide-editor/utils/color";
+import { withoutHash, withHash } from "@/components/slide-editor/color/color";
 
 type DeferredColorInputProps = Omit<
   InputHTMLAttributes<HTMLInputElement>,

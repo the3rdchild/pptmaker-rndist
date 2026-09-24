@@ -20,7 +20,7 @@ import {
 import { isBackgroundComponent } from "@/components/slide-editor/model/model";
 import type { RawComponent, RawUi } from "@/components/slide-editor/model/core";
 import { ImagesApi } from "@/app/(presentation-generator)/services/api/images";
-import { resolveBackendAssetSource } from "@/utils/api";
+import { resolveBackendAssetSource } from "@/lib/asset-urls";
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 

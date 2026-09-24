@@ -675,7 +675,7 @@ Primary files:
 - `images/ImageToolbar.tsx`
 - `surface/nodes.tsx`
 - `surface/exportAssets.ts`
-- `utils/api.ts` for asset URL resolution outside this folder
+- `lib/asset-urls.ts` for asset URL resolution outside this folder
 
 Rendering:
 
@@ -1024,7 +1024,7 @@ Primary files:
 
 - `surface/exportAssets.ts`
 - `surface/nodes.tsx`
-- `utils/api.ts`
+- `lib/asset-urls.ts`
 - `lib/svg-color.ts`
 
 `loadKonvaImage()` loads image assets into `HTMLImageElement` instances for

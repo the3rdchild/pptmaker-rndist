@@ -28,7 +28,7 @@ import {
   XCircle,
 } from "lucide-react";
 import type { TextSlideElement } from "@/components/slide-editor/state/state";
-import { withHash } from "@/components/slide-editor/utils/color";
+import { withHash } from "@/components/slide-editor/color/color";
 import type { Font, Marker } from "@/components/slide-editor/types";
 import {
   elementFont,

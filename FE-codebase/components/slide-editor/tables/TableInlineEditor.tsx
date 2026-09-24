@@ -4,7 +4,7 @@ import type {
   TableSlideElement,
   TextSlideElement,
 } from "@/components/slide-editor/state/state";
-import { withHash } from "@/components/slide-editor/utils/color";
+import { withHash } from "@/components/slide-editor/color/color";
 import {
   elementBox,
   elementFont,

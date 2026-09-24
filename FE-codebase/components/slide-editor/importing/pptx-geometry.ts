@@ -12,6 +12,15 @@
 // cubicBezTo:[…]} with the interleaving destroyed. The slide parser keeps
 // `a:pathLst` as an unparsed string (`stopNodes`) and this scans it in
 // document order.
+//
+// Also resolves which geometry mode a shape should render as at all — a real
+// path (freeform or mapped preset) vs. the native rectangle/ellipse element —
+// since that decision reads the same custGeom/prstGeom XML this module
+// already parses.
+
+import { asRecord } from "@/components/slide-editor/model/core";
+import { asArray, readAttrNumber, readAttrString } from "@/components/slide-editor/importing/pptx-xml-read";
+import { type Box, type Rec } from "@/components/slide-editor/importing/pptx-context";
 
 /** Path data plus the coordinate space it is authored in. */
 export type PathGeometry = {
@@ -465,4 +474,136 @@ function arcToSegments(
     cursor = end;
   }
   return { d: parts.join(" "), end: cursor };
+}
+
+/** How a shape's outline should be drawn: a real path when the geometry is a
+ * freeform or a preset with actual shape to it, otherwise the native rectangle
+ * and ellipse elements — which stay directly editable and export as first-class
+ * pptx shapes, so there is no reason to path them. */
+type ShapeGeometry =
+  | { kind: "rectangle"; path: null; radii: Rec | null; evenOdd?: false }
+  | { kind: "ellipse"; path: null; radii: null; evenOdd?: false }
+  /** `evenOdd` marks geometry authored HERE that draws a hole as a same-winding
+   *  subpath (the donut preset). Imported freeforms never set it — see
+   *  shapeElementOf. */
+  | { kind: "path"; path: PathGeometry; radii: null; evenOdd?: boolean };
+
+const PLAIN_RECTANGLE: ShapeGeometry = { kind: "rectangle", path: null, radii: null };
+const PLAIN_ELLIPSE: ShapeGeometry = { kind: "ellipse", path: null, radii: null };
+
+export function shapeGeometry(spPr: Rec | null, box: Box): ShapeGeometry {
+  const custom = asRecord(spPr?.["a:custGeom"]);
+  if (custom) {
+    const raw = custom["a:pathLst"];
+    const ext = asRecord(asRecord(spPr?.["a:xfrm"])?.["a:ext"]);
+    const path =
+      typeof raw === "string"
+        ? custGeomToPath(
+            raw,
+            { cx: readAttrNumber(ext, "@_cx") ?? 0, cy: readAttrNumber(ext, "@_cy") ?? 0 },
+            box.width,
+            box.height,
+          )
+        : null;
+    return path ? { kind: "path", path, radii: null } : PLAIN_RECTANGLE;
+  }
+
+  const prstGeom = asRecord(spPr?.["a:prstGeom"]);
+  const prst = readAttrString(prstGeom, "@_prst");
+  if (!prst || prst === "rect") return PLAIN_RECTANGLE;
+  if (prst === "ellipse" || prst === "circle") return PLAIN_ELLIPSE;
+  return presetGeometry(prst, prstGeom, box);
+}
+
+/** Adjust handles (`<a:avLst><a:gd name="adj1" fmla="val 25000"/>`), by name.
+ * Only `val` formulas are read — the computed forms (multiply-divide, `pin`,
+ * `sin`) are derived guides belonging to the preset's own definition rather
+ * than handles the author set. */
+function adjustValues(prstGeom: Rec | null): (name: string, fallback: number) => number {
+  const values = new Map<string, number>();
+  for (const entry of asArray(asRecord(prstGeom?.["a:avLst"])?.["a:gd"])) {
+    const rec = asRecord(entry);
+    const name = readAttrString(rec, "@_name");
+    const formula = readAttrString(rec, "@_fmla");
+    if (!name || !formula) continue;
+    const match = formula.match(/^val\s+(-?\d+)$/);
+    if (match) values.set(name, Number(match[1]));
+  }
+  return (name, fallback) => {
+    const direct = values.get(name);
+    if (direct != null) return direct;
+    // Single-handle presets are written either way ("adj" or "adj1").
+    const alias = name === "adj" ? "adj1" : name === "adj1" ? "adj" : null;
+    const aliased = alias ? values.get(alias) : undefined;
+    return aliased ?? fallback;
+  };
+}
+
+/** Corner radii for the rounded-rectangle family, in px. These stay native
+ * rectangles rather than becoming paths: `border_radius` expresses them
+ * exactly, and the result is still a resizable, roundable rectangle in the
+ * editor instead of frozen geometry. */
+function roundedRectRadii(
+  prst: string,
+  adj: (name: string, fallback: number) => number,
+  box: Box,
+): Rec | null {
+  const ss = Math.min(box.width, box.height);
+  const first = (Math.max(0, Math.min(50000, adj("adj1", 16667))) / 100000) * ss;
+  const second = (Math.max(0, Math.min(50000, adj("adj2", 0))) / 100000) * ss;
+  switch (prst) {
+    case "roundRect":
+    case "flowChartAlternateProcess":
+      return { tl: first, tr: first, bl: first, br: first };
+    case "round1Rect":
+      return { tl: 0, tr: first, bl: 0, br: 0 };
+    case "round2SameRect":
+      return { tl: first, tr: first, bl: second, br: second };
+    case "round2DiagRect":
+      // Diagonal, not same-side: adj1 rounds top-left AND bottom-right,
+      // adj2 the other pair.
+      return { tl: first, br: first, tr: second, bl: second };
+    default:
+      return null;
+  }
+}
+
+export function shapeElementOf(
+  geometry: ShapeGeometry,
+  fill: { color: string; opacity: number } | null,
+  stroke: { color: string; opacity: number; width: number; dash?: number[] } | null,
+): Rec {
+  const paint = { ...(fill ? { fill } : {}), ...(stroke ? { stroke } : {}) };
+  if (geometry.kind === "path" && geometry.path) {
+    return {
+      type: "path",
+      d: geometry.path.d,
+      view_box: { width: geometry.path.width, height: geometry.path.height },
+      // Even-odd ONLY for the presets built in this module, where a hole is
+      // drawn as a second subpath winding the same way as the first (donut).
+      // An imported freeform must stay nonzero: DrawingML decides holes by
+      // winding DIRECTION, so forcing even-odd turns any two overlapping
+      // same-direction subpaths — an ordinary illustration — into a hole.
+      ...(geometry.evenOdd ? { fill_rule: "evenodd" } : {}),
+      ...paint,
+    };
+  }
+  return {
+    type: geometry.kind,
+    ...(geometry.radii ? { border_radius: geometry.radii } : {}),
+    ...paint,
+  };
+}
+
+/** Named preset geometry (chevron, star, arrow, …). Anything with no mapping
+ * falls back to a rectangle, which is what every preset used to get. */
+function presetGeometry(prst: string, prstGeom: Rec | null, box: Box): ShapeGeometry {
+  const adj = adjustValues(prstGeom);
+
+  const radii = roundedRectRadii(prst, adj, box);
+  if (radii) return { kind: "rectangle", path: null, radii };
+  if (prst === "flowChartConnector") return PLAIN_ELLIPSE;
+
+  const path = presetToPath(prst, adj, box.width, box.height);
+  return path ? { kind: "path", path, radii: null, evenOdd: true } : PLAIN_RECTANGLE;
 }

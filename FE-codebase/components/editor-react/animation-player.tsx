@@ -41,6 +41,7 @@ import {
   type AnimationPlan,
   type PlannedStep,
 } from "@/components/editor-react/animation-sequence";
+import { walkSlideElements } from "@/components/editor-react/morph";
 import {
   animationEffectKind,
   type AnimationEffect,
@@ -51,6 +52,82 @@ export interface AnimationFlight {
   key: string;
   canvas: HTMLCanvasElement;
   box: FlightRect;
+}
+
+export interface StaticForegroundFlight extends AnimationFlight {
+  paintIndex: number;
+}
+
+/** Static elements in front of an animated element must be stacked in the
+ *  same order as the Konva scene. Remove them from the frozen base and give
+ *  each its own unmoving bitmap; otherwise every animation overlays them.
+ *  Children are omitted from a parent's snapshot so nested raw elements are
+ *  drawn once, at their own positions in the paint order. */
+export function captureStaticForegroundFlights(
+  ui: Record<string, unknown> | null | undefined,
+  animatedKeys: readonly string[],
+  refs: Map<string, Konva.Node> | null,
+): {
+  flights: StaticForegroundFlight[];
+  restore: () => void;
+} {
+  const empty = { flights: [] as StaticForegroundFlight[], restore: () => {} };
+  if (!ui || !refs || animatedKeys.length === 0) return empty;
+  const elements = walkSlideElements(ui);
+  const animated = new Set(animatedKeys);
+  const firstAnimated = elements.findIndex((ref) => animated.has(ref.key));
+  if (firstAnimated < 0) return empty;
+
+  const flights: StaticForegroundFlight[] = [];
+  const hidden: { node: Konva.Node; opacity: number }[] = [];
+  for (let paintIndex = firstAnimated + 1; paintIndex < elements.length; paintIndex++) {
+    const ref = elements[paintIndex];
+    if (animated.has(ref.key)) continue;
+    // A child of an animated group already travels in that group's bitmap.
+    if (elements.some((parent) =>
+      animated.has(parent.key) &&
+      parent.selection.componentIndex === ref.selection.componentIndex &&
+      parent.selection.elementPath.length < ref.selection.elementPath.length &&
+      parent.selection.elementPath.every((part, index) => ref.selection.elementPath[index] === part),
+    )) continue;
+    const node = refs.get(ref.key);
+    const box = rectFromNode(node);
+    if (!node || !box || node.getAbsoluteOpacity() <= 0.001) continue;
+
+    const descendants = elements.filter((child) =>
+      child.selection.componentIndex === ref.selection.componentIndex &&
+      child.selection.elementPath.length > ref.selection.elementPath.length &&
+      ref.selection.elementPath.every((part, index) => child.selection.elementPath[index] === part),
+    ).flatMap((child) => {
+      const childNode = refs.get(child.key);
+      return childNode ? [{ node: childNode, opacity: childNode.opacity() }] : [];
+    });
+    let canvas: HTMLCanvasElement;
+    try {
+      descendants.forEach(({ node: child }) => child.opacity(0));
+      canvas = node.toCanvas({ pixelRatio: layerPixelRatio(node.getLayer()) });
+    } catch {
+      continue;
+    } finally {
+      descendants.forEach(({ node: child, opacity }) => child.opacity(opacity));
+    }
+    flights.push({ key: ref.key, box, canvas: fillHost(canvas), paintIndex });
+    hidden.push({ node, opacity: node.opacity() });
+  }
+  const stage = hidden[0]?.node.getStage() ?? null;
+  hidden.forEach(({ node }) => node.opacity(0));
+  if (hidden.length > 0) stage?.getLayers().forEach((layer) => layer.draw());
+  return {
+    flights,
+    restore: () => {
+      hidden.forEach(({ node, opacity }) => node.opacity(opacity));
+      try {
+        stage?.getLayers().forEach((layer) => layer.draw());
+      } catch {
+        // Unmounting: the stage may already have been destroyed.
+      }
+    },
+  };
 }
 
 /** Fill-mode per kind. Entrance "backwards" holds the from-state through
@@ -115,10 +192,12 @@ export function captureAnimationFlights(
     if (!node || !box) continue;
     let canvas: HTMLCanvasElement;
     try {
+      const ratio = layerPixelRatio(node.getLayer());
       canvas = node.toCanvas({
         pixelRatio: Math.min(
-          3,
-          layerPixelRatio(node.getLayer()) * (growing.has(key) ? 1.35 : 1),
+          // Keep the growth budget, but never downsample a sharper live layer.
+          Math.max(3, ratio),
+          ratio * (growing.has(key) ? 1.35 : 1),
         ),
       });
     } catch {
@@ -169,12 +248,14 @@ export function AnimationOverlay({
   plan,
   activeGroup,
   onGroupDone,
+  paintOrder,
 }: {
   flights: AnimationFlight[];
   plan: AnimationPlan;
   /** -1 = staged but not started; everything sits in its pre-play state. */
   activeGroup: number;
   onGroupDone: (groupIndex: number) => void;
+  paintOrder?: ReadonlyMap<string, number>;
 }) {
   const stepsByKey = useMemo(() => {
     const map = new Map<string, { groupIndex: number; planned: PlannedStep }[]>();
@@ -229,14 +310,10 @@ export function AnimationOverlay({
           top: flight.box.y,
           width: flight.box.width,
           height: flight.box.height,
-          // The flights arrive in the slide's paint order (see the plan's
-          // animatedKeys), so their index IS their layer. Stacking them by
-          // build order instead is what let a decoration that animates late
-          // cover a photo frame sitting above it on the slide. Only relative
-          // order matters: both hosts put this overlay inside a positioned,
-          // z-indexed wrapper, so these values never escape to compete with
-          // Present Mode's fade cover.
-          zIndex: 1 + paintIndex,
+          // Present Mode supplies the full canvas order, including the static
+          // layers between animated elements. The editor preview still uses
+          // the animated flight order when no map is provided.
+          zIndex: 1 + (paintOrder?.get(flight.key) ?? paintIndex),
           transformOrigin: "center",
           opacity: startsHidden ? 0 : 1,
           // Travel distances so the slide effects start fully off the slide

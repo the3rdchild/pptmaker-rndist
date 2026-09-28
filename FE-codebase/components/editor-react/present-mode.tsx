@@ -3,13 +3,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type Konva from "konva";
-import { ChevronLeft, ChevronRight, MonitorPlay, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, LayoutGrid, MonitorPlay, X } from "lucide-react";
 import {
   usePresenterChannel,
   type PresenterPoint,
 } from "@/components/editor-react/presenter-sync";
 import { collectMediaOverlays } from "@/components/editor-react/present-media-overlay";
-import { matchMorphPairs, morphGeometry } from "@/components/editor-react/morph";
+import { PresentOverview } from "@/components/editor-react/present-overview";
+import { recoverPartialAutoEntrance } from "@/components/editor-react/auto-entrance";
+import { matchMorphPairs, morphGeometry, walkSlideElements } from "@/components/editor-react/morph";
+import { borderRadius, getElementAtSelection } from "@/components/slide-editor/model/model";
+import type { RawUi } from "@/components/slide-editor/model/core";
 import {
   buildAnimationPlan,
   type AnimationPlan,
@@ -17,7 +21,9 @@ import {
 import {
   AnimationOverlay,
   captureAnimationFlights,
+  captureStaticForegroundFlights,
   type AnimationFlight,
+  type StaticForegroundFlight,
 } from "@/components/editor-react/animation-player";
 import {
   CanvasHost,
@@ -56,6 +62,11 @@ const SLIDE_DURATION = 450;
 // the animation window.
 /** Each flight is a composited layer of its own; cap what one morph can spawn. */
 const MAX_MORPH_FLIGHTS = 24;
+// One flight may use at most a full slide at the scene's 4x ceiling.
+// Oversized pairs keep the ordinary slide crossfade instead of allocating an
+// unbounded texture or stretching a deliberately undersized one.
+const MAX_MORPH_TEXTURE_PIXELS = SLIDE_W * SLIDE_H * 4 * 4;
+const MAX_MORPH_TEXTURE_EDGE = 8192;
 /** How long the first run waits for the dynamically imported surface to hand
  *  over its stage before giving up and skipping the freeze. */
 const MAX_STAGE_WAIT_MS = 1500;
@@ -66,6 +77,9 @@ interface MorphFlight {
   canvas: HTMLCanvasElement;
   from: FlightRect;
   to: FlightRect;
+  /** Images resize their clipped viewport while their bitmap keeps its ratio. */
+  cropImage: boolean;
+  borderRadius: string;
 }
 
 type TransitionStage =
@@ -106,6 +120,9 @@ interface AnimationRun {
   /** -1 = staged, not started. Further groups advance on Next (#builds). */
   activeGroup: number;
   restore: (opts?: { keepExitedHidden?: boolean }) => void;
+  foreground: StaticForegroundFlight[];
+  restoreForeground: () => void;
+  paintOrder: ReadonlyMap<string, number>;
 }
 
 interface MorphCapture {
@@ -155,21 +172,54 @@ function captureMorphFlights(
     const node = refs.get(entry.pair.keyA);
     const rect = rectFromNode(node);
     if (!node || !rect) continue;
-    // Capture at the resolution the element ends up at, so an element that
-    // grows during the flight doesn't arrive soft.
-    const growth = Math.max(
-      1,
-      entry.to.box.width / Math.max(1, entry.from.box.width),
-      entry.to.box.height / Math.max(1, entry.from.box.height),
-    );
+    const sourceElement = getElementAtSelection(uiA as RawUi, entry.pair.selectionA);
+    const targetElement = getElementAtSelection(uiB as RawUi, entry.pair.selectionB);
+    const cropImage = sourceElement?.type === "image" && targetElement?.type === "image";
+    const radius = cropImage ? borderRadius(targetElement) : 0;
+    const borderRadiusCss = Array.isArray(radius)
+      ? radius.map((value) => `${Math.max(0, value)}px`).join(" ")
+      : `${Math.max(0, radius)}px`;
+    const ratio = layerPixelRatio(node.getLayer());
+    // The image snapshot stays at its source aspect. Its viewport will grow
+    // and crop during the flight; pre-stretching this bitmap would bake in
+    // exactly the squashing we are trying to avoid.
+    const width = cropImage ? rect.width : Math.ceil(Math.max(rect.width, entry.to.box.width));
+    const height = cropImage ? rect.height : Math.ceil(Math.max(rect.height, entry.to.box.height));
+    const pixelWidth = Math.ceil(width * ratio);
+    const pixelHeight = Math.ceil(height * ratio);
+    if (
+      pixelWidth > MAX_MORPH_TEXTURE_EDGE ||
+      pixelHeight > MAX_MORPH_TEXTURE_EDGE ||
+      pixelWidth * pixelHeight > MAX_MORPH_TEXTURE_PIXELS
+    ) continue;
     let canvas: HTMLCanvasElement;
     try {
-      canvas = node.toCanvas({
-        pixelRatio: Math.min(3, layerPixelRatio(node.getLayer()) * growth),
+      // Capture enough pixels for BOTH endpoints, independently per axis.
+      // Increasing pixelRatio alone overallocates the long axis when a thin
+      // line grows in height. A detached clone also avoids altering the live
+      // stage and removes its position from Konva's temporary buffer bounds.
+      const absolute = node.getAbsoluteTransform().copy();
+      const captureTransform = absolute.copy();
+      captureTransform.reset();
+      captureTransform.scale(width / rect.width, height / rect.height);
+      captureTransform.translate(-rect.x, -rect.y);
+      captureTransform.multiply(absolute);
+      const snapshot = node.clone({
+        ...captureTransform.decompose(),
+        offsetX: 0,
+        offsetY: 0,
+        opacity: node.getAbsoluteOpacity(),
+        transformsEnabled: "all",
       });
+      try {
+        canvas = snapshot.toCanvas({ x: 0, y: 0, width, height, pixelRatio: ratio });
+        if (cropImage) canvas.style.objectFit = "cover";
+      } finally {
+        snapshot.destroy();
+      }
     } catch {
       // toCanvas only draws (never reads pixels), so a tainted canvas is fine
-      // here — but a detached node would throw, and that one just sits it out.
+      // here. A node that cannot be captured keeps the slide crossfade.
       continue;
     }
     flights.push({
@@ -182,6 +232,8 @@ function captureMorphFlights(
         width: entry.to.box.width,
         height: entry.to.box.height,
       },
+      cropImage,
+      borderRadius: borderRadiusCss,
     });
     sources.push(node);
   }
@@ -189,7 +241,7 @@ function captureMorphFlights(
 }
 
 export default function PresentMode({
-  slides,
+  slides: sourceSlides,
   startIndex,
   deckId,
   fonts,
@@ -205,6 +257,17 @@ export default function PresentMode({
   fonts?: unknown;
   onClose: () => void;
 }) {
+  const slides = useMemo(() => sourceSlides.map((slide) => {
+    const repaired = recoverPartialAutoEntrance(slide.ui);
+    if (!repaired) return slide;
+    return {
+      ...slide,
+      ui: repaired.ui,
+      transition: repaired.overflow && slide.transition !== "morph"
+        ? "fade-black" as const
+        : slide.transition,
+    };
+  }), [sourceSlides]);
   // Hidden slides (#24) are skipped during presentation but stay in the
   // deck — Next/Prev walk this visible-only index list instead of ±1.
   const visibleIndexes = useMemo(() => {
@@ -215,10 +278,13 @@ export default function PresentMode({
   }, [slides]);
 
   const resolveStart = () => {
-    if (visibleIndexes.includes(startIndex)) return startIndex;
-    return visibleIndexes.find((i) => i >= startIndex) ?? visibleIndexes[0] ?? startIndex;
+    const hashSlide = typeof window === "undefined" ? null : /^#(\d+)$/.exec(window.location.hash);
+    const requested = hashSlide ? Number(hashSlide[1]) - 1 : startIndex;
+    if (visibleIndexes.includes(requested)) return requested;
+    return visibleIndexes.find((i) => i >= requested) ?? visibleIndexes[0] ?? startIndex;
   };
   const [index, setIndex] = useState(resolveStart);
+  const [overviewOpen, setOverviewOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Navigation reads both of these synchronously (before React re-renders) to
@@ -298,25 +364,23 @@ export default function PresentMode({
       restoreExitedNodes();
       // Full restore, exited elements included: the run is being abandoned,
       // and whichever slide ends up on screen must show every element.
+      animationRunRef.current?.restoreForeground();
       animationRunRef.current?.restore();
       commitAnimationRun(null);
       runRef.current = null;
 
       const type = list[target]?.transition ?? "none";
       const targetUi = list[target]?.ui;
+      const captured = type === "morph" && !wasRunning
+        ? captureMorphFlights(list[current]?.ui, targetUi, nodeRefs.current)
+        : NO_MORPH;
       // Backward navigation shows the slide's FINAL state (every build ran),
       // so no playback — only the exited elements get hidden.
       const backward = target < current;
-      // Morph wins over element animation: a matched element flies in from
-      // the previous slide, so it must not also run an entrance. Its animation
-      // steps are dropped from the plan; unmatched elements still animate.
-      const excludeMorph =
-        type === "morph" && list[current]?.ui && targetUi
-          ? new Set(
-              matchMorphPairs(list[current]?.ui, targetUi)
-                .pairs.map((pair) => pair.keyB),
-            )
-          : undefined;
+      // Captured morph flights finish before the other elements enter.
+      const excludeMorph = captured.flights.length
+        ? new Set(captured.flights.map((flight) => flight.key))
+        : undefined;
       const plan = targetUi ? buildAnimationPlan(targetUi, excludeMorph) : null;
       const hasAnimation = Boolean(plan && plan.animatedKeys.length > 0);
       pendingAnimationRef.current = hasAnimation && !backward ? plan : null;
@@ -332,14 +396,6 @@ export default function PresentMode({
         return;
       }
 
-      const captured =
-        type === "morph"
-          ? captureMorphFlights(
-              list[current]?.ui,
-              list[target]?.ui,
-              nodeRefs.current,
-            )
-          : NO_MORPH;
       // Cut the flying elements out of the frame that is about to be frozen.
       // The bitmaps were already taken above (at full opacity), so what stays
       // behind is the slide minus everything in flight — otherwise each of
@@ -382,6 +438,31 @@ export default function PresentMode({
     },
     [commitAnimationRun, restoreMorphNodes, restoreExitedNodes],
   );
+
+  // Keep a canonical, reloadable link to the current slide. The editor's
+  // generation query can contain source text, so it is omitted from the link.
+  useEffect(() => {
+    const url = new URL(window.location.pathname, window.location.origin);
+    url.searchParams.set("present", "1");
+    url.hash = String(index + 1);
+    window.history.replaceState(window.history.state, "", url);
+  }, [index]);
+
+  useEffect(() => {
+    const onHashChange = () => {
+      const match = /^#(\d+)$/.exec(window.location.hash);
+      if (!match) return;
+      const requested = Number(match[1]) - 1;
+      if (visibleIndexes.includes(requested)) goTo(requested);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, [goTo, visibleIndexes]);
+
+  const closePresentation = useCallback(() => {
+    window.history.replaceState(window.history.state, "", window.location.pathname);
+    onClose();
+  }, [onClose]);
 
   // Drives one transition end to end: wait out the incoming slide's rebuild
   // behind the frozen backdrop, read the final geometry off the settled stage,
@@ -455,6 +536,12 @@ export default function PresentMode({
             flights: captured.flights,
             activeGroup: -1,
             restore: captured.restore,
+            foreground: [],
+            restoreForeground: () => {},
+            paintOrder: new Map(
+              walkSlideElements(slidesRef.current[indexRef.current]?.ui)
+                .map((ref, index) => [ref.key, index] as const),
+            ),
           });
         } else {
           // Nothing survived capture (all nodes detached) — drop the run or
@@ -495,11 +582,41 @@ export default function PresentMode({
         );
       };
 
+      const handoffAnimation = () => {
+        const animRun = animationRunRef.current;
+        if (!animRun || animRun.id !== runId) return;
+        // Restore morph targets, then cut static foreground elements into
+        // ordered layers before any entrance flight moves.
+        const canHandoff = flights.length === 0 || morphRestoreRef.current.length === flights.length;
+        if (canHandoff) restoreMorphNodes();
+        const foreground = captureStaticForegroundFlights(
+          slidesRef.current[indexRef.current]?.ui,
+          animRun.plan.animatedKeys,
+          refs,
+        );
+        const settledIncoming = rasterizeStage(stageRef.current);
+        if (settledIncoming) {
+          commitAnimationRun({
+            ...animRun,
+            foreground: foreground.flights,
+            restoreForeground: foreground.restore,
+          });
+        } else {
+          foreground.restore();
+        }
+        settle((current) => ({
+          ...current,
+          incoming: settledIncoming ?? current.incoming,
+          flights: canHandoff && settledIncoming ? [] : current.flights,
+          stage: "animating",
+        }));
+      };
+
       if (run.type === "none") {
         if (animationRunRef.current) {
           // No transition to play — the staged bitmap simply replaces the
           // live view (identical pixels) and the animation takes over.
-          settle((current) => ({ ...current, stage: "animating" }));
+          handoffAnimation();
           startAnimation();
           return;
         }
@@ -519,10 +636,7 @@ export default function PresentMode({
       await sleep(duration + 60);
       if (!alive()) return;
       if (animationRunRef.current) {
-        // The animation overlay takes over from the transition. The morph
-        // targets stay hidden (their flight bitmaps now rest at the final
-        // geometry on top of the frozen base) until the run finishes.
-        settle((current) => ({ ...current, stage: "animating" }));
+        handoffAnimation();
         startAnimation();
         return;
       }
@@ -578,6 +692,7 @@ export default function PresentMode({
     // mounted until the restored nodes are painted underneath it.
     animationRunRef.current = null;
     restoreMorphNodes();
+    animRun.restoreForeground();
     // The exited elements stay hidden for the rest of THIS slide, so their
     // restore has to outlive the run — the surface reuses Konva nodes across
     // slides, and an imperative opacity(0) left dangling here reappears as a
@@ -619,6 +734,7 @@ export default function PresentMode({
     () => () => {
       restoreMorphNodes();
       restoreExitedNodes();
+      animationRunRef.current?.restoreForeground();
       animationRunRef.current?.restore();
     },
     [restoreMorphNodes, restoreExitedNodes],
@@ -749,14 +865,20 @@ export default function PresentMode({
   // Keyboard nav
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-      else if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown")
+      if (e.key === "Escape") {
+        if (overviewOpen) setOverviewOpen(false);
+        else closePresentation();
+      } else if (e.key.toLowerCase() === "g") {
+        setOverviewOpen((open) => !open);
+      } else if (overviewOpen) {
+        return;
+      } else if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown")
         next();
       else if (e.key === "ArrowLeft" || e.key === "PageUp") prev();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [next, prev, onClose]);
+  }, [next, prev, closePresentation, overviewOpen]);
 
   const ui = slides[index]?.ui;
   const openPresenterView = () => {
@@ -843,6 +965,7 @@ export default function PresentMode({
               <TemplateV2KonvaSlide
                 layout={ui as never}
                 isEditMode={false}
+                renderScale={scale}
                 slideIndex={index}
                 fonts={fonts}
                 stageRef={(stage: Konva.Stage | null) => {
@@ -921,8 +1044,23 @@ export default function PresentMode({
                     plan={animationRun.plan}
                     activeGroup={animationRun.activeGroup}
                     onGroupDone={onAnimationGroupDone}
+                    paintOrder={animationRun.paintOrder}
                   />
                 ) : null}
+                {animationRun?.foreground.map((flight) => (
+                  <CanvasHost
+                    key={flight.key}
+                    canvas={flight.canvas}
+                    className="static-foreground-flight pointer-events-none absolute"
+                    style={{
+                      zIndex: 1 + flight.paintIndex,
+                      left: flight.box.x,
+                      top: flight.box.y,
+                      width: flight.box.width,
+                      height: flight.box.height,
+                    }}
+                  />
+                ))}
               </div>
             ) : null}
 
@@ -952,17 +1090,36 @@ export default function PresentMode({
                 their still-hidden live nodes. */}
             {transition?.flights.map((flight) => {
               const { from, to } = flight;
+              const atStart =
+                transition.stage === "preparing" || transition.stage === "staged";
+              if (flight.cropImage) {
+                return (
+                  <CanvasHost
+                    key={flight.key}
+                    canvas={flight.canvas}
+                    className="morph-flight morph-image-flight pointer-events-none absolute overflow-hidden"
+                    style={{
+                      zIndex: 4,
+                      left: atStart ? from.x : to.x,
+                      top: atStart ? from.y : to.y,
+                      width: atStart ? from.width : to.width,
+                      height: atStart ? from.height : to.height,
+                      borderRadius: flight.borderRadius,
+                      willChange: "left, top, width, height",
+                      transition: `left ${MORPH_DURATION}ms cubic-bezier(0.77, 0, 0.175, 1), top ${MORPH_DURATION}ms cubic-bezier(0.77, 0, 0.175, 1), width ${MORPH_DURATION}ms cubic-bezier(0.77, 0, 0.175, 1), height ${MORPH_DURATION}ms cubic-bezier(0.77, 0, 0.175, 1)`,
+                    }}
+                  />
+                );
+              }
               const dx = from.x + from.width / 2 - (to.x + to.width / 2);
               const dy = from.y + from.height / 2 - (to.y + to.height / 2);
               const sx = from.width / Math.max(1, to.width);
               const sy = from.height / Math.max(1, to.height);
-              const atStart =
-                transition.stage === "preparing" || transition.stage === "staged";
               return (
                 <CanvasHost
                   key={flight.key}
                   canvas={flight.canvas}
-                  className="pointer-events-none absolute"
+                  className="morph-flight pointer-events-none absolute"
                   style={{
                     zIndex: 4,
                     left: to.x,
@@ -1045,6 +1202,14 @@ export default function PresentMode({
           over content that changes every frame forces an expensive
           re-composite per frame. */}
       <div className="absolute right-4 top-4 z-[10010] flex items-center gap-2">
+        <button
+          className={`rounded-full border border-white/10 bg-black/70 p-2 text-white shadow-lg transition-colors hover:bg-black/85${transition ? "" : " backdrop-blur"}`}
+          onClick={() => setOverviewOpen(true)}
+          aria-label="Slide overview"
+          title="Slide overview (G)"
+        >
+          <LayoutGrid size={18} />
+        </button>
         {deckId ? (
           <button
             className={`rounded-full border border-white/10 bg-black/70 p-2 text-white shadow-lg transition-colors hover:bg-black/85${transition ? "" : " backdrop-blur"}`}
@@ -1056,7 +1221,7 @@ export default function PresentMode({
         ) : null}
         <button
           className={`rounded-full border border-white/10 bg-black/70 p-2 text-white shadow-lg transition-colors hover:bg-black/85${transition ? "" : " backdrop-blur"}`}
-          onClick={onClose}
+          onClick={closePresentation}
           title="Exit (Esc)"
         >
           <X size={18} />
@@ -1093,6 +1258,19 @@ export default function PresentMode({
           style={{ transform: `scaleX(${(position + 1) / Math.max(1, total)})` }}
         />
       </div>
+      {overviewOpen && (
+        <PresentOverview
+          slides={slides}
+          visibleIndexes={visibleIndexes}
+          activeIndex={index}
+          fonts={fonts}
+          onSelect={(target) => {
+            setOverviewOpen(false);
+            goTo(target);
+          }}
+          onClose={() => setOverviewOpen(false)}
+        />
+      )}
     </div>
   );
 }

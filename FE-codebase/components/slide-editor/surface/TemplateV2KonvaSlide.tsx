@@ -241,7 +241,7 @@ function autoSizeInlineTextFrame(
   };
 }
 
-// The stage is a fixed 1280x720 CSS box that the editor magnifies with a CSS
+// The stage is a fixed 1280x720 CSS box that its host magnifies with a CSS
 // transform, so how many device pixels a stage pixel actually occupies is
 // devicePixelRatio * zoom. The scene canvas has to be oversampled to match, or
 // the browser is just enlarging a bitmap.
@@ -268,7 +268,7 @@ function scenePixelRatio(renderScale: number): number {
   return Math.min(MAX_SCENE_PIXEL_RATIO, Math.max(MIN_SCENE_PIXEL_RATIO, target));
 }
 
-function syncEditingScenePixelRatio(layer: Konva.Layer | null, pixelRatio: number) {
+function syncScenePixelRatio(layer: Konva.Layer | null, pixelRatio: number) {
   if (!layer || typeof window === "undefined") return;
   const canvas = layer.getCanvas();
   if (Math.abs(canvas.getPixelRatio() - pixelRatio) < 0.01) return;
@@ -307,11 +307,11 @@ type TemplateV2KonvaSlideProps = {
    * life of the component; the ref is populated on mount and nulled on
    * unmount. */
   externalNodeRefs?: MutableRefObject<Map<string, Konva.Node> | null>;
-  /** On-screen magnification of the stage (the editor's zoom). Drives scene
-   * oversampling so a zoomed-in canvas is redrawn at the resolution it is
-   * displayed at instead of being enlarged as a bitmap. Defaults to 1 for
-   * consumers that render the slide at its natural size (capture, thumbnails,
-   * present mode). */
+  /** On-screen magnification of the stage (editor zoom or presentation fit).
+   * Drives scene oversampling so a zoomed-in canvas is redrawn at the resolution it is
+   * displayed at instead of being enlarged as a bitmap. Editors default to 1;
+   * read-only consumers opt in by passing a scale, leaving thumbnails and
+   * captures at their existing resolution when omitted. */
   renderScale?: number;
   /** Template engine only: reports the selected element together with a patch
    * function bound to it. The patch routes through this component's own
@@ -351,7 +351,7 @@ function TemplateV2KonvaSlideComponent({
   themeId,
   stageRef,
   externalNodeRefs,
-  renderScale = 1,
+  renderScale,
   onTemplateSelection,
 }: TemplateV2KonvaSlideProps) {
   const dispatch = useDispatch();
@@ -763,18 +763,18 @@ function TemplateV2KonvaSlideComponent({
   // full-bleed background photo or gradient stayed at 1x and visibly softened
   // as soon as the canvas was zoomed, however sharp the content above it was.
   const applyScenePixelRatio = useCallback(() => {
-    if (!isEditMode || typeof window === "undefined") return;
-    const ratio = scenePixelRatio(renderScale);
-    syncEditingScenePixelRatio(backgroundLayerRef.current, ratio);
-    syncEditingScenePixelRatio(contentLayerRef.current, ratio);
+    if ((!isEditMode && renderScale === undefined) || typeof window === "undefined") return;
+    const ratio = scenePixelRatio(renderScale ?? 1);
+    syncScenePixelRatio(backgroundLayerRef.current, ratio);
+    syncScenePixelRatio(contentLayerRef.current, ratio);
   }, [isEditMode, renderScale]);
 
   useEffect(() => {
-    if (!isEditMode || typeof window === "undefined") return;
+    if ((!isEditMode && renderScale === undefined) || typeof window === "undefined") return;
     applyScenePixelRatio();
     window.addEventListener("resize", applyScenePixelRatio);
     return () => window.removeEventListener("resize", applyScenePixelRatio);
-  }, [applyScenePixelRatio, isEditMode]);
+  }, [applyScenePixelRatio, isEditMode, renderScale]);
 
   useEffect(() => {
     selectedComponentIndexesRef.current = selectedComponentIndexes;

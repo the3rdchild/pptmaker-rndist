@@ -11,6 +11,7 @@
 //      for the common morph workflow — duplicate a slide, then move/resize
 //      things — because duplicateSlide deep-clones ids/names verbatim.
 
+// Text must also have identical content in either matching pass.
 import {
   absoluteBoxForSelection,
   getElementAtSelection,
@@ -26,6 +27,7 @@ import {
   type RawUi,
   type ElementSelection,
 } from "@/components/slide-editor/model/core";
+import { rawTextContent } from "@/components/slide-editor/text/template-v2-text";
 
 type Rec = Record<string, unknown>;
 
@@ -108,6 +110,20 @@ function heuristicIdentity(element: RawElement): string | null {
   return `${type}:${id}`;
 }
 
+/** A title with changed words is a new element, even when an old deck or a
+ *  manual link gives it the same morph identity. */
+export function sameMorphText(a: RawElement, b: RawElement): boolean {
+  const content = rawTextContent(a);
+  return content.length > 0 && content === rawTextContent(b);
+}
+
+function canMorphPair(a: RawElement, b: RawElement): boolean {
+  if (a.type === "text" || b.type === "text") {
+    return a.type === "text" && b.type === "text" && sameMorphText(a, b);
+  }
+  return true;
+}
+
 export interface MorphPair {
   keyA: string;
   keyB: string;
@@ -134,16 +150,21 @@ export function matchMorphPairs(
   const pairs: MorphPair[] = [];
 
   // Pass 1 — manual links (`morph_id`).
-  const bByMorphId = new Map<string, MorphElementRef>();
+  const bByMorphId = new Map<string, MorphElementRef[]>();
   for (const ref of elsB) {
     const id = readString(ref.element.morph_id)?.trim();
-    if (id && !bByMorphId.has(id)) bByMorphId.set(id, ref);
+    if (!id) continue;
+    const bucket = bByMorphId.get(id) ?? [];
+    bucket.push(ref);
+    bByMorphId.set(id, bucket);
   }
   for (const refA of elsA) {
     const id = readString(refA.element.morph_id)?.trim();
     if (!id) continue;
-    const refB = bByMorphId.get(id);
-    if (!refB || usedB.has(refB.key)) continue;
+    const refB = bByMorphId.get(id)?.find(
+      (candidate) => !usedB.has(candidate.key) && canMorphPair(refA.element, candidate.element),
+    );
+    if (!refB) continue;
     pairs.push({
       keyA: refA.key,
       keyB: refB.key,
@@ -169,7 +190,9 @@ export function matchMorphPairs(
     const identity = heuristicIdentity(refA.element);
     if (!identity) continue;
     const bucket = bByIdentity.get(identity);
-    const refB = bucket?.find((ref) => !usedB.has(ref.key));
+    const refB = bucket?.find(
+      (ref) => !usedB.has(ref.key) && canMorphPair(refA.element, ref.element),
+    );
     if (!refB) continue;
     pairs.push({
       keyA: refA.key,
@@ -187,7 +210,6 @@ export function matchMorphPairs(
     exitingA: elsA.filter((ref) => !usedA.has(ref.key)).map((ref) => ref.key),
   };
 }
-
 export interface MorphGeometry {
   box: Box;
   rotation: number;

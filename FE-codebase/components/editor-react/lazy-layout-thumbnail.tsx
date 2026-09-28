@@ -30,6 +30,7 @@ export function LazyLayoutThumbnail({
   layout,
   width,
   slideIndex = 0,
+  fonts,
   className,
   eager = false,
   unmountWhenHidden = true,
@@ -37,6 +38,7 @@ export function LazyLayoutThumbnail({
   layout: Record<string, unknown>;
   width: number;
   slideIndex?: number;
+  fonts?: unknown;
   className?: string;
   /** Render immediately instead of waiting for the observer. Set on the cards
    *  that are above the fold: they are going to be seen anyway, and it means a
@@ -99,6 +101,7 @@ export function LazyLayoutThumbnail({
             layout={layout as never}
             isEditMode={false}
             slideIndex={slideIndex}
+            fonts={fonts}
           />
         </div>
       ) : (

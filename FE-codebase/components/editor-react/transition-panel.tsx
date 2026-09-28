@@ -121,7 +121,7 @@ function MorphLinkEditor({
       />
       <p className="text-[11px] leading-relaxed text-[var(--text-muted)]">
         Give the same link name to the matching element on the previous/next
-        slide.
+        slide. Text morphs only when its content is exactly the same.
       </p>
       {links.length > 0 && (
         <div className="flex flex-wrap gap-1.5">

@@ -154,10 +154,11 @@ export function themeFromDraft(draft) {
 export async function designFreestyleTheme({ outline, provider, signal }) {
   let feedback = "";
   let maxTokens = 3500;
+  let activeProvider = provider;
   for (let attempt = 0; ; attempt += 1) {
     signal?.throwIfAborted();
     const reply = await withGenerationStage({ stage: "theme-design", attempt: attempt + 1 }, () => chat({
-      provider,
+      provider: activeProvider,
       prompt: buildFreestyleThemePrompt(outline, feedback),
       maxTokens,
       temperature: 0.9,
@@ -169,10 +170,18 @@ export async function designFreestyleTheme({ outline, provider, signal }) {
       return themeFromDraft(parseReply(reply.text));
     } catch (error) {
       signal?.throwIfAborted();
-      feedback = error instanceof Error ? error.message : String(error);
-      recordGenerationDiagnostic({ type: "repair", stage: "theme-design", attempt: attempt + 1, phase: attempt < MAX_REPAIRS ? "retry" : "exhausted", error: feedback, nextMaxTokens: attempt < MAX_REPAIRS ? error?.code === "OUTPUT_TRUNCATED" ? Math.min(maxTokens * 2, 12000) : maxTokens : null });
-      if (attempt >= MAX_REPAIRS) throw new Error(`AI theme design failed: ${feedback}`);
-      if (error?.code === "OUTPUT_TRUNCATED") maxTokens = Math.min(maxTokens * 2, 12000);
+      const reason = error instanceof Error ? error.message : String(error);
+      if (error?.reasoningOnly && activeProvider === "codebuddy") {
+        activeProvider = "codebuddy-sol";
+        feedback = "";
+        maxTokens = 3500;
+        recordGenerationDiagnostic({ type: "provider-fallback", stage: "theme-design", attempt: attempt + 1, provider: activeProvider, reason: "Hy3 spent the entire reply on reasoning" });
+      } else {
+        feedback = reason;
+        if (error?.code === "OUTPUT_TRUNCATED") maxTokens = Math.min(maxTokens * 2, 12000);
+      }
+      recordGenerationDiagnostic({ type: "repair", stage: "theme-design", attempt: attempt + 1, phase: attempt < MAX_REPAIRS ? "retry" : "exhausted", error: reason, nextMaxTokens: attempt < MAX_REPAIRS ? maxTokens : null });
+      if (attempt >= MAX_REPAIRS) throw new Error(`AI theme design failed: ${reason}`);
     }
   }
 }

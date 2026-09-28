@@ -184,6 +184,9 @@ export async function generateDeck({
       message: `Mendesain ${outline.slides.length} slide sebagai HTML…`,
     });
     const recipes = planRecipes(theme, plannedSlides);
+    // Hy3 can spend an entire reply on hidden reasoning. Once observed, keep
+    // subsequent layout calls on Sol instead of repeating empty replies.
+    let layoutProvider = resolvedProvider;
     // One call per slide. Short replies are what let a cheap model hold the
     // layout rules in mind for a whole slide.
     const createFragment = async (slide, index, repairFeedback = "", morph = undefined, { maxTokens = 4000, visualRepair = false } = {}) => {
@@ -198,17 +201,21 @@ export async function generateDeck({
             repairFeedback,
             morph,
           });
+        const requestProvider = layoutProvider;
         const reply = visualRepair && repairSlide
           ? { text: await repairSlide({ prompt, signal }), finishReason: null }
           : await chat({
-          provider: resolvedProvider,
+          provider: requestProvider,
           prompt,
           maxTokens,
           temperature: 0.7,
           signal,
         });
         signal?.throwIfAborted();
-        requireCompleteReply(reply);
+        try { requireCompleteReply(reply); } catch (error) {
+          error.provider = requestProvider;
+          throw error;
+        }
         const fragment = parseFragment(reply.text);
         const sectionHtml = theme.backgroundImageMode === "generated"
           ? ensureThemeBackgroundPlaceholder(
@@ -240,7 +247,9 @@ export async function generateDeck({
       let rendered;
       let warnings = [];
       let assessment = { ok: false, feedback: "" };
-      let maxTokens = 4000;
+      // A realistic Sol HTML slide used 4.3k output tokens including reasoning;
+      // 8k leaves room for the visible fragment without forcing a paid retry.
+      let maxTokens = layoutProvider === "codebuddy-sol" ? 8000 : 4000;
       // A review repair can keep an unchanged photo brief without paying for
       // or tracking the same asset twice. A changed brief gets a fresh image.
       const photoCache = new Map();
@@ -267,7 +276,13 @@ export async function generateDeck({
           });
         } catch (error) {
           signal?.throwIfAborted();
-          if (error?.code === "OUTPUT_TRUNCATED") maxTokens = Math.min(maxTokens * 2, 12000);
+          if (error?.reasoningOnly && error?.provider === "codebuddy") {
+            layoutProvider = "codebuddy-sol";
+            maxTokens = 8000;
+            recordGenerationDiagnostic({ type: "provider-fallback", stage: "slide-layout", slide: index + 1, attempt: attempt + 1, provider: layoutProvider, reason: "Hy3 spent the entire reply on reasoning" });
+          } else if (error?.code === "OUTPUT_TRUNCATED") {
+            maxTokens = Math.min(maxTokens * 2, 12000);
+          }
           assessment = { ok: false, feedback: error instanceof Error ? error.message : String(error) };
           recordGenerationDiagnostic({ type: "repair", stage: "slide-layout", slide: index + 1, attempt: attempt + 1, phase: attempt < 2 ? "retry" : "exhausted", nextMaxTokens: attempt < 2 ? maxTokens : null, error: assessment.feedback });
         }

@@ -205,8 +205,10 @@ function SlideRow({
               ? " — checking"
               : phase === "done"
                 ? issues.length > 0
-                  ? ` — fixed ${issues.length} ${issues.length === 1 ? "issue" : "issues"}`
-                  : " — passed"
+                  ? issues.some(issue => !issue.action)
+                    ? " — needs review"
+                    : ` — fixed ${issues.length} ${issues.length === 1 ? "issue" : "issues"}`
+                  : " — complete"
                 : " — queued"}
         </span>
         {phase === "reviewing" && (
@@ -217,7 +219,7 @@ function SlideRow({
         )}
         {phase === "done" && issues.length === 0 && (
           <span className="mt-0.5 block text-[11px] text-[var(--text-muted)]">
-            Layout, photo relevance and text fit all clear
+            Slide ready
           </span>
         )}
         {issues.map((issue, i) => {

@@ -1,27 +1,25 @@
-// The homepage "Transisi" toggle: whether the AI plans slide transitions
-// (morph first) while it writes the outline. The homepage stores it, /outline
-// and the editor read it from the URL, so a reload re-runs the same choice.
+// The homepage "Transisi" toggle: on by default for new decks. An explicit
+// off value persists in the URL and local storage across outline and editor.
 
 export const TRANSITIONS_PARAM = "transitions";
 
 const STORAGE_KEY = "ppt_transitions";
 
 export function transitionsFromParams(params: { get(name: string): string | null }): boolean {
-  return params.get(TRANSITIONS_PARAM) === "on";
+  return params.get(TRANSITIONS_PARAM) !== "off";
 }
 
 export function loadStoredTransitions(): boolean {
   try {
-    return localStorage.getItem(STORAGE_KEY) === "on";
+    return localStorage.getItem(STORAGE_KEY) !== "off";
   } catch {
-    return false;
+    return true;
   }
 }
 
 export function storeTransitions(on: boolean) {
   try {
-    if (on) localStorage.setItem(STORAGE_KEY, "on");
-    else localStorage.removeItem(STORAGE_KEY);
+    localStorage.setItem(STORAGE_KEY, on ? "on" : "off");
   } catch {
     // a browser that blocks storage still gets a working toggle for this visit
   }

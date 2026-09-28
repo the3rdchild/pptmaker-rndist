@@ -8,10 +8,12 @@
 // two with no clicks. Elements a morph carries in are left to Present Mode,
 // whose morph-wins rule drops their entrance at play time.
 
-import { applyAnimateAllPreset } from "@/components/editor-react/animation-sequence";
+import { applyAnimateAllPreset, clearAllAnimations } from "@/components/editor-react/animation-sequence";
 import { walkSlideElements } from "@/components/editor-react/morph";
 import { parseElementAnimations } from "@/components/slide-editor/animation/animation-meta";
-import type { Box, RawElement } from "@/components/slide-editor/model/core";
+import { absoluteBoxForSelection } from "@/components/slide-editor/model/model";
+import type { Box, RawElement, RawUi } from "@/components/slide-editor/model/core";
+import type { SlideTransition } from "@/store/presentationGeneration";
 
 const STAGGER_MS = 90;
 /** However many beats a slide has, the last one starts by this point. */
@@ -33,7 +35,7 @@ export function applyAutoEntrance(ui: Record<string, unknown> | null | undefined
     ui,
     "rise",
     { trigger: "after-previous", duration: DURATION_MS, delay: 0, easing: "ease-out" },
-    { skip: isBackdrop },
+    { skip: isBackdrop, allOrNothing: true },
   );
   if (!animated) return null;
 
@@ -56,4 +58,57 @@ export function applyAutoEntrance(ui: Record<string, unknown> | null | undefined
     ];
   });
   return animated;
+}
+
+/** The homepage animation toggle never leaves a dense generated slide with a
+ *  partial entrance. Dense slides use one fade for all unmatched content;
+ *  a real morph keeps its linked-element transition. */
+export function prepareGeneratedEntrance(
+  ui: Record<string, unknown> | null | undefined,
+  transition: SlideTransition,
+) {
+  const animated = applyAutoEntrance(ui);
+  return {
+    ui: animated ?? ui,
+    transition: !animated && transition !== "morph" ? "fade-black" as const : transition,
+  };
+}
+
+/** Older generated decks were cut off at 40 element flights. Recognize only
+ *  that exact automatic cadence, then rebuild it for playback with the current
+ *  budget. If the slide is still too dense, remove the partial cascade so its
+ *  normal slide transition reveals every element together. Stored deck data
+ *  and manually authored animations remain untouched. */
+export function recoverPartialAutoEntrance(
+  ui: Record<string, unknown> | null | undefined,
+): { ui: Record<string, unknown>; overflow: boolean } | null {
+  if (!ui) return null;
+  const refs = walkSlideElements(ui);
+  const animated = refs.flatMap((ref) => {
+    const steps = parseElementAnimations(ref.element.animations);
+    return steps ? [{ element: ref.element, steps }] : [];
+  });
+  if (animated.length !== 40) return null;
+  const ordered = animated.sort((a, b) => a.steps[0].order - b.steps[0].order);
+  const generatedCadence = ordered.every(({ element, steps }, index) => {
+    if (steps.length !== 1) return false;
+    const step = steps[0];
+    return step.order === index + 1 &&
+      step.effect === (element.type === "text" ? "rise" : "fade-in") &&
+      step.trigger === (index === 0 ? "after-previous" : "with-previous") &&
+      step.duration === DURATION_MS && step.easing === "ease-out" &&
+      step.delay >= 0 && step.delay <= MAX_CASCADE_MS &&
+      (step.delay % STAGGER_MS === 0 || step.delay === MAX_CASCADE_MS);
+  });
+  if (!generatedCadence) return null;
+  const omitted = refs.some((ref) =>
+    !parseElementAnimations(ref.element.animations) &&
+    ref.element.decorative !== true &&
+    !isBackdrop(ref.element, absoluteBoxForSelection(ui as RawUi, ref.selection)),
+  );
+  if (!omitted) return null;
+  const complete = applyAutoEntrance(ui);
+  return complete
+    ? { ui: complete, overflow: false }
+    : { ui: clearAllAnimations(ui) ?? ui, overflow: true };
 }

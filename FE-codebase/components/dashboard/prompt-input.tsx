@@ -161,7 +161,7 @@ export function PromptInput() {
 		setGenMode(loadStoredMode())
 	}, [])
 	// Whether the outline also plans a transition per slide (morph first).
-	const [transitions, setTransitions] = useState(false)
+	const [transitions, setTransitions] = useState(true)
 	useEffect(() => {
 		setTransitions(loadStoredTransitions())
 	}, [])
@@ -219,7 +219,7 @@ export function PromptInput() {
 			if (genMode === 'html') {
 				qs.set(MODE_PARAM, 'html')
 			}
-			if (transitions) qs.set(TRANSITIONS_PARAM, 'on')
+			qs.set(TRANSITIONS_PARAM, transitions ? 'on' : 'off')
 			router.push(`/outline?${qs.toString()}`)
 			setSubmitting(false)
 		} catch (e) {

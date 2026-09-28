@@ -20,7 +20,7 @@ export type AnimationKind = "entrance" | "emphasis" | "exit";
  *  moves), so an unbounded plan is a VRAM bomb on weak GPUs — same policy as
  *  morph's flight cap. Lives here rather than next to the planner so the
  *  template exporter can warn against it without importing the editor. */
-export const MAX_ANIMATION_FLIGHTS = 40;
+export const MAX_ANIMATION_FLIGHTS = 64;
 
 export type AnimationEffect =
   // entrance

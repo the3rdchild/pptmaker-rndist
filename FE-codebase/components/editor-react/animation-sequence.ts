@@ -165,7 +165,10 @@ export function applyAnimateAllPreset(
   ui: Record<string, unknown> | null | undefined,
   effect: AnimationEffect,
   timing: AnimateAllTiming,
-  options: { skip?: (element: RawElement, box: Box | null) => boolean } = {},
+  options: {
+    skip?: (element: RawElement, box: Box | null) => boolean;
+    allOrNothing?: boolean;
+  } = {},
 ): Record<string, unknown> | null {
   if (!ui) return null;
 
@@ -215,6 +218,11 @@ export function applyAnimateAllPreset(
       path: ref.selection.elementPath,
     });
   }
+
+  // Automatic generation can ask for all-or-nothing. A partial cascade makes
+  // the elements beyond the flight budget appear abruptly beside animated
+  // ones; a whole-slide transition is a better fallback for dense layouts.
+  if (options.allOrNothing && ranked.length > MAX_ANIMATION_FLIGHTS) return null;
 
   // Elements that share a component were grouped on the canvas (grouping
   // merges the components into one), so they read as a single thing and have

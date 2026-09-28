@@ -9,7 +9,7 @@
 import { readArray, readNumber, type Box } from "@/components/slide-editor/model/core";
 import { absoluteBoxForSelection } from "@/components/slide-editor/model/model";
 import { parseSlotMeta } from "@/components/slide-editor/templates/slot-meta";
-import { walkSlideElements, type MorphElementRef } from "@/components/editor-react/morph";
+import { sameMorphText, walkSlideElements, type MorphElementRef } from "@/components/editor-react/morph";
 import type { OutlinePage } from "@/components/outline/outline-markdown";
 import type { SlideTransition } from "@/store/presentationGeneration";
 
@@ -56,7 +56,7 @@ function heroPhoto(ui: Ui, refs: MorphElementRef[]): MorphElementRef | null {
 }
 
 /**
- * Tags the headline (and hero photo, when both slides have one) of two
+ * Tags identical headlines (and hero photos, when both slides have one) of two
  * consecutive slides with the same `morph_id`. Returns fresh copies; an id
  * already used by the earlier link in a chain is simply reused, so a title
  * that morphs across three slides stays one object.
@@ -72,6 +72,7 @@ export function linkMorphAnchors(uiA: Ui, uiB: Ui): { a: Ui; b: Ui } {
   ];
   for (const [refA, refB, id] of pairs) {
     if (!refA || !refB) continue;
+    if (id === "title" && !sameMorphText(refA.element, refB.element)) continue;
     // walkSlideElements hands back the clones' own element objects.
     refA.element.morph_id = id;
     refB.element.morph_id = id;

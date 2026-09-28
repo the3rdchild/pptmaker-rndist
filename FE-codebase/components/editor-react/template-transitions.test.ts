@@ -24,21 +24,30 @@ const slide = (elements: unknown[]) => ({
 const morphIds = (ui: Record<string, unknown>) =>
   walkSlideElements(ui).map((ref) => [ref.element.type, ref.element.morph_id ?? null]);
 
-test("links the headlines and the hero photos of two slides", () => {
+test("links hero photos but leaves different headlines unlinked", () => {
   const a = slide([text("Body", 18), text("Cover title", 64), image(640, 720)]);
   const b = slide([text("Header", 40), text("Body", 18), image(500, 500)]);
   const linked = linkMorphAnchors(a, b);
-  assert.deepEqual(morphIds(linked.a), [["text", null], ["text", "title"], ["image", "hero"]]);
-  assert.deepEqual(morphIds(linked.b), [["text", "title"], ["text", null], ["image", "hero"]]);
+  assert.deepEqual(morphIds(linked.a), [["text", null], ["text", null], ["image", "hero"]]);
+  assert.deepEqual(morphIds(linked.b), [["text", null], ["text", null], ["image", "hero"]]);
   assert.equal(morphIds(a)[1][1], null, "inputs are not mutated");
+});
+
+test("links headlines when their content is identical", () => {
+  const linked = linkMorphAnchors(
+    slide([text("Same headline", 64)]),
+    slide([text("Same headline", 40)]),
+  );
+  assert.deepEqual(morphIds(linked.a), [["text", "title"]]);
+  assert.deepEqual(morphIds(linked.b), [["text", "title"]]);
 });
 
 test("an authored headline slot beats the largest type, and small images are not heroes", () => {
   const a = slide([text("Big stat", 96), text("The headline", 40, { slot: { role: "headline" } }), image(120, 120)]);
   const b = slide([text("Next headline", 44), image(640, 720)]);
   const linked = linkMorphAnchors(a, b);
-  assert.deepEqual(morphIds(linked.a), [["text", null], ["text", "title"], ["image", null]]);
-  assert.deepEqual(morphIds(linked.b), [["text", "title"], ["image", null]]);
+  assert.deepEqual(morphIds(linked.a), [["text", null], ["text", null], ["image", null]]);
+  assert.deepEqual(morphIds(linked.b), [["text", null], ["image", null]]);
 });
 
 test("the plan forces slide 1 to none and fills gaps with a fade", () => {

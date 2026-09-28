@@ -28,13 +28,8 @@ const MAX_FILE_BYTES = 60 * 1024 * 1024
 export function useSourceDocs(initialIds: string[]) {
 	const [docs, setDocs] = useState<SourceDoc[]>([])
 	const [loading, setLoading] = useState(initialIds.length > 0)
-	// Restore-once: the ids come from the URL, and re-running on every render
-	// pass would refetch the whole payload (megabytes of base64) each time.
-	const restoredRef = useRef(false)
 
 	useEffect(() => {
-		if (restoredRef.current) return
-		restoredRef.current = true
 		if (initialIds.length === 0) {
 			setLoading(false)
 			return

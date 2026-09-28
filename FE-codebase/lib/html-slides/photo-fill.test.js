@@ -36,6 +36,62 @@ test("preserves the theme-background marker while filling its photo", async () =
   assert.match(result.html, /<img class="photo theme-background"[^>]*data-theme-background/);
 });
 
+test("fills only an exact photo class token and leaves photo decorations intact", async () => {
+  const decorations = [
+    '<div class="photo-frame" data-brief="wooden frame"></div>',
+    '<div class="photo-shadow"></div>',
+    '<div class="photo-overlay"></div>',
+    '<div class="hero-photo" data-brief="decorative accent"></div>',
+    '<div data-class="photo" data-brief="not a photo slot"></div>',
+  ];
+  const searched = [];
+  const result = await fillPhotos(
+    `<section class="slide">${decorations[0]}${decorations[1]}<div class="hero\tphoto\nrounded" data-brief="billiards player"></div>${decorations.slice(2).join("")}</section>`,
+    {
+      resolvePhoto: async (brief) => {
+        searched.push(brief);
+        return "https://example.test/billiards.jpg";
+      },
+    },
+  );
+
+  assert.equal(result.count, 1);
+  assert.equal((result.html.match(/<img\b/g) || []).length, 1);
+  assert.deepEqual(searched, ["billiards player"]);
+  for (const decoration of decorations) assert.ok(result.html.includes(decoration));
+  assert.match(result.html, /<img class="hero\tphoto\nrounded"/);
+});
+
+test("leaves photo elements without a nonempty brief unchanged", async () => {
+  const original = '<section class="slide"><div class="photo"></div><div class="photo" data-brief=""></div><div class="photo" data-brief=" \t\n "></div></section>';
+  const searched = [];
+  const result = await fillPhotos(original, {
+    resolvePhoto: async (brief) => {
+      searched.push(brief);
+      return "https://example.test/unrequested.jpg";
+    },
+  });
+
+  assert.equal(result.html, original);
+  assert.equal(result.count, 0);
+  assert.deepEqual(result.unresolved, []);
+  assert.deepEqual(searched, []);
+});
+
+test("fills single-quoted photo attributes without losing quoted style values", async () => {
+  const result = await fillPhotos(
+    `<section class="slide"><div class='photo hero' data-brief='billiards "break" shot > cue ball' data-morph='hero' style='object-fit: contain; --caption: "break > rest";'></div></section>`,
+    { reusePhotos: { hero: "https://example.test/billiards.jpg" } },
+  );
+
+  assert.equal(result.count, 1);
+  assert.match(result.html, /<img class="photo hero"/);
+  assert.match(result.html, /data-brief="billiards &quot;break&quot; shot > cue ball"/);
+  assert.match(result.html, /data-morph="hero"/);
+  assert.match(result.html, /style="object-fit: contain; --caption: &quot;break > rest&quot;;"/);
+  assert.deepEqual(result.morphPhotos, { hero: "https://example.test/billiards.jpg" });
+});
+
 test("keeps an unresolved placeholder instead of inserting an unrelated random photo", async () => {
   const original = '<section class="slide"><div class="photo" data-brief="specific mangrove restoration fieldwork"></div></section>';
   const result = await fillPhotos(original, { resolvePhoto: async () => null });

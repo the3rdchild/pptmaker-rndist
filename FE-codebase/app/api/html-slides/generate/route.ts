@@ -21,6 +21,9 @@ import { listHtmlThemeRegistry, readHtmlTheme } from "@/lib/html-themes/server/s
 import { createPhotoResolver } from "@/lib/html-slides/photo-resolver";
 import { generateImage } from "@/lib/api";
 import { resolveImageModelId } from "@/lib/image-models";
+import { createGenerationTrace } from "@/lib/html-slides/generation-trace.js";
+import { reviewSlideVisual } from "@/lib/ai-visual-review";
+import { callProvider } from "@/lib/ai-providers";
 import {
   searchStockImagesWithFallback,
   trackUnsplashDownload,
@@ -28,10 +31,12 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-// Rendering five slides in Chrome after five LLM calls runs past the default.
-export const maxDuration = 300;
+// Layout retries, photo resolution and visual repair can exceed five minutes.
+// Allow the bounded pipeline to finish on hosts that honor this runtime budget.
+export const maxDuration = 900;
 
 type Body = {
+  deckId?: unknown;
   topic?: unknown;
   slideCount?: unknown;
   theme?: unknown;
@@ -39,6 +44,9 @@ type Body = {
   imageSource?: unknown;
   imageModel?: unknown;
   transitions?: unknown;
+  withReview?: unknown;
+  verifyProvider?: unknown;
+  repairProvider?: unknown;
 };
 
 export async function POST(request: NextRequest) {
@@ -71,6 +79,9 @@ export async function POST(request: NextRequest) {
       : 5;
   const provider = typeof body.provider === "string" ? body.provider : undefined;
   const transitions = body.transitions === true;
+  const withReview = body.withReview === true;
+  const verifyProvider = typeof body.verifyProvider === "string" ? body.verifyProvider : undefined;
+  const repairProvider = typeof body.repairProvider === "string" ? body.repairProvider : undefined;
   const imageSource = body.imageSource === "stock" ? "stock" : "ai";
   const imageModel = resolveImageModelId(
     typeof body.imageModel === "string" ? body.imageModel : undefined,
@@ -94,17 +105,35 @@ export async function POST(request: NextRequest) {
   // Chrome renders too, not just the bytes — otherwise the deck keeps being
   // paid for with nobody left to receive it.
   const abort = new AbortController();
-  request.signal.addEventListener("abort", () => abort.abort(), { once: true });
+  const onAbort = () => abort.abort(request.signal.reason);
+  request.signal.addEventListener("abort", onAbort, { once: true });
+  if (request.signal.aborted) onAbort();
 
   const encoder = new TextEncoder();
+  const generationId = crypto.randomUUID();
+  const deckId = typeof body.deckId === "string" ? body.deckId.slice(0, 128) : null;
+  const trace = createGenerationTrace({ generationId, deckId, signal: abort.signal, secrets: [sessionToken] });
+  let completedSlides = 0;
+  console.info("[html-slides][generate]", JSON.stringify(trace.record({
+    generationId, phase: "start", slideCount, provider, theme: theme?.id ?? "freestyle", imageSource, transitions, withReview,
+  })));
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const send = (event: unknown) => {
+      const send = (event: Record<string, unknown>) => {
         if (abort.signal.aborted) return;
-        controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+        if (event.type === "slide") completedSlides += 1;
+        // Keep stage/error evidence without writing full layouts, prompts or
+        // image URLs into the server log.
+        const { ui: _ui, ...summary } = event;
+        const diagnostic = trace.record({ completedSlides, ...summary });
+        const clientEvent = trace.eventForClient(event);
+        if (event.type === "slide") trace.writeArtifact(`slide-${Number(event.index) + 1}.json`, JSON.stringify(clientEvent));
+        console.info("[html-slides][generate]", JSON.stringify(diagnostic));
+        controller.enqueue(encoder.encode(`${JSON.stringify(clientEvent)}\n`));
       };
       try {
-        const deck = await generateDeck({
+        const deck = await trace.run(async () => {
+          const result = await generateDeck({
           topic,
           slideCount,
           theme,
@@ -112,8 +141,16 @@ export async function POST(request: NextRequest) {
           provider,
           resolvePhoto,
           onEvent: send,
+          outDir: trace.directory,
           signal: abort.signal,
           transitions,
+          ...(withReview ? {
+            reviewSlide: (input: Parameters<typeof reviewSlideVisual>[0]) => reviewSlideVisual({ ...input, providerId: verifyProvider }),
+            repairSlide: ({ prompt, signal }: { prompt: string; signal?: AbortSignal }) => callProvider(repairProvider, [{ role: "user", content: prompt }], { maxTokens: 12000, signal }),
+          } : {}),
+          });
+          trace.writeArtifact("deck.json", JSON.stringify(result));
+          return result;
         });
         send({ type: "done", title: deck.title, count: deck.slides.length });
       } catch (error) {
@@ -122,6 +159,7 @@ export async function POST(request: NextRequest) {
           message: error instanceof Error ? error.message : "HTML generation failed.",
         });
       } finally {
+        request.signal.removeEventListener("abort", onAbort);
         if (!abort.signal.aborted) controller.close();
       }
     },
@@ -134,6 +172,7 @@ export async function POST(request: NextRequest) {
     headers: {
       "content-type": "application/x-ndjson; charset=utf-8",
       "cache-control": "no-store",
+      "x-generation-id": generationId,
     },
   });
 }

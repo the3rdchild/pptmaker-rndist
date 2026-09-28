@@ -71,7 +71,7 @@ Output: JSONL — one JSON object per line. A slide is emitted as a SEQUENCE of 
 The client renders each line the moment it arrives: slide_start mounts the empty layout, every fill line types one element in live. So emit the lines of a slide in reading order (headline first, body after) and never buffer a whole slide — stream it element by element.
 
 RULES — violations break the deck:
-1. STRUCTURE: first slide uses a "cover" layout; then an "agenda" layout if one exists; a "section" layout before each chapter; 2-5 "content" (or comparison/timeline/process/team/gallery) slides; last slide uses a "closing" layout. Never reuse the same layout id for two slides in a row.
+1. STRUCTURE: first slide uses a "cover" layout and last slide a "closing" layout. Use an "agenda" only when the approved outline actually contains a table of contents; use a "section" only when that outline page is a real chapter divider. Keep one main idea per slide, vary the composition across adjacent slides, and never reuse the same layout id twice in a row.
    SLIDE COUNT: when the request states "Slides: N", emit EXACTLY N slides — the user reviewed and approved an outline of exactly that many pages, and every "## " heading in it is a page they expect to see. Do not merge two outline pages into one slide, do not drop the last one, do not add an extra. Only when no count is stated do you choose: aim for 6-9 slides TOTAL, cover and closing included — a tight, dense deck, not a long thin one.
 2. SLOTS: fill ONLY slots that exist in the chosen layout, addressed by their EXACT name. If a name appears multiple times in that layout, provide one fill line per occurrence, in order.
 3. NO EMPTY SLOTS: choose a layout ONLY when the topic gives you enough material to fill EVERY "always" slot in it — an empty required slot is a broken slide. If you can't fill a layout completely, pick a simpler one; never start a slide you can't finish. Fewer fully-filled slides ALWAYS beat many half-empty ones.
@@ -84,7 +84,7 @@ RULES — violations break the deck:
    {"type":"fill","name":"<slot name>","chart":{"title":"<chart title>","categories":["<label>",...],"series":[{"name":"<series name>","values":[<number>,...]}],"x_axis_title":"...","y_axis_title":"...","source":"..."}}
    - categories and every series' values array MUST have equal length, and match the slot's stated chart shape (chart.categories / chart.series) when given.
    - 4-8 categories is the readable range; 1-3 series.
-   - Use REAL figures when the topic supplies them; otherwise plausible, clearly reasonable estimates — never absurd precision (write 42, not 41.8673).
+   - Use ONLY figures provided by the outline or source document. If no real figures are supplied, choose a non-chart layout or omit an optional chart slot. Never invent estimates or sources.
    - "source" is optional — only when a real source is known.
 8. VOICE: write in the requested language. Each slot's role and hint tells you the register (a "label" is 1-3 words, a "cta" is an action, a "stat-value" is a bare figure). When the manifest states a theme_tone, write the whole deck in that register.
 9. QUOTES: never put a raw double-quote character (") inside your copy — it breaks the JSON. Use “ ” or ' instead.
@@ -97,7 +97,8 @@ RULES — violations break the deck:
     - Place the asset whose caption genuinely matches what the slide says. A figure on the wrong slide is worse than no figure — when nothing fits, omit the asset line and let the slide use a generated photo instead.
     - One asset per image slot, at most two per slide.
     - When the document's figures and tables carry the argument (architecture, results, comparisons), PREFER layouts that have an image slot: a table of results belongs on a slide able to show it.
-13. OUTLINE VISUAL METADATA: a line beginning with "Visual:" belongs to the outline page immediately above it. It describes what generated or stock imagery should contain. Use it to choose an image-capable layout when appropriate, but NEVER copy the Visual: line into a text slot. Keep slide N aligned with outline page N; do not reorder approved pages."""
+13. OUTLINE VISUAL METADATA: a line beginning with "Visual:" belongs to the outline page immediately above it. It describes what generated or stock imagery should contain. Use it to choose an image-capable layout when appropriate, but NEVER copy the Visual: line into a text slot. Keep slide N aligned with outline page N; do not reorder approved pages.
+14. STORY LAYOUTS: choose an asymmetric bento only for three distinct facts, a big-number layout only for one real figure, a process/timeline only for real ordered steps, and comparison only for two real alternatives with shared criteria. Use each specialty layout at most when it serves the page; a simple headline plus visual is better than invented filler. Headlines state the page's specific conclusion, not a generic topic label."""
 
 
 def _compact_manifest(manifest: dict) -> dict:

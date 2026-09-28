@@ -6,6 +6,7 @@ import test from "node:test";
 
 import { ChromeSession } from "./chrome-session.js";
 import { extractSlide } from "./dom-extract.js";
+import { fillPhotos } from "./photo-fill.js";
 
 test("merges styled fragments only inside the same horizontal text flow", async () => {
   const fixturePath = join(tmpdir(), `dom-extract-${process.pid}.html`);
@@ -151,6 +152,51 @@ test("maps the locked theme image to slide background instead of a canvas elemen
       overlayOpacity: 0.36,
     });
     assert.equal(extracted.elements.filter((element) => element.type === "image").length, 0);
+  } finally {
+    await chrome.close();
+    await rm(fixturePath, { force: true });
+  }
+});
+
+test("extracts one filled photo while preserving offset photo decorations", async () => {
+  const fixturePath = join(tmpdir(), `dom-extract-photo-decorations-${process.pid}.html`);
+  const photo = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='240'%3E%3Crect width='360' height='240' fill='green'/%3E%3C/svg%3E";
+  const filled = await fillPhotos(
+    `<section class="slide">
+      <div class="photo-shadow"></div>
+      <div class="photo hero" data-morph="hero" data-brief="billiards player" style="object-fit: contain"></div>
+      <div class="photo-overlay"></div>
+    </section>`,
+    { resolvePhoto: async () => ({ url: photo, extra: { credit: "Ayu Photo" } }) },
+  );
+  await writeFile(
+    fixturePath,
+    `<!doctype html><style>
+      * { box-sizing: border-box; margin: 0; padding: 0 }
+      .slide { position: relative; width: 1280px; height: 720px; background: white; overflow: hidden }
+      .photo { position: absolute; left: 800px; top: 180px; width: 360px; height: 240px; transform: rotate(4deg) }
+      .photo-shadow { position: absolute; left: 820px; top: 200px; width: 360px; height: 240px; background: rgb(20, 30, 40) }
+      .photo-overlay { position: absolute; left: 1140px; top: 160px; width: 240px; height: 240px; background: rgb(240, 220, 30) }
+    </style>${filled.html}`,
+  );
+
+  const chrome = await ChromeSession.launch();
+  try {
+    await chrome.loadFile(fixturePath);
+    const extracted = await chrome.evaluate(`(${extractSlide.toString()})()`);
+    const images = extracted.elements.filter((element) => element.type === "image");
+
+    assert.equal(images.length, 1);
+    assert.deepEqual(images[0].position, { x: 800, y: 180 });
+    assert.deepEqual(images[0].size, { width: 360, height: 240 });
+    assert.equal(images[0].rotation, 4);
+    assert.equal(images[0].fit, "contain");
+    assert.equal(images[0].credit, "Ayu Photo");
+    assert.equal(images[0].morph_id, "hero");
+    assert.equal(extracted.elements.filter((element) => element.type === "rectangle").length, 2);
+    const overlay = extracted.elements.find((element) => element.fill?.color === "#F0DC1E");
+    assert.deepEqual(overlay.position, { x: 1140, y: 160 });
+    assert.deepEqual(overlay.size, { width: 240, height: 240 });
   } finally {
     await chrome.close();
     await rm(fixturePath, { force: true });

@@ -56,6 +56,7 @@ export interface ReviewIssue {
 }
 
 export interface VerifyInput {
+  signal?: AbortSignal;
   image: string; // data URL PNG
   topic: string;
   language: string;
@@ -160,10 +161,14 @@ export async function reviewSlideVisual(input: VerifyInput): Promise<ReviewIssue
         ],
       },
     ],
-    { maxTokens: 12000, vision: true },
+    { maxTokens: 12000, vision: true, signal: input.signal },
   );
   const parsed = extractJson<{ issues?: unknown }>(content);
-  const issues = Array.isArray(parsed?.issues) ? parsed.issues : [];
+  if (!parsed || !Array.isArray(parsed.issues)) throw new Error("Visual review did not return a valid issues array.");
+  const issues = parsed.issues;
+  if (issues.some((issue) => !issue || typeof issue !== "object" || typeof (issue as Rec).slot !== "string" || !(issue as Rec).slot || typeof (issue as Rec).problem !== "string" || !(issue as Rec).problem)) {
+    throw new Error("Visual review issues array contains malformed entries.");
+  }
   return issues
     .filter((i): i is Rec => Boolean(i) && typeof i === "object")
     .map((i) => ({

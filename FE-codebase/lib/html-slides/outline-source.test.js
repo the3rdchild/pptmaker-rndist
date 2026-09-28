@@ -42,3 +42,49 @@ Kuil bersejarah dan budaya lokal.
     "Kyoto di Musim Gugur — Kuil bersejarah dan budaya lokal.",
   );
 });
+
+test("approved pages retain their order while clear evidence chooses story roles", () => {
+  const outline = outlineFromMarkdown(`# Pertumbuhan Bisnis
+## Pembuka
+Peluang pasar.
+## Hasil naik 28%
+Pendapatan naik 28% dari tahun lalu.
+## Sebelum vs sesudah
+Bandingkan dua pendekatan yang nyata.
+## Tiga langkah implementasi
+Urutan dari riset hingga peluncuran.
+## Peluang berikutnya
+Rencana untuk kuartal depan.
+## Penutup
+Terima kasih.`);
+
+  assert.deepEqual(outline.slides.map((slide) => slide.role), [
+    "cover", "stat", "comparison", "process", "content", "closing",
+  ]);
+  assert.deepEqual(outline.slides.map((slide) => slide.heading), [
+    "Pembuka", "Hasil naik 28%", "Sebelum vs sesudah",
+    "Tiga langkah implementasi", "Peluang berikutnya", "Penutup",
+  ]);
+});
+
+test("an explicitly requested 3D visual gets a visual-led slide role", () => {
+  const outline = outlineFromMarkdown(`# Markets
+## Opening
+Expansion plan.
+## Regional footprint
+Our presence across Asia.
+Visual: 3D render of a globe with Jakarta and Singapore marked.
+## Closing
+Next markets.`);
+  assert.equal(outline.slides[1].role, "visual");
+  assert.match(outline.slides[1].visual, /3D render of a globe/);
+});
+
+test("a model cannot request a statistic layout without a supplied figure", () => {
+  const outline = normalizeOutline({ title: "Plan", slides: [
+    { role: "cover", heading: "Plan", brief: "Opening" },
+    { role: "stat", heading: "Strong progress", brief: "The team improved its workflow." },
+    { role: "closing", heading: "Next", brief: "Closing" },
+  ] });
+  assert.equal(outline.slides[1].role, "content");
+});

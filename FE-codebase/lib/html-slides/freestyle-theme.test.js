@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createServer } from "node:http";
 
-import { buildFreestyleThemePrompt, themeFromDraft } from "./freestyle-theme.js";
+import { buildFreestyleThemePrompt, designFreestyleTheme, themeFromDraft } from "./freestyle-theme.js";
 
 const draft = () => ({
   name: "Tidal Ledger",
@@ -18,6 +19,33 @@ const draft = () => ({
     { id: "cover", name: "Cover", roles: ["cover"], composition: "full-bleed", regions: [{ kind: "heading", placement: "left", emphasis: "primary" }], decorations: ["accent-rule"] },
     { id: "content-split", name: "Split", roles: ["content"], composition: "split-left", regions: [], decorations: [] },
   ],
+});
+
+test("recovers a token-limited theme using larger budgets within its three attempts", async () => {
+  const budgets = [];
+  const server = createServer(async (request, response) => {
+    let body = "";
+    for await (const chunk of request) body += chunk;
+    const { max_tokens: budget } = JSON.parse(body);
+    budgets.push(budget);
+    const truncated = budget < 12000;
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ choices: [{ message: { content: truncated ? '{"name": "unfinished' : JSON.stringify(draft()) }, finish_reason: truncated ? "length" : "stop" }] }));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const previous = { key: process.env.DEEPINFRA_API_KEY, base: process.env.DEEPINFRA_BASE_URL };
+  process.env.DEEPINFRA_API_KEY = "local-regression-test";
+  process.env.DEEPINFRA_BASE_URL = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const theme = await designFreestyleTheme({ outline: { title: "Test deck", slides: [] }, provider: "deepinfra" });
+    assert.equal(theme.id, "ai-tidal-ledger");
+    assert.deepEqual(budgets, [3500, 7000, 12000]);
+  } finally {
+    for (const [name, value] of [["DEEPINFRA_API_KEY", previous.key], ["DEEPINFRA_BASE_URL", previous.base]]) {
+      if (value === undefined) delete process.env[name]; else process.env[name] = value;
+    }
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
 
 test("fills the fields the model is not asked for and validates the rest", () => {

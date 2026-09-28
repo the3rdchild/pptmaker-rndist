@@ -57,11 +57,13 @@ async function findPhoto(brief) {
   return url;
 }
 
-function attributes(tag) {
+function photoAttributes(tag) {
   const out = {};
-  for (const match of tag.matchAll(/([a-zA-Z-]+)\s*=\s*"([^"]*)"/g)) {
-    out[match[1]] = match[2];
+  for (const match of tag.matchAll(/([a-zA-Z][a-zA-Z0-9:_-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) {
+    out[match[1].toLowerCase()] = match[2] ?? match[3];
   }
+  // Hyphenated classes such as photo-shadow are decoration, not image slots.
+  if (!out.class?.split(/[\t\n\f\r ]+/).includes("photo") || !out["data-brief"]?.trim()) return null;
   return out;
 }
 
@@ -92,11 +94,12 @@ export function ensureThemeBackgroundPlaceholder(sectionHtml, brief) {
  *   new search — a morph between two different pictures reads as a glitch.
  */
 export async function fillPhotos(sectionHtml, { resolvePhoto = findPhoto, photoContext, reusePhotos = {} } = {}) {
-  const placeholder = /<div([^>]*\bclass\s*=\s*"[^"]*\bphoto\b[^"]*"[^>]*)>\s*<\/div>/gi;
+  const placeholder = /<div\b((?:[^<>"']|"[^"]*"|'[^']*')*)>\s*<\/div\s*>/gi;
   const slots = [];
   for (const match of sectionHtml.matchAll(placeholder)) {
-    const parsed = attributes(match[1]);
-    slots.push({ brief: parsed["data-brief"] || "abstract background texture", morph: parsed["data-morph"] || "" });
+    const parsed = photoAttributes(match[1]);
+    if (!parsed) continue;
+    slots.push({ brief: parsed["data-brief"], morph: parsed["data-morph"] || "" });
   }
   const resolvedPhotos = await Promise.all(
     slots.map(({ brief, morph }) => (morph && reusePhotos[morph]) || resolvePhoto(brief, photoContext)),
@@ -112,17 +115,18 @@ export async function fillPhotos(sectionHtml, { resolvePhoto = findPhoto, photoC
 
   let index = 0;
   const filled = sectionHtml.replace(placeholder, (full, attrs) => {
-    const parsed = attributes(attrs);
-    const brief = parsed["data-brief"] || "abstract background texture";
+    const parsed = photoAttributes(attrs);
+    if (!parsed) return full;
+    const brief = parsed["data-brief"];
     const resolved = resolvedPhotos[index++];
     if (!resolved) return full;
     const url = typeof resolved === "string" ? resolved : resolved.url;
     const extra = typeof resolved === "string" ? null : resolved.extra;
     if (!url) return full;
-    const style = parsed.style ? ` style="${parsed.style}"` : "";
-    const className = parsed.class || "photo";
+    const style = parsed.style ? ` style="${parsed.style.replace(/"/g, "&quot;")}"` : "";
+    const className = parsed.class.replace(/"/g, "&quot;");
     const themeBackground = /\bdata-theme-background(?:\s|=|>)/i.test(attrs) ? " data-theme-background" : "";
-    const themeOverlay = parsed["data-theme-overlay"] ? ` data-theme-overlay="${parsed["data-theme-overlay"]}"` : "";
+    const themeOverlay = parsed["data-theme-overlay"] ? ` data-theme-overlay="${parsed["data-theme-overlay"].replace(/"/g, "&quot;")}"` : "";
     const morph = parsed["data-morph"] ? ` data-morph="${escapeAttribute(parsed["data-morph"])}"` : "";
     const attribution = [
       extra?.credit ? ` data-credit="${escapeAttribute(extra.credit)}"` : "",

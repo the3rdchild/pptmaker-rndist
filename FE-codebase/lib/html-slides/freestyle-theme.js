@@ -22,7 +22,8 @@ import {
   parseHtmlTheme,
 } from "../html-themes/schema.js";
 import { themeContrastProblems } from "../html-themes/contrast.js";
-import { chat } from "./llm-client.js";
+import { chat, requireCompleteReply } from "./llm-client.js";
+import { recordGenerationDiagnostic, withGenerationStage } from "./generation-trace.js";
 
 /** A generated theme never carries a locked background image — there is no
  *  asset to lock to — so only these two modes are offered. */
@@ -92,6 +93,16 @@ RULES:
 - 6 to 9 recipes. Together they must cover the roles "cover", "content" and
   "closing", and every role used in SLIDES above. Give "content" at least two
   recipes with different compositions so consecutive slides do not repeat.
+- Design recipes as reusable story patterns: a split with a true side visual,
+  an asymmetric bento only for three distinct facts, a big-number only for one
+  real numeric proof point, process-steps only for an ordered process, and a
+  comparison-matrix only when two real alternatives share criteria. Do not
+  force any specialty pattern into a slide that lacks its evidence.
+- A text-only statement should center its headline and supporting block as one
+  composition. Use an asymmetric alignment only when a real side visual balances it.
+- Give each slide one clear focal point; keep adjacent recipes visibly different.
+  Use a 3D-looking visual only when a real object or geographic story benefits
+  from depth, not as decoration on every slide.
 - At most 8 regions per recipe. Recipe ids are unique lowercase slugs.
 - Choose "generated" background images only for an image-led, atmospheric
   topic; otherwise "none".
@@ -142,19 +153,26 @@ export function themeFromDraft(draft) {
  */
 export async function designFreestyleTheme({ outline, provider, signal }) {
   let feedback = "";
+  let maxTokens = 3500;
   for (let attempt = 0; ; attempt += 1) {
-    const reply = await chat({
+    signal?.throwIfAborted();
+    const reply = await withGenerationStage({ stage: "theme-design", attempt: attempt + 1 }, () => chat({
       provider,
       prompt: buildFreestyleThemePrompt(outline, feedback),
-      maxTokens: 3500,
+      maxTokens,
       temperature: 0.9,
       signal,
-    });
+    }));
     try {
+      signal?.throwIfAborted();
+      requireCompleteReply(reply);
       return themeFromDraft(parseReply(reply.text));
     } catch (error) {
+      signal?.throwIfAborted();
       feedback = error instanceof Error ? error.message : String(error);
+      recordGenerationDiagnostic({ type: "repair", stage: "theme-design", attempt: attempt + 1, phase: attempt < MAX_REPAIRS ? "retry" : "exhausted", error: feedback, nextMaxTokens: attempt < MAX_REPAIRS ? error?.code === "OUTPUT_TRUNCATED" ? Math.min(maxTokens * 2, 12000) : maxTokens : null });
       if (attempt >= MAX_REPAIRS) throw new Error(`AI theme design failed: ${feedback}`);
+      if (error?.code === "OUTPUT_TRUNCATED") maxTokens = Math.min(maxTokens * 2, 12000);
     }
   }
 }

@@ -168,6 +168,10 @@ function authoritativePrompt(brief: string, context?: PhotoContext): string {
   return subject ? `${subject}. Composition guidance: ${brief}` : brief;
 }
 
+function requests3DRender(brief: string, context?: PhotoContext): boolean {
+  return /\b3\s*[- ]?d\b|three-dimensional/i.test(`${brief} ${context?.subject ?? ""}`);
+}
+
 function logResolution(
   source: HtmlImageSource,
   brief: string,
@@ -214,7 +218,10 @@ export function createPhotoResolver({
       });
       return null;
     }
-    const prompt = `${authoritativePrompt(brief, context)}. editorial photograph, cinematic natural lighting, cohesive color grading, no text, no watermark, no logo`;
+    const is3D = requests3DRender(brief, context);
+    const prompt = is3D
+      ? `Unmistakable CGI: isometric 3D miniature diorama with clearly modeled geometry, stylized miniature people and objects, tactile glass and matte materials, soft studio shadows, and visible depth. Depict: ${authoritativePrompt(brief, context)}. No photographic realism, no text, no watermark, no logo`
+      : `${authoritativePrompt(brief, context)}. editorial photograph, cinematic natural lighting, cohesive color grading, no text, no watermark, no logo`;
     try {
       const url = await generateAi(sessionToken, prompt, { model: imageModel, size: "1344x768" });
       logResolution("ai", brief, context, {
@@ -243,6 +250,9 @@ export function createPhotoResolver({
   }
 
   return async (brief, context) => {
+    if (requests3DRender(brief, context)) {
+      return resolveWithAi(brief, context, "requested-3d-render");
+    }
     const authoritativeText = context?.subject?.trim() || context?.heading?.trim() || "";
     const query = simplifyPhotoSearchQuery(brief, authoritativeText);
     if (!query) {

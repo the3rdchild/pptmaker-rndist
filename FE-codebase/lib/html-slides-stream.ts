@@ -14,6 +14,7 @@ export type HtmlSlideEvent =
   | { type: "error"; message: string };
 
 export interface HtmlDeckRequest {
+  deckId?: string;
   topic: string;
   slideCount?: number;
   theme?: string;
@@ -22,6 +23,9 @@ export interface HtmlDeckRequest {
   imageModel?: string;
   /** Apply the outline's transition plan (morph chains included). */
   transitions?: boolean;
+  withReview?: boolean;
+  verifyProvider?: string | null;
+  repairProvider?: string | null;
   sessionToken?: string;
   signal?: AbortSignal;
 }
@@ -31,7 +35,7 @@ export interface HtmlDeckRequest {
  *  slide it promised; a dropped response must not look like a ready deck.
  *  Throws on an `error` line so the caller's existing failure UI applies. */
 export async function streamHtmlDeck(
-  { topic, slideCount, theme, provider, imageSource, imageModel, transitions, sessionToken, signal }: HtmlDeckRequest,
+  { deckId, topic, slideCount, theme, provider, imageSource, imageModel, transitions, withReview, verifyProvider, repairProvider, sessionToken, signal }: HtmlDeckRequest,
   onEvent: (event: HtmlSlideEvent) => void,
 ): Promise<number> {
   const response = await fetch("/api/html-slides/generate", {
@@ -42,12 +46,16 @@ export async function streamHtmlDeck(
     },
     body: JSON.stringify({
       topic,
+      ...(deckId ? { deckId } : {}),
       ...(slideCount == null ? {} : { slideCount }),
       ...(theme == null ? {} : { theme }),
       ...(provider == null ? {} : { provider }),
       ...(imageSource == null ? {} : { imageSource }),
       ...(imageModel == null ? {} : { imageModel }),
       ...(transitions ? { transitions: true } : {}),
+      ...(withReview === undefined ? {} : { withReview }),
+      ...(verifyProvider ? { verifyProvider } : {}),
+      ...(repairProvider ? { repairProvider } : {}),
     }),
     signal,
   });

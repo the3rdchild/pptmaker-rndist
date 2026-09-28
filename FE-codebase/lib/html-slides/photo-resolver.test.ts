@@ -59,6 +59,32 @@ test("AI image resolution keeps the page brief and selected model", async () => 
   });
 });
 
+test("an explicit 3D visual uses image generation even when stock photos are selected", async () => {
+  let prompt = "";
+  let stockCalls = 0;
+  const resolvePhoto = createPhotoResolver!({
+    imageSource: "stock",
+    sessionToken: "session-123",
+    generateAi: async (_token: string, receivedPrompt: string) => {
+      prompt = receivedPrompt;
+      return "data:image/png;base64,globe";
+    },
+    searchStock: async () => {
+      stockCalls += 1;
+      return { results: [] };
+    },
+  });
+
+  assert.deepEqual(await resolvePhoto("3D render of a globe showing real market regions"), {
+    url: "data:image/png;base64,globe",
+  });
+  assert.equal(stockCalls, 0);
+  assert.match(prompt, /3D render of a globe/i);
+  assert.match(prompt, /isometric 3D miniature diorama/i);
+  assert.match(prompt, /unmistakable CGI/i);
+  assert.doesNotMatch(prompt, /editorial photograph/i);
+});
+
 test("AI image resolution treats the approved slide visual as authoritative", async () => {
   assert.equal(typeof createPhotoResolver, "function");
   let prompt = "";

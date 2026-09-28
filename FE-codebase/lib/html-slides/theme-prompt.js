@@ -4,6 +4,13 @@ const placement = {
   left: "left side", center: "centre", right: "right side", top: "top", bottom: "bottom", background: "background layer",
 };
 
+const compositionRules = {
+  "bento-asymmetric": "Use one dominant tile and two smaller supporting tiles. Give them unequal spans and one reading path; three identical cards are not a bento layout.",
+  "big-number": "Center the headline and number as one composition. Make one supplied numeric fact dominant, with a short label and source if the outline includes one.",
+  "process-steps": "Show only the ordered steps supplied by the outline, linked by a clear directional path. Keep each step to one action and one short explanation.",
+  "comparison-matrix": "Compare two named alternatives on the same criteria in aligned rows. Highlight only a supported difference; an unknown value stays absent.",
+};
+
 /** Converts saved theme rules into bounded design language for one slide. The
  * persisted record never contains CSS/HTML; this is the only bridge to the
  * model-facing prompt. */
@@ -44,6 +51,7 @@ VISUAL SYSTEM:
 SELECTED LAYOUT RECIPE: ${recipe.name}
 Description: ${recipe.description}
 Composition: ${recipe.composition}
+Composition rule: ${compositionRules[recipe.composition] ?? "Keep one clear visual anchor and balance the supporting content around it."}
 Required content regions:
 ${regions}
 Decorations to render as real elements: ${decorations}

@@ -6,11 +6,14 @@ export const HTML_THEME_ROLES = [
   "content",
   "stat",
   "comparison",
+  "process",
   "quote",
   "section",
   "visual",
   "closing",
 ];
+
+export const METRIC_EVIDENCE = /\d+(?:[.,]\d+)?\s*(?:%|persen\b|juta\b|miliar\b|triliun\b|ribu\b|kali\b|pengguna\b|users?\b|pelanggan\b|customers?\b|negara\b|countries\b|wilayah\b|regions?\b)|(?:\brp\s*|\$)\d+/i;
 
 export const HTML_THEME_COMPOSITIONS = [
   "centered",
@@ -22,6 +25,10 @@ export const HTML_THEME_COMPOSITIONS = [
   "visual-focus",
   "quote-statement",
   "full-bleed",
+  "bento-asymmetric",
+  "big-number",
+  "process-steps",
+  "comparison-matrix",
 ];
 
 export const GOOGLE_FONT_FAMILIES = [
@@ -197,6 +204,59 @@ export function selectRecipe(theme, role, slideIndex = 0) {
   const candidates = matching.length ? matching : parsed.recipes.filter((recipe) => recipe.roles.includes("content"));
   const selected = candidates.length ? candidates : parsed.recipes;
   return selected[Math.abs(Number(slideIndex) || 0) % selected.length];
+}
+
+/** Pick all slide recipes together so an avoidable repeated composition is not
+ * baked into a deck simply because each slide was selected in isolation. */
+export function planRecipes(theme, slides) {
+  const parsed = parseHtmlTheme(theme);
+  if (!Array.isArray(slides) || slides.length === 0) return [];
+
+  const roleOf = (slide) => typeof slide === "string" ? slide : slide?.role;
+  const metricIn = (slide) => {
+    if (typeof slide !== "object" || !slide) return false;
+    const evidence = `${slide.heading ?? ""} ${slide.brief ?? ""}`;
+    return METRIC_EVIDENCE.test(evidence);
+  };
+  const firstNumericStat = slides.findIndex((slide) => roleOf(slide) === "stat" && metricIn(slide));
+
+  const candidates = slides.map((slide, slideIndex) => {
+    const role = roleOf(slide);
+    const matching = parsed.recipes.filter((recipe) => recipe.roles.includes(role));
+    const content = parsed.recipes.filter((recipe) => recipe.roles.includes("content"));
+    const available = matching.length ? matching : content.length ? content : parsed.recipes;
+    const itemCount = typeof slide === "object" && slide ? (slide.brief ?? "").match(/^\s*-\s+\S/gm)?.length ?? 0 : 0;
+    const supported = available.filter((recipe) =>
+      (recipe.composition !== "big-number" || slideIndex === firstNumericStat) &&
+      (recipe.composition !== "bento-asymmetric" || itemCount >= 3),
+    );
+    return supported.length ? supported : available;
+  });
+  let paths = candidates[0].map((recipe, choice) => ({
+    recipe,
+    cost: choice === 0 ? 0 : 1,
+    choices: [recipe],
+  }));
+
+  for (let slideIndex = 1; slideIndex < candidates.length; slideIndex += 1) {
+    const options = candidates[slideIndex];
+    paths = options.map((recipe, choice) => {
+      const slide = slides[slideIndex];
+      const itemCount = typeof slide === "object" && slide ? (slide.brief ?? "").match(/^\s*-\s+\S/gm)?.length ?? 0 : 0;
+      const specialty = recipe.composition === "big-number" && slideIndex === firstNumericStat ||
+        recipe.composition === "bento-asymmetric" && itemCount >= 3 ||
+        recipe.composition === "comparison-matrix" && roleOf(slide) === "comparison";
+      const preference = (choice === slideIndex % options.length ? 0 : 1) - (specialty ? 4 : 0);
+      const previous = paths.reduce((best, path) => {
+        const repeated = path.recipe.composition === recipe.composition ? 100 : 0;
+        const cost = path.cost + repeated + preference;
+        return !best || cost < best.cost ? { cost, choices: [...path.choices, recipe] } : best;
+      }, null);
+      return { recipe, ...previous };
+    });
+  }
+
+  return paths.reduce((best, path) => path.cost < best.cost ? path : best).choices;
 }
 
 export function deleteFromHtmlThemeIndex(index, themeId) {

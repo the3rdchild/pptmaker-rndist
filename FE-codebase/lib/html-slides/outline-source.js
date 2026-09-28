@@ -6,6 +6,7 @@
 // "create_deck", say — earns an outline call of its own.
 
 import { isTransitionLine, normalizeTransitionId, parseTransitionLine } from "../outline-transition.js";
+import { HTML_THEME_ROLES, METRIC_EVIDENCE } from "../html-themes/schema.js";
 import { chat } from "./llm-client.js";
 import { buildOutlinePrompt } from "./slide-prompt.js";
 
@@ -14,6 +15,17 @@ const ROLE_BY_POSITION = (index, total) => {
   if (index === total - 1) return "closing";
   return "content";
 };
+
+function roleFromApprovedPage(page, index, total) {
+  if (index === 0 || index === total - 1) return ROLE_BY_POSITION(index, total);
+  const heading = page.heading.toLowerCase();
+  const text = [heading, page.description, ...page.bullets].join(" ").toLowerCase();
+  if (/\b(?:vs\.?|versus|dibandingkan?|perbandingan|sebelum dan sesudah|before and after)\b/i.test(text)) return "comparison";
+  if (/\b(?:langkah|tahap|tahapan|alur|proses|roadmap|workflow|cara kerja)\b/i.test(heading)) return "process";
+  if (METRIC_EVIDENCE.test(text)) return "stat";
+  if (/\b3\s*[- ]?d\b|three-dimensional/i.test(page.imageBrief)) return "visual";
+  return "content";
+}
 
 /** True when the text is an approved outline rather than a free-text prompt. */
 export function looksLikeOutline(text) {
@@ -53,7 +65,7 @@ export function outlineFromMarkdown(markdown) {
   return {
     title: title || pages[0]?.heading || "Presentation",
     slides: pages.map((page, index) => ({
-      role: ROLE_BY_POSITION(index, pages.length),
+      role: roleFromApprovedPage(page, index, pages.length),
       heading: page.heading,
       brief: [page.description, ...page.bullets.map((b) => `- ${b}`)].filter(Boolean).join("\n") || page.heading,
       visual: page.imageBrief || [page.heading, page.description].filter(Boolean).join(" — "),
@@ -79,7 +91,9 @@ export function normalizeOutline(raw) {
       const transition = normalizeTransitionId(slide?.transition);
       return {
         ...slide,
-        role: typeof slide?.role === "string" ? slide.role : ROLE_BY_POSITION(index, slides.length),
+        role: slide?.role === "stat" && !METRIC_EVIDENCE.test(`${heading} ${brief}`)
+          ? "content"
+          : HTML_THEME_ROLES.includes(slide?.role) ? slide.role : ROLE_BY_POSITION(index, slides.length),
         heading,
         brief,
         visual,

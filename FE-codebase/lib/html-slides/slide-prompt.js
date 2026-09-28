@@ -18,11 +18,13 @@ export function buildOutlinePrompt(topic, slideCount, { transitions = false } = 
   return `Kamu perancang presentasi. Buat outline untuk deck ${slideCount} slide tentang: "${topic}".
 
 Balas HANYA JSON (tanpa fence, tanpa komentar):
-{"title":"<judul deck>","slides":[{"role":"<cover|content|stat|comparison|quote|closing>","heading":"<judul slide>","brief":"<2-3 kalimat: poin konkret yang harus muncul, termasuk angka/nama nyata bila relevan>","visual":"<isi gambar konkret: subjek, aktivitas, dan latar yang terlihat>"${transitionFields}}]}
+{"title":"<judul deck>","slides":[{"role":"<cover|content|stat|comparison|process|quote|visual|closing>","heading":"<judul slide>","brief":"<2-3 kalimat: poin konkret yang harus muncul, termasuk angka/nama nyata bila relevan>","visual":"<isi visual konkret: subjek, aktivitas, dan latar yang terlihat>"${transitionFields}}]}
 
 Aturan:
 - Tepat ${slideCount} slide. Slide pertama role "cover", terakhir "closing".
-- Setiap visual harus konkret dan dapat difoto; hindari konsep abstrak, logo, watermark, atau instruksi generik seperti "buat menarik".
+- Satu gagasan utama per slide. Judul menyatakan kesimpulan spesifik, bukan label topik yang generik.
+- Role "stat" hanya bila ada angka nyata di input. "comparison" hanya untuk dua hal yang memang dibandingkan. "process" hanya untuk langkah berurutan. "quote" hanya bila ada kutipan dan narasumber nyata. Jangan mengarang angka, kutipan, nama, atau sumber.
+- Setiap visual harus konkret: foto yang relevan, diagram dari data yang tersedia, atau render 3D untuk objek/geografi yang memang membantu penjelasan. Hindari logo, watermark, dan instruksi generik seperti "buat menarik".
 - Variasikan role dan komposisi antar slide — jangan lima slide bentuk yang sama.
 - Bahasa Indonesia. Konkret, bukan generik.${transitionRules}`;
 }
@@ -94,6 +96,11 @@ GEOMETRI:
 - Sisakan margin aman 64px dari tiap tepi, KECUALI elemen yang memang sengaja full-bleed.
 - Isi slide sampai penuh dan seimbang. Ruang kosong besar di satu sisi tanpa alasan = slide gagal.
 
+CERITA DAN HIERARKI:
+- Satu gagasan utama. Satu elemen dominan (judul, visual, atau angka nyata) dan maksimal tiga kelompok pendukung.
+- Ikuti komposisi recipe secara jelas. Bila tidak ada visual samping, pusatkan judul dan blok isi sebagai satu susunan.
+- Gunakan hanya fakta pada JUDUL, ISI, dan ISI GAMBAR. Jangan menciptakan angka, perbandingan, kutipan, atau sumber untuk mengisi layout.
+
 DILARANG (melanggar = slide rusak saat dikonversi):
 ${BANNED.map((b) => `- ${b}`).join("\n")}
 
@@ -106,10 +113,11 @@ TEKS:
 - JANGAN pecah satu kalimat menjadi banyak <span> terpisah. Satu kalimat = satu elemen <p> atau <span>. Hanya gunakan <span> di dalam kalimat bila memang perlu warna/gaya berbeda untuk sebagian teks.
 - Teks singkat dan padat — ini slide, bukan dokumen. Judul <= 9 kata, paragraf <= 28 kata.
 
-FOTO:
+VISUAL:
 - JANGAN pakai <img> dan JANGAN karang URL. Untuk tiap foto, tulis:
   <div class="photo" data-brief="deskripsi visual spesifik dalam bahasa Inggris"></div>
 - data-brief WAJIB mempertahankan subjek pada ISI GAMBAR. Theme/recipe hanya menentukan komposisi dan tidak boleh mengganti subjeknya.
+- Bila ISI GAMBAR secara eksplisit meminta render 3D, tulis "3D render of ..." pada data-brief. Untuk topik lain gunakan foto atau diagram yang sesuai; jangan menambahkan globe/dekorasi 3D tanpa alasan cerita.
 - Beri elemen itu ukuran nyata lewat CSS (width/height atau flex + aspect-ratio). Server yang mengisi gambarnya.
 
 ${morphSection ? `${morphSection}\n\n` : ""}${repairFeedback ? `PERBAIKAN WAJIB DARI RENDER SEBELUMNYA:

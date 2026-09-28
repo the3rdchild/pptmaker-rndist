@@ -1,5 +1,7 @@
 # deps
 node_modules/
+FE-codebase/test-results/
+FE-codebase/playwright-report/
 **/node_modules/
 
 # env
@@ -17,6 +19,7 @@ Thumbs.db
 desktop.ini
 
 # build artifacts / generated
+artifacts/
 *.tsbuildinfo
 .next
 dist/

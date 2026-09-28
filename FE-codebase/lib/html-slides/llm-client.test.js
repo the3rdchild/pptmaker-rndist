@@ -5,8 +5,33 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 
-import { chat } from "./llm-client.js";
+import { chat, firstConfiguredProvider, requireCompleteReply } from "./llm-client.js";
 import { createGenerationTrace, withGenerationStage } from "./generation-trace.js";
+
+test("defaults text generation to CodeBuddy Sol when its key is available", () => {
+  const previous = process.env.CODEBUDDY_API_KEY;
+  process.env.CODEBUDDY_API_KEY = "local-regression-test";
+  try {
+    assert.equal(firstConfiguredProvider(), "codebuddy-sol");
+    assert.equal(firstConfiguredProvider("codebuddy"), "codebuddy");
+  } finally {
+    if (previous === undefined) delete process.env.CODEBUDDY_API_KEY;
+    else process.env.CODEBUDDY_API_KEY = previous;
+  }
+});
+
+test("identifies a truncated reply spent entirely on hidden reasoning", () => {
+  assert.throws(() => requireCompleteReply({
+    finishReason: "length",
+    text: "",
+    usage: { completion_tokens: 4000, completion_tokens_details: { reasoning_tokens: 4000 } },
+  }), (error) => error.code === "OUTPUT_TRUNCATED" && error.reasoningOnly === true);
+  assert.throws(() => requireCompleteReply({
+    finishReason: "length",
+    text: "<section>partial",
+    usage: { completion_tokens: 4000, completion_tokens_details: { reasoning_tokens: 1500 } },
+  }), (error) => error.code === "OUTPUT_TRUNCATED" && error.reasoningOnly === false);
+});
 
 test("preserves the provider finish reason and reasoning usage for truncation diagnostics", async () => {
   const usage = { prompt_tokens: 120, completion_tokens: 4000, total_tokens: 4120, completion_tokens_details: { reasoning_tokens: 2800 } };

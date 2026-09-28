@@ -87,7 +87,7 @@ export function providerConfig(name) {
 /** The first provider that actually has a key, so the route can run without
  *  the caller having to know which ones are configured. */
 export function firstConfiguredProvider(preferred) {
-  const order = preferred ? [preferred, ...PROVIDER_IDS] : PROVIDER_IDS;
+  const order = preferred ? [preferred, ...PROVIDER_IDS] : ["codebuddy-sol", ...PROVIDER_IDS];
   for (const name of order) {
     if (PROVIDERS[name] && read(PROVIDERS[name].key)) return name;
   }
@@ -149,5 +149,10 @@ export function requireCompleteReply(reply) {
   if (reply.finishReason !== "length") return;
   const error = new Error("The provider reached the output token limit before finishing the reply.");
   error.code = "OUTPUT_TRUNCATED";
+  const completion = reply.usage?.completion_tokens;
+  const reasoning = reply.usage?.completion_tokens_details?.reasoning_tokens;
+  error.reasoningOnly = !String(reply.text ?? "").trim()
+    && typeof completion === "number" && completion > 0
+    && typeof reasoning === "number" && reasoning >= completion * 0.98;
   throw error;
 }

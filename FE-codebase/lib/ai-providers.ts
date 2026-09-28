@@ -130,7 +130,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   },
 ];
 
-export const DEFAULT_TEXT_PROVIDER = "codebuddy";
+export const DEFAULT_TEXT_PROVIDER = "codebuddy-sol";
 export const DEFAULT_VISION_PROVIDER = "codebuddy";
 
 export interface ProviderConfig {

@@ -1,5 +1,5 @@
 // Unified text-AI provider layer for frontend/server AI calls (theme choice,
-// visual review verify/repair, auto-label). CommandCode serves the GPT tiers
+// visual review verify/repair, auto-label). CodeBuddy serves the default model
 // through its OpenAI-compatible chat endpoint; DeepInfra remains available as
 // the independent fallback/provider option.
 //
@@ -15,6 +15,9 @@
 // repair, theme choice, prompt enhance, font substitution — gets both for
 // free and keeps passing plain chat-style messages.
 
+import { recordGenerationDiagnostic } from "./html-slides/generation-trace.js";
+import { readCodeBuddyStream } from "./codebuddy-stream.js";
+
 type Rec = Record<string, unknown>;
 
 export interface ProviderPreset {
@@ -24,6 +27,8 @@ export interface ProviderPreset {
   envKey: string;
   base_url: string;
   model: string;
+  /** CodeBuddy's chat API requires a system message and SSE. */
+  codebuddy?: boolean;
   /** Supports image_url multimodal input (vision). When false, the preset is
    *  hidden from selectors that filter { vision: true }. */
   vision?: boolean;
@@ -48,37 +53,49 @@ export interface ProviderPreset {
 
 export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
-    id: "gpt-luna",
-    label: "GPT-5.6 Luna · Murah",
-    envKey: "COMMANDCODE_API_KEY",
-    base_url: "https://api.commandcode.ai/provider/v1",
+    id: "codebuddy",
+    label: "CodeBuddy · Hy3",
+    envKey: "CODEBUDDY_API_KEY",
+    base_url: "https://www.codebuddy.ai/v2",
+    model: "hy3",
+    codebuddy: true,
+    vision: true,
+    omit_temperature: true,
+    base_url_env: "CODEBUDDY_BASE_URL",
+    model_env: "CODEBUDDY_MODEL",
+  },
+  {
+    id: "codebuddy-luna",
+    label: "GPT-5.6 Luna · CodeBuddy",
+    envKey: "CODEBUDDY_API_KEY",
+    base_url: "https://www.codebuddy.ai/v2",
     model: "gpt-5.6-luna",
-    vision: true,
+    codebuddy: true,
     omit_temperature: true,
-    base_url_env: "COMMANDCODE_BASE_URL",
-    model_env: "COMMANDCODE_LUNA_MODEL",
+    base_url_env: "CODEBUDDY_BASE_URL",
+    model_env: "CODEBUDDY_LUNA_MODEL",
   },
   {
-    id: "gpt-terra",
-    label: "GPT-5.6 Terra · Mid (butuh Pro)",
-    envKey: "COMMANDCODE_API_KEY",
-    base_url: "https://api.commandcode.ai/provider/v1",
+    id: "codebuddy-terra",
+    label: "GPT-5.6 Terra · CodeBuddy",
+    envKey: "CODEBUDDY_API_KEY",
+    base_url: "https://www.codebuddy.ai/v2",
     model: "gpt-5.6-terra",
-    vision: true,
+    codebuddy: true,
     omit_temperature: true,
-    base_url_env: "COMMANDCODE_BASE_URL",
-    model_env: "COMMANDCODE_TERRA_MODEL",
+    base_url_env: "CODEBUDDY_BASE_URL",
+    model_env: "CODEBUDDY_TERRA_MODEL",
   },
   {
-    id: "gpt-sol",
-    label: "GPT-5.6 Sol · Mahal",
-    envKey: "COMMANDCODE_API_KEY",
-    base_url: "https://api.commandcode.ai/provider/v1",
+    id: "codebuddy-sol",
+    label: "GPT-5.6 Sol · CodeBuddy",
+    envKey: "CODEBUDDY_API_KEY",
+    base_url: "https://www.codebuddy.ai/v2",
     model: "gpt-5.6-sol",
-    vision: true,
+    codebuddy: true,
     omit_temperature: true,
-    base_url_env: "COMMANDCODE_BASE_URL",
-    model_env: "COMMANDCODE_SOL_MODEL",
+    base_url_env: "CODEBUDDY_BASE_URL",
+    model_env: "CODEBUDDY_SOL_MODEL",
   },
   {
     id: "qwen-vl",
@@ -113,14 +130,15 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   },
 ];
 
-export const DEFAULT_TEXT_PROVIDER = "gpt-luna";
-export const DEFAULT_VISION_PROVIDER = "gpt-luna";
+export const DEFAULT_TEXT_PROVIDER = "codebuddy";
+export const DEFAULT_VISION_PROVIDER = "codebuddy";
 
 export interface ProviderConfig {
   id: string;
   apiKey: string;
   base_url: string;
   model: string;
+  codebuddy?: boolean;
   headers?: Record<string, string>;
   omit_temperature?: boolean;
   disable_thinking?: boolean;
@@ -147,6 +165,7 @@ export function getProvider(id: string | null | undefined): ProviderConfig | nul
     apiKey,
     base_url,
     model,
+    codebuddy: preset.codebuddy,
     headers: preset.headers,
     omit_temperature: preset.omit_temperature,
     disable_thinking: preset.disable_thinking,
@@ -271,8 +290,9 @@ function readResponsesText(data: Rec): string {
 export async function callProvider(
   providerId: string | null | undefined,
   messages: ChatMessage[],
-  opts: { maxTokens: number; vision?: boolean },
+  opts: { maxTokens: number; vision?: boolean; signal?: AbortSignal },
 ): Promise<string> {
+  opts.signal?.throwIfAborted();
   const cfg = requireProvider(providerId, { vision: opts.vision });
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -290,8 +310,11 @@ export async function callProvider(
       }
     : {
         model: cfg.model,
-        messages,
+        messages: cfg.codebuddy && messages[0]?.role !== "system"
+          ? [{ role: "system", content: "You are a helpful assistant." }, ...messages]
+          : messages,
         max_tokens: opts.maxTokens,
+        ...(cfg.codebuddy ? { stream: true, stream_options: { include_usage: true } } : {}),
       };
   if (!cfg.omit_temperature) body.temperature = 1;
   if (cfg.disable_thinking) body.thinking = { type: "disabled" };
@@ -302,27 +325,23 @@ export async function callProvider(
   const timeoutMs = opts.vision || useResponses ? VISION_TIMEOUT_MS : PROVIDER_TIMEOUT_MS;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  let res: Response;
+  const startedAt = Date.now();
+  recordGenerationDiagnostic({ type: "provider", phase: "start", provider: cfg.id, model: cfg.model, maxTokens: opts.maxTokens }, [cfg.apiKey]);
   try {
-    res = await fetch(`${cfg.base_url}/${endpoint}`, {
+    const res = await fetch(`${cfg.base_url}/${endpoint}`, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
-      signal: controller.signal,
+      signal: opts.signal ? AbortSignal.any([opts.signal, controller.signal]) : controller.signal,
     });
-  } catch (err) {
-    if (err instanceof Error && err.name === "AbortError") {
-      throw new Error(`${cfg.id} timed out after ${timeoutMs / 1000}s`);
-    }
-    throw err;
-  } finally {
-    clearTimeout(timer);
-  }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`${cfg.id} API ${res.status}: ${text.slice(0, 200)}`);
   }
-  const data = (await res.json()) as Rec;
+  const data: Rec = cfg.codebuddy
+    ? (await readCodeBuddyStream(res)) as Rec
+    : (await res.json()) as Rec;
+  opts.signal?.throwIfAborted();
   let content: unknown;
   if (useResponses) {
     content = readResponsesText(data);
@@ -334,12 +353,22 @@ export async function callProvider(
     }
   } else {
     const choices = data.choices as Rec[] | undefined;
-    content = choices?.[0] && (choices[0].message as Rec | undefined)?.content;
+    content = cfg.codebuddy ? data.text : choices?.[0] && (choices[0].message as Rec | undefined)?.content;
   }
   if (typeof content !== "string" || !content.trim()) {
     throw new Error(`${cfg.id} returned an empty response`);
   }
+  const finishReason = useResponses ? data.status : cfg.codebuddy ? data.finishReason : (data.choices as Rec[] | undefined)?.[0]?.finish_reason;
+  recordGenerationDiagnostic({ type: "provider", phase: "complete", provider: cfg.id, model: data.model ?? cfg.model, maxTokens: opts.maxTokens, finishReason: finishReason ?? null, usage: data.usage ?? null, durationMs: Date.now() - startedAt, rawOutput: content });
+  if (finishReason === "length" || (useResponses && data.status === "incomplete")) throw new Error(`${cfg.id} reached the output token limit before finishing the reply`);
   return content;
+  } catch (cause) {
+    const error = opts.signal?.aborted ? opts.signal.reason : controller.signal.aborted ? new Error(`${cfg.id} timed out after ${timeoutMs / 1000}s`) : cause;
+    recordGenerationDiagnostic({ type: "provider", phase: opts.signal?.aborted ? "cancelled" : "error", provider: cfg.id, model: cfg.model, durationMs: Date.now() - startedAt, error: error instanceof Error ? error.message : String(error) });
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Extracts the first balanced {...} or [...] JSON value from model output

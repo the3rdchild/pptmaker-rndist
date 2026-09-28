@@ -13,13 +13,13 @@ DEEPINFRA_API_KEY      = os.getenv("DEEPINFRA_API_KEY", "")
 DEEPINFRA_BASE_URL     = os.getenv("DEEPINFRA_BASE_URL", "https://api.deepinfra.com/v1/openai")
 DEEPINFRA_MODEL        = os.getenv("DEEPINFRA_MODEL", "deepseek-ai/DeepSeek-V3.1-Terminus")
 
-# CommandCode's OpenAI-compatible Provider API. These three presets use one
-# account/key and deliberately expose price/quality tiers to the UI.
-COMMANDCODE_API_KEY     = os.getenv("COMMANDCODE_API_KEY", "")
-COMMANDCODE_BASE_URL    = os.getenv("COMMANDCODE_BASE_URL", "https://api.commandcode.ai/provider/v1")
-COMMANDCODE_LUNA_MODEL  = os.getenv("COMMANDCODE_LUNA_MODEL", "gpt-5.6-luna")
-COMMANDCODE_TERRA_MODEL = os.getenv("COMMANDCODE_TERRA_MODEL", "gpt-5.6-terra")
-COMMANDCODE_SOL_MODEL   = os.getenv("COMMANDCODE_SOL_MODEL", "gpt-5.6-sol")
+# CodeBuddy international chat API requires streamed responses.
+CODEBUDDY_API_KEY  = os.getenv("CODEBUDDY_API_KEY", "")
+CODEBUDDY_BASE_URL = os.getenv("CODEBUDDY_BASE_URL", "https://www.codebuddy.ai/v2")
+CODEBUDDY_MODEL    = os.getenv("CODEBUDDY_MODEL", "hy3")
+CODEBUDDY_LUNA_MODEL = os.getenv("CODEBUDDY_LUNA_MODEL", "gpt-5.6-luna")
+CODEBUDDY_TERRA_MODEL = os.getenv("CODEBUDDY_TERRA_MODEL", "gpt-5.6-terra")
+CODEBUDDY_SOL_MODEL = os.getenv("CODEBUDDY_SOL_MODEL", "gpt-5.6-sol")
 
 # Runware image generation. Requests send a safe UI alias; only these aliases
 # can resolve to billable Runware AIR model ids.
@@ -37,7 +37,7 @@ RUNWARE_IMAGE_MODELS    = {
 # stay present so switching back doesn't need any code change. Individual jobs
 # also override the provider per-request (see llm_client): the homepage model
 # picker sends it as `model`, and so does the editor's chat model switcher.
-LLM_PROVIDER           = os.getenv("LLM_PROVIDER", "gpt-luna").strip().lower()
+LLM_PROVIDER           = os.getenv("LLM_PROVIDER", "codebuddy").strip().lower()
 
 # name -> config dict. The single source of truth for every text-LLM provider
 # the worker can talk to. Per-provider quirks live next to the credentials so
@@ -53,9 +53,10 @@ LLM_PROVIDER           = os.getenv("LLM_PROVIDER", "gpt-luna").strip().lower()
 # the id every layer understands — the editor's chat switcher reads its list
 # from the frontend but the call executes here.
 PROVIDER_CONFIGS       = {
-    "gpt-luna":  {"api_key": COMMANDCODE_API_KEY, "base_url": COMMANDCODE_BASE_URL, "model": COMMANDCODE_LUNA_MODEL, "omit_temperature": True},
-    "gpt-terra": {"api_key": COMMANDCODE_API_KEY, "base_url": COMMANDCODE_BASE_URL, "model": COMMANDCODE_TERRA_MODEL, "omit_temperature": True},
-    "gpt-sol":   {"api_key": COMMANDCODE_API_KEY, "base_url": COMMANDCODE_BASE_URL, "model": COMMANDCODE_SOL_MODEL, "omit_temperature": True},
+    "codebuddy": {"api_key": CODEBUDDY_API_KEY, "base_url": CODEBUDDY_BASE_URL, "model": CODEBUDDY_MODEL, "omit_temperature": True, "codebuddy": True},
+    "codebuddy-luna": {"api_key": CODEBUDDY_API_KEY, "base_url": CODEBUDDY_BASE_URL, "model": CODEBUDDY_LUNA_MODEL, "omit_temperature": True, "codebuddy": True},
+    "codebuddy-terra": {"api_key": CODEBUDDY_API_KEY, "base_url": CODEBUDDY_BASE_URL, "model": CODEBUDDY_TERRA_MODEL, "omit_temperature": True, "codebuddy": True},
+    "codebuddy-sol": {"api_key": CODEBUDDY_API_KEY, "base_url": CODEBUDDY_BASE_URL, "model": CODEBUDDY_SOL_MODEL, "omit_temperature": True, "codebuddy": True},
     "deepinfra": {"api_key": DEEPINFRA_API_KEY, "base_url": DEEPINFRA_BASE_URL, "model": DEEPINFRA_MODEL},
     "qwen-vl":   {"api_key": DEEPINFRA_API_KEY, "base_url": DEEPINFRA_BASE_URL, "model": "Qwen/Qwen2.5-VL-32B-Instruct"},
     "gemma-vl":  {"api_key": DEEPINFRA_API_KEY, "base_url": DEEPINFRA_BASE_URL, "model": "google/gemma-4-26B-A4B-it"},

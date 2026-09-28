@@ -107,8 +107,8 @@ Both resolve providers from their own mirrored registry with matching ids — se
 
 - Docker Desktop
 - [Bun](https://bun.sh) (for the Next.js app)
-- At least one LLM API key (DeepInfra is the default provider; OpenAI, Zhipu
-  GLM and Kimi are supported alternatives)
+- At least one LLM API key (CodeBuddy is the default provider; DeepInfra is
+  also available)
 - An S3-compatible bucket + credentials — **required**, the template themes no
   longer ship in the repo
 
@@ -186,7 +186,7 @@ files are the authority, this is the map.
 | `S3_USE_OBJECT_ACL` | `true` for AWS S3 / DO Spaces; leave unset for R2 / MinIO |
 | `TEMPLATE_ASSETS_PROXY` | Serve bucket images same-origin. Defaults on, and **required while the bucket has no CORS policy** — canvas export taints without it |
 | `TEMPLATE_ENGINE_WRITES` | `true` to allow template authoring in a production build. Off by default because those routes have no auth |
-| `KIMI_*`, `OPENAI_*`, `ZHIPU_API_KEY`, `DEEPINFRA_API_KEY` | Providers for the `/api/ai/*` routes |
+| `CODEBUDDY_API_KEY`, `DEEPINFRA_API_KEY` | Text and vision providers for the `/api/ai/*` routes |
 | `PEXELS_API_KEY`, `UNSPLASH_ACCESS_KEY`, `PIXABAY_API_KEY` | Stock photo search. The first key set becomes the default provider |
 
 > Bucket names containing dots need the **path-style** endpoint form
@@ -206,13 +206,13 @@ match what the API's SSE route subscribes to), plus:
 
 | Key | Purpose |
 |---|---|
-| `LLM_PROVIDER` | Default text provider: `deepinfra` (default), `gpt`, `codex`, `glm`, `glm-flash`, `qwen-vl`, `gemma-vl`, `llama-vl`, `kimi` |
-| `DEEPINFRA_*` | Text model, and the **image** model (`black-forest-labs/FLUX-2-klein-4b`) — image generation always goes to DeepInfra regardless of `LLM_PROVIDER` |
-| `OPENAI_*`, `ZHIPU_*`, `KIMI_*` | Alternative provider credentials |
+| `LLM_PROVIDER` | Default text provider: `codebuddy` (default), `deepinfra`, `qwen-vl`, `gemma-vl`, or `llama-vl` |
+| `CODEBUDDY_*` | International API key, base URL, and model for the CodeBuddy preset |
+| `DEEPINFRA_*` | Alternative text and vision models |
+| `RUNWARE_*` | Image generation provider and model |
 
-> `worker/.env.docker` ships with `LLM_PROVIDER=openai` while `worker/.env` uses
-> `deepinfra` — "the default model" means different things depending on whether
-> the worker runs in Docker or on the host.
+> Both local and Docker worker env files should set `LLM_PROVIDER=codebuddy`
+> when using the CodeBuddy key.
 
 ---
 
@@ -412,9 +412,17 @@ one-for-one:
 - `FE-codebase/lib/ai-providers.ts` → `PROVIDER_PRESETS` (Next.js routes)
 - `worker/core/configs/env.py` → `PROVIDER_CONFIGS` (worker)
 
-`openai` and `zhipu` survive as aliases of `gpt` and `glm-flash`. Unknown ids
-degrade to the default rather than erroring — convenient in production,
-treacherous in testing (see [Traps](#traps-that-will-bite-you)).
+CodeBuddy is the default text and vision provider (`codebuddy`, model `hy3`).
+The text-only `codebuddy-luna`, `codebuddy-terra`, and `codebuddy-sol` presets
+use GPT-5.6 Luna, Terra, and Sol through the same CodeBuddy key. Vision review
+continues to use a vision-capable preset such as Hy3.
+Configure `CODEBUDDY_API_KEY` only on the server; `CODEBUDDY_BASE_URL` and
+`CODEBUDDY_MODEL` can override the international API defaults. Its chat API
+requires a system message and streamed responses. The frontend and worker
+collect those chunks for callers that need a complete reply.
+
+Unknown ids degrade to the default rather than erroring — convenient in
+production, treacherous in testing (see [Traps](#traps-that-will-bite-you)).
 
 Each preset declares `api`: `"chat"` (`/chat/completions`, default) or
 `"responses"` (`/responses`). The `gpt-*-codex` models are served on

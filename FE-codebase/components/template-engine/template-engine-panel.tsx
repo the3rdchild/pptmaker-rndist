@@ -205,7 +205,7 @@ export function TemplateEnginePanel({
 
   /** Auto-label AI model. Fetched from /api/ai/providers (env-aware: only
    *  providers whose key is configured appear). null = server default
-   *  (qwen-vl vision). Persisted in localStorage so a chosen model survives
+   *  (Gemini Flash vision). Persisted in localStorage so a chosen model survives
    *  across sessions. Both text-only (blind, labels from boxes alone) and
    *  vision models are offered so the author can rate them. */
   const [labelProviders, setLabelProviders] = useState<{ id: string; label: string }[]>([]);
@@ -1225,7 +1225,7 @@ export function TemplateEnginePanel({
           </div>
         )}
         {/* AI model for auto-label. Sourced from /api/ai/providers (env-aware).
-            null = server default (qwen-vl vision). Text-only models run "blind"
+            null = server default (Gemini Flash vision). Text-only models run "blind"
             (boxes/sample text only, no screenshot) — useful for comparison. */}
         <div className="mb-2 flex items-center gap-1.5">
           <span className="shrink-0 text-[11px] text-[var(--text-muted)]">Model:</span>

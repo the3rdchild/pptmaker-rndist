@@ -51,7 +51,7 @@ export interface AutoLabelRequest {
 	/** Rendered PNG of the page (data URL) — the model's visual ground truth. */
 	image?: string | null;
 	/** Provider id override (resolved in ai-providers.ts). Absent = the vision
-	 *  default (qwen-vl). Lets the author pick a different model per run —
+	 *  default (Gemini Flash vision). Lets the author pick a different model per run —
 	 *  e.g. a text-only model when no screenshot is supplied, or a stronger
 	 *  vision model for tricky layouts. */
 	provider?: string | null;

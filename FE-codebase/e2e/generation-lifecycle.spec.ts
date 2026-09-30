@@ -12,7 +12,7 @@ const slides = Array.from({ length: 5 }, (_, index) => ({
 }));
 const outline = "# Biliar\n" + slides.map((_, index) => `## Biliar ${index + 1}\nTeknik permainan.\nTransition: morph`).join("\n");
 const url = "http://localhost:3000/editor-react/lifecycle-test?" + new URLSearchParams({
-  prompt: outline, mode: "html", images: "stock", transitions: "on", gen: "codebuddy",
+  prompt: outline, mode: "html", images: "stock", transitions: "on", gen: "openrouter-gpt-sol",
 });
 
 async function mockDeck(page: Page, existing: boolean) {

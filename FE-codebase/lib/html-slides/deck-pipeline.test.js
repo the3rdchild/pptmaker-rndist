@@ -11,38 +11,37 @@ import { createGenerationTrace } from "./generation-trace.js";
 
 const { mapWithConcurrency, resolveAcceptedFragmentPhotos } = deckPipeline;
 
-test("switches a reasoning-only Hy3 layout to Sol with enough budget for visible HTML", async () => {
+test("retries a truncated OpenRouter Sol layout with a larger budget", async () => {
   const requests = [];
   const server = createServer(async (request, response) => {
     let body = "";
     for await (const chunk of request) body += chunk;
     const { model, max_tokens: maxTokens } = JSON.parse(body);
     requests.push({ model, maxTokens });
-    const emptyReasoning = model === "hy3";
+    const emptyReasoning = maxTokens === 8000;
     const content = '<style>h1 { position:absolute; left:80px; top:80px; font:48px Arial }</style><section class="slide"><h1>Biliar 1</h1></section>';
-    response.writeHead(200, { "content-type": "text/event-stream" });
-    response.write(`data: ${JSON.stringify({ model, choices: [{ delta: { content: emptyReasoning ? "" : content }, finish_reason: emptyReasoning ? "length" : "stop" }] })}\n\n`);
-    response.end(`data: ${JSON.stringify({ usage: { completion_tokens: emptyReasoning ? maxTokens : 200, completion_tokens_details: { reasoning_tokens: emptyReasoning ? maxTokens : 50 } }, choices: [] })}\n\ndata: [DONE]\n\n`);
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ model, choices: [{ message: { content: emptyReasoning ? "" : content }, finish_reason: emptyReasoning ? "length" : "stop" }], usage: { completion_tokens: emptyReasoning ? maxTokens : 200, completion_tokens_details: { reasoning_tokens: emptyReasoning ? maxTokens : 50 } } }));
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const previous = { key: process.env.CODEBUDDY_API_KEY, base: process.env.CODEBUDDY_BASE_URL };
-  process.env.CODEBUDDY_API_KEY = "local-regression-test";
-  process.env.CODEBUDDY_BASE_URL = `http://127.0.0.1:${server.address().port}`;
+  const previous = { key: process.env.OPENROUTER_API_KEY, base: process.env.OPENROUTER_BASE_URL };
+  process.env.OPENROUTER_API_KEY = "local-regression-test";
+  process.env.OPENROUTER_BASE_URL = `http://127.0.0.1:${server.address().port}`;
   try {
     const trace = createGenerationTrace({ generationId: `test-reasoning-fallback-${randomUUID()}` });
     const deck = await trace.run(() => deckPipeline.generateDeck({
       topic: "# Biliar\n## Biliar 1\nTeknik dan presisi.",
       slideCount: 1,
       theme: STARTER_HTML_THEMES.find((theme) => theme.id === "corporate-tech-glass"),
-      provider: "codebuddy",
+      provider: "openrouter-gpt-sol",
       outDir: trace.directory,
     }));
-    assert.deepEqual(requests, [{ model: "hy3", maxTokens: 4000 }, { model: "gpt-5.6-sol", maxTokens: 8000 }]);
+    assert.deepEqual(requests, [{ model: "openai/gpt-6-sol", maxTokens: 8000 }, { model: "openai/gpt-6-sol", maxTokens: 12000 }]);
     assert.equal(deck.slides.length, 1);
     assert.equal(deck.warnings.length, 0, "successful Sol output must avoid the bounded fallback");
     assert.ok(deck.slides[0].ui.elements.some((element) => element.runs?.some((run) => run.text === "Biliar 1")));
   } finally {
-    for (const [name, value] of [["CODEBUDDY_API_KEY", previous.key], ["CODEBUDDY_BASE_URL", previous.base]]) {
+    for (const [name, value] of [["OPENROUTER_API_KEY", previous.key], ["OPENROUTER_BASE_URL", previous.base]]) {
       if (value === undefined) delete process.env[name]; else process.env[name] = value;
     }
     server.closeAllConnections();
@@ -87,9 +86,9 @@ test(failure === "cancellation" ? "aborts a morph chain without recovering cance
     response.end(JSON.stringify({ choices: [{ message: { content }, finish_reason: finishReason }], usage: { completion_tokens: finishReason === "length" ? maxTokens : 150 } }));
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const previous = { key: process.env.DEEPINFRA_API_KEY, base: process.env.DEEPINFRA_BASE_URL };
-  process.env.DEEPINFRA_API_KEY = "local-regression-test";
-  process.env.DEEPINFRA_BASE_URL = `http://127.0.0.1:${server.address().port}`;
+  const previous = { key: process.env.OPENROUTER_API_KEY, base: process.env.OPENROUTER_BASE_URL };
+  process.env.OPENROUTER_API_KEY = "local-regression-test";
+  process.env.OPENROUTER_BASE_URL = `http://127.0.0.1:${server.address().port}`;
   const trace = createGenerationTrace({ generationId: `test-${failure.replaceAll(" ", "-")}-${randomUUID()}`, deckId: "pipeline-regression", signal: abort.signal });
   const outDir = trace.directory;
   try {
@@ -98,7 +97,7 @@ test(failure === "cancellation" ? "aborts a morph chain without recovering cance
         `## Biliar ${index}\nTeknik dan presisi.\nTransisi: ${index === 1 ? "none" : "morph"}`,
       ).join("\n"),
       theme: STARTER_HTML_THEMES.find((theme) => theme.id === "corporate-tech-glass"),
-      provider: "deepinfra",
+      provider: "openrouter-deepseek-flash",
       outDir,
       transitions: true,
       signal: abort.signal,
@@ -148,7 +147,7 @@ test(failure === "cancellation" ? "aborts a morph chain without recovering cance
       assert.ok(slides[index].ui.elements.some((element) => previousIds.has(element.morph_id)), "every planned morph pairs a real element");
     }
   } finally {
-    for (const [name, value] of [["DEEPINFRA_API_KEY", previous.key], ["DEEPINFRA_BASE_URL", previous.base]]) {
+    for (const [name, value] of [["OPENROUTER_API_KEY", previous.key], ["OPENROUTER_BASE_URL", previous.base]]) {
       if (value === undefined) delete process.env[name]; else process.env[name] = value;
     }
     server.closeAllConnections();

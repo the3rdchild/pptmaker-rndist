@@ -249,7 +249,7 @@ export async function generateDeck({
       let assessment = { ok: false, feedback: "" };
       // A realistic Sol HTML slide used 4.3k output tokens including reasoning;
       // 8k leaves room for the visible fragment without forcing a paid retry.
-      let maxTokens = layoutProvider === "codebuddy-sol" ? 8000 : 4000;
+      let maxTokens = layoutProvider === "openrouter-gpt-sol" ? 8000 : 4000;
       // A review repair can keep an unchanged photo brief without paying for
       // or tracking the same asset twice. A changed brief gets a fresh image.
       const photoCache = new Map();
@@ -276,11 +276,7 @@ export async function generateDeck({
           });
         } catch (error) {
           signal?.throwIfAborted();
-          if (error?.reasoningOnly && error?.provider === "codebuddy") {
-            layoutProvider = "codebuddy-sol";
-            maxTokens = 8000;
-            recordGenerationDiagnostic({ type: "provider-fallback", stage: "slide-layout", slide: index + 1, attempt: attempt + 1, provider: layoutProvider, reason: "Hy3 spent the entire reply on reasoning" });
-          } else if (error?.code === "OUTPUT_TRUNCATED") {
+          if (error?.code === "OUTPUT_TRUNCATED") {
             maxTokens = Math.min(maxTokens * 2, 12000);
           }
           assessment = { ok: false, feedback: error instanceof Error ? error.message : String(error) };

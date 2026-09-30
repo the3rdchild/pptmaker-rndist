@@ -38,14 +38,14 @@ for (const outcome of ["repaired", "still failing", "provider failure", "cancell
       response.end(JSON.stringify({ choices: [{ message: { content: `<style>h1 {position:absolute;left:${isRepair ? 180 : 100}px;top:80px;font:48px Arial}</style><section class="slide"><h1 data-morph="title">Slide ${index}</h1></section>` }, finish_reason: "stop" }] }));
     });
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-    const previous = { key: process.env.DEEPINFRA_API_KEY, base: process.env.DEEPINFRA_BASE_URL };
-    process.env.DEEPINFRA_API_KEY = "local-regression-test";
-    process.env.DEEPINFRA_BASE_URL = `http://127.0.0.1:${server.address().port}`;
+    const previous = { key: process.env.OPENROUTER_API_KEY, base: process.env.OPENROUTER_BASE_URL };
+    process.env.OPENROUTER_API_KEY = "local-regression-test";
+    process.env.OPENROUTER_BASE_URL = `http://127.0.0.1:${server.address().port}`;
     const trace = createGenerationTrace({ generationId: `test-visual-${randomUUID()}`, signal: abort.signal });
     try {
       const result = trace.run(() => generateDeck({
         topic: '# Retained visual review test\n## Slide 1\nFirst.\nTransisi: none\n## Slide 2\nSecond.\nTransisi: morph\n## Slide 3\nThird.\nTransisi: morph',
-        provider: "deepinfra",
+        provider: "openrouter-deepseek-flash",
         theme: STARTER_HTML_THEMES.find((theme) => theme.id === "corporate-tech-glass"),
         transitions: true,
         signal: abort.signal,
@@ -78,7 +78,7 @@ for (const outcome of ["repaired", "still failing", "provider failure", "cancell
       assert.equal(heading.position.x, outcome === "repaired" ? 180 : 100, "keep the pre-repair layout if the repair/review does not pass");
       if (outcome !== "repaired") assert.ok(events.some((event) => event.type === "warning" && event.slide === 2 && /visual/i.test(event.message)));
     } finally {
-      for (const [name, value] of [["DEEPINFRA_API_KEY", previous.key], ["DEEPINFRA_BASE_URL", previous.base]]) {
+      for (const [name, value] of [["OPENROUTER_API_KEY", previous.key], ["OPENROUTER_BASE_URL", previous.base]]) {
         if (value === undefined) delete process.env[name]; else process.env[name] = value;
       }
       server.closeAllConnections();
@@ -93,15 +93,15 @@ test("keeps the already accepted slide if Chrome becomes unavailable after visua
     response.end(JSON.stringify({ choices: [{ message: { content: '<style>h1{position:absolute;left:100px;top:80px;font:48px Arial}</style><section class="slide"><h1>Accepted slide</h1></section>' }, finish_reason: "stop" }] }));
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const previous = { key: process.env.DEEPINFRA_API_KEY, base: process.env.DEEPINFRA_BASE_URL, launch: ChromeSession.launch };
-  process.env.DEEPINFRA_API_KEY = "local-regression-test";
-  process.env.DEEPINFRA_BASE_URL = `http://127.0.0.1:${server.address().port}`;
+  const previous = { key: process.env.OPENROUTER_API_KEY, base: process.env.OPENROUTER_BASE_URL, launch: ChromeSession.launch };
+  process.env.OPENROUTER_API_KEY = "local-regression-test";
+  process.env.OPENROUTER_BASE_URL = `http://127.0.0.1:${server.address().port}`;
   const events = [];
   const trace = createGenerationTrace({ generationId: `test-visual-restore-${randomUUID()}` });
   try {
     const deck = await trace.run(() => generateDeck({
       topic: '# Retained restore test\n## Accepted slide\nKeep this valid slide.',
-      provider: "deepinfra", theme: STARTER_HTML_THEMES[0], outDir: trace.directory,
+      provider: "openrouter-deepseek-flash", theme: STARTER_HTML_THEMES[0], outDir: trace.directory,
       onEvent: (event) => events.push(event),
       reviewSlide: async () => {
         ChromeSession.launch = async () => { throw new Error("Chrome unavailable after review"); };
@@ -113,7 +113,7 @@ test("keeps the already accepted slide if Chrome becomes unavailable after visua
     assert.ok(events.some((event) => event.type === "warning" && /Visual provider unavailable/.test(event.message)));
   } finally {
     ChromeSession.launch = previous.launch;
-    for (const [name, value] of [["DEEPINFRA_API_KEY", previous.key], ["DEEPINFRA_BASE_URL", previous.base]]) {
+    for (const [name, value] of [["OPENROUTER_API_KEY", previous.key], ["OPENROUTER_BASE_URL", previous.base]]) {
       if (value === undefined) delete process.env[name]; else process.env[name] = value;
     }
     server.closeAllConnections();
@@ -137,14 +137,14 @@ test("a photo mismatch repair replaces the flagged morph photo instead of reusin
     response.end(JSON.stringify({ choices: [{ message: { content: `<style>h1{position:absolute;left:64px;top:60px;font:48px Arial}.photo{position:absolute;left:64px;top:200px;width:500px;height:240px}</style><section class="slide"><h1 data-morph="title">Slide ${index}</h1><div class="photo" data-morph="hero" data-brief="${brief}"></div></section>` }, finish_reason: "stop" }] }));
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const previous = { key: process.env.DEEPINFRA_API_KEY, base: process.env.DEEPINFRA_BASE_URL };
-  process.env.DEEPINFRA_API_KEY = "local-regression-test";
-  process.env.DEEPINFRA_BASE_URL = `http://127.0.0.1:${server.address().port}`;
+  const previous = { key: process.env.OPENROUTER_API_KEY, base: process.env.OPENROUTER_BASE_URL };
+  process.env.OPENROUTER_API_KEY = "local-regression-test";
+  process.env.OPENROUTER_BASE_URL = `http://127.0.0.1:${server.address().port}`;
   const trace = createGenerationTrace({ generationId: `test-visual-photo-${randomUUID()}` });
   try {
     const deck = await trace.run(() => generateDeck({
       topic: '# Retained photo repair\n## Slide 1\nPool table.\nTransisi: none\n## Slide 2\nHand bridge.\nTransisi: morph',
-      provider: "deepinfra", theme: STARTER_HTML_THEMES[0], outDir: trace.directory, transitions: true,
+      provider: "openrouter-deepseek-flash", theme: STARTER_HTML_THEMES[0], outDir: trace.directory, transitions: true,
       resolvePhoto: async (brief) => { resolved.push(brief); return brief === "hand bridge" ? repairedPhoto : oldPhoto; },
       reviewSlide: async (input) => {
         if (!input.fills.some((fill) => fill.text === "Slide 2")) return [];
@@ -156,7 +156,7 @@ test("a photo mismatch repair replaces the flagged morph photo instead of reusin
     assert.deepEqual(resolved, ["wide pool table", "hand bridge"], "the rejected image must not be reused by its morph id");
     assert.equal(deck.slides[1].ui.elements.find((element) => element.type === "image").data, repairedPhoto);
   } finally {
-    for (const [name, value] of [["DEEPINFRA_API_KEY", previous.key], ["DEEPINFRA_BASE_URL", previous.base]]) {
+    for (const [name, value] of [["OPENROUTER_API_KEY", previous.key], ["OPENROUTER_BASE_URL", previous.base]]) {
       if (value === undefined) delete process.env[name]; else process.env[name] = value;
     }
     server.closeAllConnections();

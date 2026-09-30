@@ -21,28 +21,27 @@ const draft = () => ({
   ],
 });
 
-test("switches a reasoning-only Hy3 theme reply to Sol at the original budget", async () => {
+test("retries a truncated OpenRouter theme with a larger budget", async () => {
   const requests = [];
   const server = createServer(async (request, response) => {
     let body = "";
     for await (const chunk of request) body += chunk;
     const { model, max_tokens: maxTokens } = JSON.parse(body);
     requests.push({ model, maxTokens });
-    const emptyReasoning = model === "hy3";
-    response.writeHead(200, { "content-type": "text/event-stream" });
-    response.write(`data: ${JSON.stringify({ model, choices: [{ delta: { content: emptyReasoning ? "" : JSON.stringify(draft()) }, finish_reason: emptyReasoning ? "length" : "stop" }] })}\n\n`);
-    response.end(`data: ${JSON.stringify({ usage: { completion_tokens: emptyReasoning ? maxTokens : 700, completion_tokens_details: { reasoning_tokens: emptyReasoning ? maxTokens : 100 } }, choices: [] })}\n\ndata: [DONE]\n\n`);
+    const truncated = maxTokens === 3500;
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ model, choices: [{ message: { content: truncated ? "" : JSON.stringify(draft()) }, finish_reason: truncated ? "length" : "stop" }], usage: { completion_tokens: truncated ? maxTokens : 700, completion_tokens_details: { reasoning_tokens: truncated ? maxTokens : 100 } } }));
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const previous = { key: process.env.CODEBUDDY_API_KEY, base: process.env.CODEBUDDY_BASE_URL };
-  process.env.CODEBUDDY_API_KEY = "local-regression-test";
-  process.env.CODEBUDDY_BASE_URL = `http://127.0.0.1:${server.address().port}`;
+  const previous = { key: process.env.OPENROUTER_API_KEY, base: process.env.OPENROUTER_BASE_URL };
+  process.env.OPENROUTER_API_KEY = "local-regression-test";
+  process.env.OPENROUTER_BASE_URL = `http://127.0.0.1:${server.address().port}`;
   try {
-    const theme = await designFreestyleTheme({ outline: { title: "Test deck", slides: [] }, provider: "codebuddy" });
+    const theme = await designFreestyleTheme({ outline: { title: "Test deck", slides: [] }, provider: "openrouter-gpt-sol" });
     assert.equal(theme.id, "ai-tidal-ledger");
-    assert.deepEqual(requests, [{ model: "hy3", maxTokens: 3500 }, { model: "gpt-5.6-sol", maxTokens: 3500 }]);
+    assert.deepEqual(requests, [{ model: "openai/gpt-6-sol", maxTokens: 3500 }, { model: "openai/gpt-6-sol", maxTokens: 7000 }]);
   } finally {
-    for (const [name, value] of [["CODEBUDDY_API_KEY", previous.key], ["CODEBUDDY_BASE_URL", previous.base]]) {
+    for (const [name, value] of [["OPENROUTER_API_KEY", previous.key], ["OPENROUTER_BASE_URL", previous.base]]) {
       if (value === undefined) delete process.env[name]; else process.env[name] = value;
     }
     server.closeAllConnections();
@@ -62,15 +61,15 @@ test("recovers a token-limited theme using larger budgets within its three attem
     response.end(JSON.stringify({ choices: [{ message: { content: truncated ? '{"name": "unfinished' : JSON.stringify(draft()) }, finish_reason: truncated ? "length" : "stop" }] }));
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const previous = { key: process.env.DEEPINFRA_API_KEY, base: process.env.DEEPINFRA_BASE_URL };
-  process.env.DEEPINFRA_API_KEY = "local-regression-test";
-  process.env.DEEPINFRA_BASE_URL = `http://127.0.0.1:${server.address().port}`;
+  const previous = { key: process.env.OPENROUTER_API_KEY, base: process.env.OPENROUTER_BASE_URL };
+  process.env.OPENROUTER_API_KEY = "local-regression-test";
+  process.env.OPENROUTER_BASE_URL = `http://127.0.0.1:${server.address().port}`;
   try {
-    const theme = await designFreestyleTheme({ outline: { title: "Test deck", slides: [] }, provider: "deepinfra" });
+    const theme = await designFreestyleTheme({ outline: { title: "Test deck", slides: [] }, provider: "openrouter-deepseek-flash" });
     assert.equal(theme.id, "ai-tidal-ledger");
     assert.deepEqual(budgets, [3500, 7000, 12000]);
   } finally {
-    for (const [name, value] of [["DEEPINFRA_API_KEY", previous.key], ["DEEPINFRA_BASE_URL", previous.base]]) {
+    for (const [name, value] of [["OPENROUTER_API_KEY", previous.key], ["OPENROUTER_BASE_URL", previous.base]]) {
       if (value === undefined) delete process.env[name]; else process.env[name] = value;
     }
     await new Promise((resolve) => server.close(resolve));

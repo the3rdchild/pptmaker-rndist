@@ -1,7 +1,6 @@
 // Unified text-AI provider layer for frontend/server AI calls (theme choice,
-// visual review verify/repair, auto-label). CodeBuddy serves the default model
-// through its OpenAI-compatible chat endpoint; DeepInfra remains available as
-// the independent fallback/provider option.
+// visual review verify/repair, auto-label). OpenRouter serves all model presets
+// through its OpenAI-compatible chat endpoint.
 //
 // A provider is a preset (id → config). Provider availability is env-aware:
 // `availableProviders` only returns presets whose API key env var is set, so
@@ -16,7 +15,6 @@
 // free and keeps passing plain chat-style messages.
 
 import { recordGenerationDiagnostic } from "./html-slides/generation-trace.js";
-import { readCodeBuddyStream } from "./codebuddy-stream.js";
 
 type Rec = Record<string, unknown>;
 
@@ -27,8 +25,6 @@ export interface ProviderPreset {
   envKey: string;
   base_url: string;
   model: string;
-  /** CodeBuddy's chat API requires a system message and SSE. */
-  codebuddy?: boolean;
   /** Supports image_url multimodal input (vision). When false, the preset is
    *  hidden from selectors that filter { vision: true }. */
   vision?: boolean;
@@ -53,92 +49,53 @@ export interface ProviderPreset {
 
 export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
-    id: "codebuddy",
-    label: "CodeBuddy · Hy3",
-    envKey: "CODEBUDDY_API_KEY",
-    base_url: "https://www.codebuddy.ai/v2",
-    model: "hy3",
-    codebuddy: true,
+    id: "openrouter-gpt-sol",
+    label: "GPT-6 Sol · High",
+    envKey: "OPENROUTER_API_KEY",
+    base_url: "https://openrouter.ai/api/v1",
+    model: "openai/gpt-6-sol",
     vision: true,
     omit_temperature: true,
-    base_url_env: "CODEBUDDY_BASE_URL",
-    model_env: "CODEBUDDY_MODEL",
+    reasoning_effort: "low",
+    base_url_env: "OPENROUTER_BASE_URL",
   },
   {
-    id: "codebuddy-luna",
-    label: "GPT-5.6 Luna · CodeBuddy",
-    envKey: "CODEBUDDY_API_KEY",
-    base_url: "https://www.codebuddy.ai/v2",
-    model: "gpt-5.6-luna",
-    codebuddy: true,
-    omit_temperature: true,
-    base_url_env: "CODEBUDDY_BASE_URL",
-    model_env: "CODEBUDDY_LUNA_MODEL",
+    id: "openrouter-deepseek-flash",
+    label: "DeepSeek V4 Flash · Cheap",
+    envKey: "OPENROUTER_API_KEY",
+    base_url: "https://openrouter.ai/api/v1",
+    model: "deepseek/deepseek-v4-flash-0731",
+    base_url_env: "OPENROUTER_BASE_URL",
   },
   {
-    id: "codebuddy-terra",
-    label: "GPT-5.6 Terra · CodeBuddy",
-    envKey: "CODEBUDDY_API_KEY",
-    base_url: "https://www.codebuddy.ai/v2",
-    model: "gpt-5.6-terra",
-    codebuddy: true,
-    omit_temperature: true,
-    base_url_env: "CODEBUDDY_BASE_URL",
-    model_env: "CODEBUDDY_TERRA_MODEL",
-  },
-  {
-    id: "codebuddy-sol",
-    label: "GPT-5.6 Sol · CodeBuddy",
-    envKey: "CODEBUDDY_API_KEY",
-    base_url: "https://www.codebuddy.ai/v2",
-    model: "gpt-5.6-sol",
-    codebuddy: true,
-    omit_temperature: true,
-    base_url_env: "CODEBUDDY_BASE_URL",
-    model_env: "CODEBUDDY_SOL_MODEL",
-  },
-  {
-    id: "qwen-vl",
-    label: "Qwen2.5-VL-32B (vision)",
-    envKey: "DEEPINFRA_API_KEY",
-    base_url: "https://api.deepinfra.com/v1/openai",
-    model: "Qwen/Qwen2.5-VL-32B-Instruct",
+    id: "openrouter-gemini-flash",
+    label: "Gemini 3 Flash · Medium",
+    envKey: "OPENROUTER_API_KEY",
+    base_url: "https://openrouter.ai/api/v1",
+    model: "google/gemini-3-flash-preview",
     vision: true,
+    base_url_env: "OPENROUTER_BASE_URL",
   },
   {
-    id: "gemma-vl",
-    label: "Gemma-4-26B (vision)",
-    envKey: "DEEPINFRA_API_KEY",
-    base_url: "https://api.deepinfra.com/v1/openai",
-    model: "google/gemma-4-26B-A4B-it",
+    id: "openrouter-claude-sonnet",
+    label: "Claude Sonnet 4.6 · Premium",
+    envKey: "OPENROUTER_API_KEY",
+    base_url: "https://openrouter.ai/api/v1",
+    model: "anthropic/claude-sonnet-4.6",
     vision: true,
-  },
-  {
-    id: "llama-vl",
-    label: "Llama-3.2-11B Vision",
-    envKey: "DEEPINFRA_API_KEY",
-    base_url: "https://api.deepinfra.com/v1/openai",
-    model: "meta-llama/Llama-3.2-11B-Vision-Instruct",
-    vision: true,
-  },
-  {
-    id: "deepinfra",
-    label: "DeepSeek V3.1",
-    envKey: "DEEPINFRA_API_KEY",
-    base_url: "https://api.deepinfra.com/v1/openai",
-    model: "deepseek-ai/DeepSeek-V3.1-Terminus",
+    omit_temperature: true,
+    base_url_env: "OPENROUTER_BASE_URL",
   },
 ];
 
-export const DEFAULT_TEXT_PROVIDER = "codebuddy-sol";
-export const DEFAULT_VISION_PROVIDER = "codebuddy";
+export const DEFAULT_TEXT_PROVIDER = "openrouter-gpt-sol";
+export const DEFAULT_VISION_PROVIDER = "openrouter-gemini-flash";
 
 export interface ProviderConfig {
   id: string;
   apiKey: string;
   base_url: string;
   model: string;
-  codebuddy?: boolean;
   headers?: Record<string, string>;
   omit_temperature?: boolean;
   disable_thinking?: boolean;
@@ -165,7 +122,6 @@ export function getProvider(id: string | null | undefined): ProviderConfig | nul
     apiKey,
     base_url,
     model,
-    codebuddy: preset.codebuddy,
     headers: preset.headers,
     omit_temperature: preset.omit_temperature,
     disable_thinking: preset.disable_thinking,
@@ -183,8 +139,9 @@ export function requireProvider(
   opts: { vision?: boolean } = {},
 ): ProviderConfig {
   const fallbackId = opts.vision ? DEFAULT_VISION_PROVIDER : DEFAULT_TEXT_PROVIDER;
+  const requested = getProvider(id);
   return (
-    getProvider(id) ??
+    (requested && (!opts.vision || requested.vision) ? requested : null) ??
     getProvider(fallbackId) ??
     (() => {
       throw new Error(
@@ -225,13 +182,10 @@ export interface ChatMessage {
 // stuck request freezes the whole "Reviewing slide N…" step with no error,
 // no log, nothing to point at. This bounds every provider call so a
 // non-responsive provider fails fast instead of wedging the pipeline.
-const PROVIDER_TIMEOUT_MS = 60000;
+const PROVIDER_TIMEOUT_MS = 180000;
 
-// Vision calls need a much wider bound than text ones. Measured against
-// DeepInfra with the auto-label prompt and a small image: qwen-vl ~11s,
-// llama-vl ~35s — before the image itself is accounted for. A 60s ceiling
-// left the slowest preset one hiccup away from failing on every run, which is
-// exactly how auto-label behaved.
+// Vision calls share the wider bound because image processing and reasoning
+// can take longer than short text replies.
 const VISION_TIMEOUT_MS = 180000;
 
 // Reasoning models bill their hidden reasoning tokens against the SAME
@@ -310,18 +264,15 @@ export async function callProvider(
       }
     : {
         model: cfg.model,
-        messages: cfg.codebuddy && messages[0]?.role !== "system"
-          ? [{ role: "system", content: "You are a helpful assistant." }, ...messages]
-          : messages,
+        messages,
         max_tokens: opts.maxTokens,
-        ...(cfg.codebuddy ? { stream: true, stream_options: { include_usage: true } } : {}),
+        ...(cfg.reasoning_effort ? { reasoning: { effort: cfg.reasoning_effort } } : {}),
       };
   if (!cfg.omit_temperature) body.temperature = 1;
   if (cfg.disable_thinking) body.thinking = { type: "disabled" };
 
   const endpoint = useResponses ? "responses" : "chat/completions";
-  // Responses/reasoning models can think before they answer, so a text call
-  // outlives the 60s bound sized for one-shot chat models.
+  // Keep all text and vision calls bounded while allowing reasoning time.
   const timeoutMs = opts.vision || useResponses ? VISION_TIMEOUT_MS : PROVIDER_TIMEOUT_MS;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -338,9 +289,7 @@ export async function callProvider(
     const text = await res.text().catch(() => "");
     throw new Error(`${cfg.id} API ${res.status}: ${text.slice(0, 200)}`);
   }
-  const data: Rec = cfg.codebuddy
-    ? (await readCodeBuddyStream(res)) as Rec
-    : (await res.json()) as Rec;
+  const data: Rec = (await res.json()) as Rec;
   opts.signal?.throwIfAborted();
   let content: unknown;
   if (useResponses) {
@@ -353,12 +302,12 @@ export async function callProvider(
     }
   } else {
     const choices = data.choices as Rec[] | undefined;
-    content = cfg.codebuddy ? data.text : choices?.[0] && (choices[0].message as Rec | undefined)?.content;
+    content = choices?.[0] && (choices[0].message as Rec | undefined)?.content;
   }
   if (typeof content !== "string" || !content.trim()) {
     throw new Error(`${cfg.id} returned an empty response`);
   }
-  const finishReason = useResponses ? data.status : cfg.codebuddy ? data.finishReason : (data.choices as Rec[] | undefined)?.[0]?.finish_reason;
+  const finishReason = useResponses ? data.status : (data.choices as Rec[] | undefined)?.[0]?.finish_reason;
   recordGenerationDiagnostic({ type: "provider", phase: "complete", provider: cfg.id, model: data.model ?? cfg.model, maxTokens: opts.maxTokens, finishReason: finishReason ?? null, usage: data.usage ?? null, durationMs: Date.now() - startedAt, rawOutput: content });
   if (finishReason === "length" || (useResponses && data.status === "incomplete")) throw new Error(`${cfg.id} reached the output token limit before finishing the reply`);
   return content;

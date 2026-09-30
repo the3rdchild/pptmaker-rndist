@@ -60,6 +60,7 @@ import { getDeck, streamAipptDeck, fetchThemeManifest, chooseThemeForTopic, gene
 import { getGlobalFonts } from "@/lib/fonts/global-fonts";
 import { streamHtmlDeck } from "@/lib/html-slides-stream";
 import { useDeckAutosave } from "@/components/editor-react/use-deck-autosave";
+import { readGenerationLog, readGenerationMetrics, type GenerationLog } from "@/lib/deck-payload";
 import { htmlThemeFromParams, modeFromParams } from "@/lib/generation-mode";
 import { transitionsFromParams } from "@/lib/transition-preference";
 import { linkMorphAnchors, plannedTransitions } from "@/components/editor-react/template-transitions";
@@ -68,7 +69,7 @@ import { insertHtmlSlideAt } from "@/components/editor-react/html-slide-insertio
 import { buildSlidePhotoRequest } from "@/components/editor-react/slide-image-brief";
 import { parseOutline } from "@/components/outline/outline-markdown";
 import { resolveImageModelId } from "@/lib/image-models";
-import { GenerationCostTotal, GenerationDurationTotal } from "@/lib/generation-cost-total";
+import { GenerationCostTotal, GenerationDurationTotal, formatGenerationDuration } from "@/lib/generation-cost-total";
 import type { StockImageResult } from "@/lib/stock-image-providers";
 import {
   DEFAULT_THEME_ID,
@@ -404,6 +405,7 @@ export default function EditorReactClient({
    *  this session. A deck saved before this field existed has none stored;
    *  falls back to the seed hash same as before until it's saved once. */
   const currentThemeIdRef = useRef<string | null>(null);
+  const generationLogRef = useRef<GenerationLog | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -681,6 +683,8 @@ export default function EditorReactClient({
           getGlobalFonts(),
         ]);
         const rawPayload = deck.payload as Record<string, unknown> | null;
+        const savedGenerationLog = readGenerationLog(rawPayload);
+        const savedGenerationMetrics = readGenerationMetrics(savedGenerationLog);
         // Survives reload: a deck saved after this session's autosave carries
         // the theme id it was generated with (see the save effect below), so
         // add_slide/regenerate_slide can pin to it immediately on reopen
@@ -692,6 +696,9 @@ export default function EditorReactClient({
           rawPayload && typeof rawPayload.deckThemeId === "string" ? rawPayload.deckThemeId : null;
         const adapted = adaptDeckToPresentation(deckId, rawPayload);
         if (cancelled) return;
+        generationLogRef.current = savedGenerationLog;
+        setGenerationCostUsd(savedGenerationMetrics?.costUsd ?? null);
+        setGenerationDurationMs(savedGenerationMetrics?.durationMs ?? null);
         loadedDeckRef.current = { id: deckId, slideCount: adapted?.slides.length ?? 0 };
         if (adapted && adapted.slides.length > 0) {
           // The global font library rides along under the deck's own saved
@@ -746,6 +753,7 @@ export default function EditorReactClient({
     deckId,
     disabled: templateMode || loading || loadedDeckId !== deckId || isGenerating,
     deckThemeIdRef: currentThemeIdRef,
+    generationLogRef,
   });
 
   const saveGeneratedDeck = async (data: PresentationData, signal: AbortSignal) => {
@@ -760,6 +768,18 @@ export default function EditorReactClient({
       // Include edits made while a slow PUT was in flight before autosave resumes.
       snapshot = latest;
     }
+  };
+
+  const persistGenerationLog = async (
+    data: PresentationData,
+    costUsd: number | null,
+    durationMs: number,
+    signal: AbortSignal,
+  ) => {
+    generationLogRef.current = { costUsd, durationMs, completedAt: new Date().toISOString() };
+    await saveGeneratedDeck(data, signal);
+    setGenerationCostUsd(costUsd);
+    setGenerationDurationMs(durationMs);
   };
 
   // Keep activeIndex in bounds after delete.
@@ -2296,8 +2316,6 @@ export default function EditorReactClient({
     let buildCompleted = false;
     setGenerationError(null);
     setGenerationStatus(null);
-    setGenerationCostUsd(null);
-    setGenerationDurationMs(null);
     setSlideProgress({});
     htmlSlideLogicalIndicesRef.current = [];
     setPendingPhotos({});
@@ -2325,10 +2343,13 @@ export default function EditorReactClient({
         }
         buildCompleted = true;
         setGenerationStatus("Menyimpan semua slide…");
+        generationLogRef.current = {
+          costUsd: cost.usd(),
+          durationMs: Math.round(duration.ms() + performance.now() - startedAt),
+        };
         await saveGeneratedDeck(completed, controller.signal);
         recordDuration();
-        setGenerationCostUsd(cost.usd());
-        setGenerationDurationMs(duration.ms());
+        await persistGenerationLog(completed, cost.usd(), duration.ms(), controller.signal);
         loadedDeckRef.current = { id: deckId, slideCount: built };
         setExpectedSlideCount(built);
       })
@@ -2405,10 +2426,11 @@ export default function EditorReactClient({
       setIsGenerating(true);
       setGenerationStatus("Menyimpan semua slide…");
       void saveGeneratedDeck(current, controller.signal)
-        .then(() => {
+        .then(async () => {
           recordRetryDuration();
-          setGenerationCostUsd(totals?.cost.usd() ?? null);
-          setGenerationDurationMs(totals?.duration.ms() ?? null);
+          if (totals) {
+            await persistGenerationLog(current, totals.cost.usd(), totals.duration.ms(), controller.signal);
+          }
           loadedDeckRef.current = { id: deckId, slideCount: current.slides.length };
         })
         .catch(error => {
@@ -2862,7 +2884,7 @@ export default function EditorReactClient({
 
   return (
     <div className="flex h-screen flex-col bg-[var(--bg-base)]">
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--bg-panel)] px-4">
+      <header className="relative flex h-12 shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--bg-panel)] px-4">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[var(--accent)] to-[var(--accent-light)] shadow-[var(--shadow-soft)]">
             <Sparkles className="h-3.5 w-3.5 text-white" />
@@ -2926,6 +2948,28 @@ export default function EditorReactClient({
             </span>
           )}
         </div>
+        {(generationCostUsd !== null || generationDurationMs !== null) && (
+          <div
+            data-testid="generation-summary"
+            className="pointer-events-none absolute left-1/2 top-1/2 flex max-w-[36vw] -translate-x-1/2 -translate-y-1/2 items-center gap-2 whitespace-nowrap rounded-full border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1 text-[11px] tabular-nums text-[var(--text-secondary)]"
+          >
+            <span>
+              <span className="hidden 2xl:inline">AI cost </span>
+              <strong className="font-medium text-[var(--text-primary)]">
+                {generationCostUsd === null
+                  ? "unavailable"
+                  : `$${generationCostUsd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 8 })}`}
+              </strong>
+            </span>
+            <span aria-hidden="true" className="h-3 w-px bg-[var(--border)]" />
+            <span>
+              <span className="hidden 2xl:inline">Total duration </span>
+              <strong className="font-medium text-[var(--text-primary)]">
+                {generationDurationMs === null ? "unavailable" : formatGenerationDuration(generationDurationMs)}
+              </strong>
+            </span>
+          </div>
+        )}
         <div className="flex items-center gap-1.5">
           <ToolButton
             size="sm"
@@ -3010,6 +3054,11 @@ export default function EditorReactClient({
                   token={token}
                   deckId={deckId}
                   onRestored={(payload) => {
+                    const restoredLog = readGenerationLog(payload);
+                    const restoredMetrics = readGenerationMetrics(restoredLog);
+                    generationLogRef.current = restoredLog;
+                    setGenerationCostUsd(restoredMetrics?.costUsd ?? null);
+                    setGenerationDurationMs(restoredMetrics?.durationMs ?? null);
                     const adapted = adaptDeckToPresentation(deckId, payload);
                     if (adapted) dispatch(setPresentationData(adapted));
                   }}
@@ -3077,8 +3126,6 @@ export default function EditorReactClient({
           expected={expectedSlideCount}
           built={slides.length}
           finished={!isGenerating}
-          costUsd={generationCostUsd}
-          durationMs={generationDurationMs}
           onSelectSlide={handleGenerationProgressSelect}
           onClose={() => setProgressDismissed(true)}
         />

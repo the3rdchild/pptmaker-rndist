@@ -2,28 +2,21 @@
 
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 import { saveDeck } from "@/lib/api";
+import { buildDeckSaveBody, type GenerationLog } from "@/lib/deck-payload";
 import type { PresentationData } from "@/store/presentationGeneration";
 
 export type SaveState = "idle" | "pending" | "saving" | "saved";
 type SaveJob = { token: string; deckId: string; body: Parameters<typeof saveDeck>[2] };
 const DEBOUNCE_MS = 1500;
 
-function bodyFor(data: PresentationData, deckThemeId: string | null): SaveJob["body"] {
-  const title = data.title ?? "Untitled";
-  return { title, payload: {
-    title, slides: data.slides,
-    ...(data.fonts ? { fonts: data.fonts } : {}),
-    ...(deckThemeId ? { deckThemeId } : {}),
-  } };
-}
-
-export function useDeckAutosave({ presentationData, token, deckId, disabled, deckThemeIdRef }: {
+export function useDeckAutosave({ presentationData, token, deckId, disabled, deckThemeIdRef, generationLogRef }: {
   presentationData: PresentationData | null | undefined;
   token: string | null | undefined;
   deckId: string;
   /** Loading, streamed generation and template editing are not persisted edits. */
   disabled: boolean;
   deckThemeIdRef: MutableRefObject<string | null>;
+  generationLogRef: MutableRefObject<GenerationLog | null>;
 }) {
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -79,8 +72,8 @@ export function useDeckAutosave({ presentationData, token, deckId, disabled, dec
     clearTimer();
     pendingRef.current = null;
     observedRef.current = data;
-    await enqueue({ token, deckId, body: bodyFor(data, deckThemeIdRef.current) });
-  }, [token, deckId, clearTimer, enqueue, deckThemeIdRef]);
+    await enqueue({ token, deckId, body: buildDeckSaveBody(data, deckThemeIdRef.current, generationLogRef.current) });
+  }, [token, deckId, clearTimer, enqueue, deckThemeIdRef, generationLogRef]);
 
   useEffect(() => {
     if (disabled || !presentationData || presentationData.id !== deckId || !token) {
@@ -98,11 +91,11 @@ export function useDeckAutosave({ presentationData, token, deckId, disabled, dec
     }
     if (observedRef.current === presentationData) return;
     observedRef.current = presentationData;
-    pendingRef.current = { token, deckId, body: bodyFor(presentationData, deckThemeIdRef.current) };
+    pendingRef.current = { token, deckId, body: buildDeckSaveBody(presentationData, deckThemeIdRef.current, generationLogRef.current) };
     setSaveState("pending");
     clearTimer();
     timerRef.current = setTimeout(flush, DEBOUNCE_MS);
-  }, [presentationData, token, deckId, disabled, flush, clearTimer, deckThemeIdRef]);
+  }, [presentationData, token, deckId, disabled, flush, clearTimer, deckThemeIdRef, generationLogRef]);
 
   const flushRef = useRef(flush);
   flushRef.current = flush;

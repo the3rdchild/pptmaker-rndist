@@ -90,6 +90,21 @@ test("new HTML generation saves all five slides and a reload cannot start it aga
   expect(storage.saved().slides).toHaveLength(5);
 });
 
+test("finished status bar shows outline plus all slide generation charges", async ({ page }) => {
+  await mockDeck(page, false);
+  await page.route("**/api/html-slides/generate", route => route.fulfill({
+    contentType: "application/x-ndjson",
+    body: [
+      { type: "outline", title: "Biliar", slides: slides.map((_, i) => `Biliar ${i + 1}`) },
+      ...slides.map((slide, index) => ({ type: "slide", index, ...slide, heading: `Biliar ${index + 1}`, summary: "1 text" })),
+      { type: "done", title: "Biliar", count: 5, costUsd: 0.0004271 },
+    ].map(event => JSON.stringify(event)).join("\n") + "\n",
+  }));
+  await page.goto(`${url}&outline-cost-usd=0.0004625`);
+  await expect(page.getByText("Presentation ready", { exact: true })).toBeVisible();
+  await expect(page.getByText("AI cost $0.0008896", { exact: true })).toBeVisible();
+});
+
 test("an interrupted generation never persists an empty or starter-template deck", async ({ page }) => {
   const storage = await mockDeck(page, false);
   await page.route("**/api/html-slides/generate", route => route.fulfill({

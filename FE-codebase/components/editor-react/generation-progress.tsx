@@ -57,6 +57,8 @@ interface GenerationProgressProps {
   /** True once generation+review has actually ended. The panel keeps
    *  rendering after that — it only goes away when the user closes it. */
   finished: boolean;
+  /** Provider-reported total for the full generation, including outline. */
+  costUsd: number | null;
   onSelectSlide: (index: number) => void;
   onClose: () => void;
 }
@@ -74,6 +76,7 @@ export default function GenerationProgress({
   expected,
   built,
   finished,
+  costUsd,
   onSelectSlide,
   onClose,
 }: GenerationProgressProps) {
@@ -107,6 +110,13 @@ export default function GenerationProgress({
           {finished ? "Presentation ready" : (stage ?? "Preparing your presentation…")}
         </span>
         <div className="flex-1" />
+        {finished && (
+          <span className="shrink-0 text-[10px] tabular-nums text-[var(--text-secondary)]" title="Total biaya AI untuk outline, slide, review, dan gambar">
+            {costUsd === null
+              ? "AI cost unavailable"
+              : `AI cost $${costUsd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 8 })}`}
+          </span>
+        )}
         {determinate && (
           <span className="shrink-0 text-[10px] tabular-nums text-[var(--text-muted)]">
             {done} / {total}

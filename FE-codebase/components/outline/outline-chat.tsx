@@ -63,6 +63,7 @@ export function OutlineChat({
   onRemoveSelectedText,
   onClearSelectedTexts,
   onApplyRevision,
+  onCost,
 }: {
   token: string | null;
   language: string;
@@ -74,6 +75,7 @@ export function OutlineChat({
   onRemoveSelectedText: (index: number) => void;
   onClearSelectedTexts: () => void;
   onApplyRevision: (pageId: string, revision: SlideRevision) => void;
+  onCost?: (costUsd: number | null) => void;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -139,6 +141,14 @@ export function OutlineChat({
             msg.id === assistantId ? { ...msg, text: snapshot } : msg,
           ),
         );
+      }
+      const costMarker = full.match(/<!--ppt-cost-usd:([^>]+)-->/);
+      if (costMarker) {
+        const value = Number(costMarker[1]);
+        onCost?.(costMarker[1] !== "unknown" && Number.isFinite(value) && value >= 0 ? value : null);
+        full = full.replace(costMarker[0], "").trim();
+      } else {
+        onCost?.(null);
       }
       const revision = parseSlideRevisionBlock(full);
       setMessages((m) =>

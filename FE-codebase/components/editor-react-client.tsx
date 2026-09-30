@@ -68,6 +68,7 @@ import { insertHtmlSlideAt } from "@/components/editor-react/html-slide-insertio
 import { buildSlidePhotoRequest } from "@/components/editor-react/slide-image-brief";
 import { parseOutline } from "@/components/outline/outline-markdown";
 import { resolveImageModelId } from "@/lib/image-models";
+import { GenerationCostTotal } from "@/lib/generation-cost-total";
 import type { StockImageResult } from "@/lib/stock-image-providers";
 import {
   DEFAULT_THEME_ID,
@@ -422,6 +423,7 @@ export default function EditorReactClient({
   /** Sub-status during generation ("Reviewing slide 2 of 9…") shown under
    *  the spinner. */
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
+  const [generationCostUsd, setGenerationCostUsd] = useState<number | null>(null);
   /** Per-slide build/review state, keyed by slide index — feeds the progress
    *  bar's activity log, the filmstrip badges and the canvas skeleton. Absent
    *  entries mean that slide never went through generation (an existing deck
@@ -1216,6 +1218,7 @@ export default function EditorReactClient({
     provider?: string,
     imageSource: "ai" | "stock" = "ai",
     signal?: AbortSignal,
+    cost?: GenerationCostTotal,
   ): Promise<number> => {
     if (!token) return 0;
     const plannedSlideCount = (topic.match(/^##\s+\S/gm) ?? []).length;
@@ -1246,6 +1249,7 @@ export default function EditorReactClient({
         signal?.throwIfAborted();
         if (reduxStore.getState().presentationGeneration.presentationData?.id !== deckId) return;
         if (event.type === "status") setGenerationStatus(event.message);
+        if (event.type === "done") cost?.add(event.costUsd);
         if (event.type === "theme") {
           if (event.source === "ai") {
             setGenerationStatus(`Tema AI: ${event.name}`);
@@ -1318,6 +1322,7 @@ export default function EditorReactClient({
     /** Theme pinned on the /outline page (?theme=). Wins over every other
      *  resolution step; DeckLayoutPicker silently ignores it when invalid. */
     pinnedThemeId?: string | null,
+    cost?: GenerationCostTotal,
   ): Promise<number> => {
     if (!token) return 0;
     imageSourceRef.current = imageSource;
@@ -1366,7 +1371,10 @@ export default function EditorReactClient({
         });
         const enhanceBody = (await enhanceRes.json().catch(() => null)) as {
           enhanced?: unknown;
+          costUsd?: number | null;
         } | null;
+        if (enhanceBody && "costUsd" in enhanceBody) cost?.add(enhanceBody.costUsd);
+        else cost?.add(null);
         if (
           enhanceRes.ok &&
           typeof enhanceBody?.enhanced === "string" &&
@@ -1375,6 +1383,7 @@ export default function EditorReactClient({
           genTopic = enhanceBody.enhanced.trim();
         }
       } catch {
+        cost?.add(null);
         // Enhancement is a bonus — the raw prompt still works.
       }
     }
@@ -1382,7 +1391,7 @@ export default function EditorReactClient({
     let themeChoiceReason: string | null = null;
     if (!preferredTheme) {
       setGenerationStatus("Choosing a theme…");
-      const choice = await chooseThemeForTopic(genTopic, language);
+      const choice = await chooseThemeForTopic(genTopic, language, (usd) => cost?.add(usd));
       if (choice) {
         preferredTheme = choice.themeId;
         themeChoiceReason = choice.reason;
@@ -1432,6 +1441,8 @@ export default function EditorReactClient({
      *  check can name them to the reviewer and route a flagged mismatch back
      *  to the exact element when regenerating it. */
     const slidePhotoMarkers = new Map<number, { hero: HeroImageMarker | null; secondary: HeroImageMarker[] }>();
+    const photoJobs: Promise<void>[] = [];
+    let deckCostSeen = false;
 
     // Resolve the chosen pack's font map up front and reset the deck in ONE
     // dispatch. Splitting these used to be a stale-closure bug: the second
@@ -1517,7 +1528,7 @@ export default function EditorReactClient({
           };
         }
       }
-      const dataUrl = await generateImage(currentToken, prompt, { model: imageModelRef.current });
+      const dataUrl = await generateImage(currentToken, prompt, { model: imageModelRef.current, onCost: (usd) => cost?.add(usd) });
       return dataUrl ? { url: dataUrl } : null;
     };
 
@@ -1550,16 +1561,18 @@ export default function EditorReactClient({
       const slotKey = photoSlotKey(marker.componentId, marker.elementName, marker.occurrenceIndex);
       if (isSlotClaimed(index, slotKey)) return;
       markPhotoPending(index, slotKey, true);
-      void resolvePhotoForSlot(photoRequest.prompt, photoRequest.searchHint)
+      const photoJob = resolvePhotoForSlot(photoRequest.prompt, photoRequest.searchHint)
         .then((resolved) => {
           if (!resolved || isSlotClaimed(index, slotKey)) return;
           const patched = patchHeroImage(slideUiAt(index) ?? getUi(), marker, resolved.url, resolved.extra) as Record<string, unknown>;
           setUi(patched);
           dispatch(updateSlideUi({ index, ui: patched }));
         })
+        .catch(() => undefined)
         // Clear the skeleton whether the photo landed or not — a failed job
         // must not leave a slot shimmering forever.
         .finally(() => markPhotoPending(index, slotKey, false));
+      photoJobs.push(photoJob);
     };
 
     // Kicks off a photo generation for the hero slot AND every secondary
@@ -1803,6 +1816,7 @@ export default function EditorReactClient({
             }),
           });
           const verifyBody = await verifyRes.json().catch(() => null);
+          cost?.add(verifyBody?.costUsd ?? null);
           const issues: {
             slot: string;
             problem: string;
@@ -1928,6 +1942,7 @@ export default function EditorReactClient({
               }),
             });
             const repairBody = await repairRes.json().catch(() => null);
+            cost?.add(repairBody?.costUsd ?? null);
             const repaired = Array.isArray(repairBody?.fills) ? repairBody.fills : [];
             if (repaired.length > 0) {
               const base = slideUiAt(slideIndex) ?? freshUi;
@@ -2020,6 +2035,14 @@ export default function EditorReactClient({
     const handleStreamLine = async (t: string) => {
       if (!t || t.startsWith("```") || tryApplyThemeLine(t)) return;
       throwIfErrorLine(t);
+      if (t.includes('"type":"generation_cost"')) {
+        const final = JSON.parse(t) as { type: string; costUsd: number | null };
+        if (final.type === "generation_cost") {
+          deckCostSeen = true;
+          cost?.add(final.costUsd);
+          return;
+        }
+      }
 
       const start = parseSlideStartLine(t);
       if (start) {
@@ -2143,6 +2166,8 @@ export default function EditorReactClient({
     // regenerate a photo it judged mismatched, and a figure placed from the
     // document has to be the last thing to touch that slot.
     await reviewChain;
+    await Promise.allSettled(photoJobs);
+    if (!deckCostSeen) cost?.add(null);
 
     // The model was shown the asset inventory and named nothing from it. Match
     // the document's own figures/tables to slides on caption overlap rather
@@ -2246,6 +2271,12 @@ export default function EditorReactClient({
     imageSource: "ai" | "stock" = "ai",
     pinnedThemeId?: string | null,
   ) => {
+    const cost = new GenerationCostTotal();
+    const outlineCost = searchParams.get("outline-cost-usd");
+    if (outlineCost !== null) {
+      const value = Number(outlineCost);
+      cost.add(outlineCost !== "unknown" && Number.isFinite(value) && value >= 0 ? value : null);
+    }
     generationAbortRef.current?.abort();
     const controller = new AbortController();
     generationAbortRef.current = controller;
@@ -2253,6 +2284,7 @@ export default function EditorReactClient({
     let buildCompleted = false;
     setGenerationError(null);
     setGenerationStatus(null);
+    setGenerationCostUsd(null);
     setSlideProgress({});
     htmlSlideLogicalIndicesRef.current = [];
     setPendingPhotos({});
@@ -2268,8 +2300,8 @@ export default function EditorReactClient({
     // engine the user actually chose rather than silently falling back.
     const htmlMode = modeFromParams(searchParams) === "html";
     const build = htmlMode
-      ? generateDeckFromHtml(topic, htmlThemeFromParams(searchParams), model, imageSource, controller.signal)
-      : generateDeckFromTopic(topic, language, model, withReview, providers, imageSource, pinnedThemeId);
+      ? generateDeckFromHtml(topic, htmlThemeFromParams(searchParams), model, imageSource, controller.signal, cost)
+      : generateDeckFromTopic(topic, language, model, withReview, providers, imageSource, pinnedThemeId, cost);
     build
       .then(async (built) => {
         controller.signal.throwIfAborted();
@@ -2281,6 +2313,7 @@ export default function EditorReactClient({
         buildCompleted = true;
         setGenerationStatus("Menyimpan semua slide…");
         await saveGeneratedDeck(completed, controller.signal);
+        setGenerationCostUsd(cost.usd());
         loadedDeckRef.current = { id: deckId, slideCount: built };
         setExpectedSlideCount(built);
       })
@@ -3014,6 +3047,7 @@ export default function EditorReactClient({
           expected={expectedSlideCount}
           built={slides.length}
           finished={!isGenerating}
+          costUsd={generationCostUsd}
           onSelectSlide={handleGenerationProgressSelect}
           onClose={() => setProgressDismissed(true)}
         />

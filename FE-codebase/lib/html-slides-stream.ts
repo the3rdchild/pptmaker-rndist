@@ -10,7 +10,7 @@ export type HtmlSlideEvent =
   | { type: "theme"; name: string; description: string; source: "ai" | "fallback"; reason?: string }
   | { type: "slide"; index: number; ui: Record<string, unknown>; heading: string; summary: string; transition?: SlideTransition }
   | { type: "warning"; slide: number; message: string }
-  | { type: "done"; title: string; count: number }
+  | { type: "done"; title: string; count: number; costUsd: number | null }
   | { type: "error"; message: string };
 
 export interface HtmlDeckRequest {

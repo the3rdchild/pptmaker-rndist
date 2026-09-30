@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createDeck, streamAipptOutline } from "@/lib/api";
+import { GenerationCostTotal } from "@/lib/generation-cost-total";
 import { HTML_THEME_PARAM, MODE_PARAM, htmlThemeFromParams, modeFromParams } from "@/lib/generation-mode";
 import { useSessionStore } from "@/store/session.store";
 import { useTemplateThemes } from "@/components/editor-react/theme-picker";
@@ -98,6 +99,12 @@ export function OutlinePage() {
   const [outline, setOutline] = useState<Outline>({ title: "", pages: [] });
   const [streaming, setStreaming] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [outlineCostUsd, setOutlineCostUsd] = useState<number | null>(null);
+  const outlineCostRef = useRef(new GenerationCostTotal());
+  const addOutlineCost = (usd: number | null) => {
+    outlineCostRef.current.add(usd);
+    setOutlineCostUsd(outlineCostRef.current.usd());
+  };
   const [generating, setGenerating] = useState(false);
   const [promptOpen, setPromptOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -167,6 +174,14 @@ export function OutlinePage() {
         rawRef.current += decoder.decode(value, { stream: true });
         setOutline(parseOutline(rawRef.current));
       }
+      const costMarker = rawRef.current.match(/<!--ppt-cost-usd:([^>]+)-->/);
+      if (costMarker) {
+        const value = Number(costMarker[1]);
+        addOutlineCost(costMarker[1] !== "unknown" && Number.isFinite(value) && value >= 0 ? value : null);
+        rawRef.current = rawRef.current.replace(costMarker[0], "").trim();
+        setOutline(parseOutline(rawRef.current));
+      }
+      if (!costMarker) addOutlineCost(null);
       const workerError = rawRef.current.match(/<!--ppt-error:([^]*?)-->/);
       if (workerError) {
         const message = decodeURIComponent(workerError[1]);
@@ -318,6 +333,7 @@ export function OutlinePage() {
         prompt: serializeOutline(finalOutline),
         lang: language,
       });
+      qs.set("outline-cost-usd", outlineCostUsd === null ? "unknown" : String(outlineCostUsd));
       if (generationMode === "template" && themeId) qs.set("theme", themeId);
       if (generationMode === "html" && htmlThemeId) qs.set(HTML_THEME_PARAM, htmlThemeId);
       // Carry the attached documents into the editor — deck generation needs
@@ -516,6 +532,7 @@ export function OutlinePage() {
               }
               onClearSelectedTexts={() => setSelectedTexts([])}
               onApplyRevision={applyRevision}
+              onCost={addOutlineCost}
             />
           </div>
         </main>

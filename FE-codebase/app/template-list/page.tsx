@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { TemplateListPage } from "@/components/template-list/template-list-page";
 
 export const metadata = {
@@ -5,5 +6,5 @@ export const metadata = {
 };
 
 export default function TemplateList() {
-  return <TemplateListPage />;
+  return <Suspense><TemplateListPage /></Suspense>;
 }

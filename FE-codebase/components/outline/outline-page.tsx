@@ -38,7 +38,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createDeck, streamAipptOutline } from "@/lib/api";
-import { GenerationCostTotal } from "@/lib/generation-cost-total";
+import { GenerationCostTotal, GenerationDurationTotal } from "@/lib/generation-cost-total";
 import { HTML_THEME_PARAM, MODE_PARAM, htmlThemeFromParams, modeFromParams } from "@/lib/generation-mode";
 import { useSessionStore } from "@/store/session.store";
 import { useTemplateThemes } from "@/components/editor-react/theme-picker";
@@ -101,6 +101,7 @@ export function OutlinePage() {
   const [streamError, setStreamError] = useState<string | null>(null);
   const [outlineCostUsd, setOutlineCostUsd] = useState<number | null>(null);
   const outlineCostRef = useRef(new GenerationCostTotal());
+  const outlineDurationRef = useRef(new GenerationDurationTotal());
   const addOutlineCost = (usd: number | null) => {
     outlineCostRef.current.add(usd);
     setOutlineCostUsd(outlineCostRef.current.usd());
@@ -136,6 +137,7 @@ export function OutlinePage() {
 
   const startOutline = useCallback(async () => {
     if (!token || !prompt.trim()) return;
+    const startedAt = performance.now();
     rawRef.current = "";
     setOutline({ title: "", pages: [] });
     setExpandedId(null);
@@ -194,6 +196,7 @@ export function OutlinePage() {
     } catch (e) {
       setStreamError(e instanceof Error ? e.message : "Gagal membuat outline");
     } finally {
+      outlineDurationRef.current.add(performance.now() - startedAt);
       setStreaming(false);
     }
   }, [token, prompt, language, pageCountId, searchParams, transitionsOn]);
@@ -328,12 +331,15 @@ export function OutlinePage() {
     try {
       const finalOutline = { ...outline, pages };
       const title = finalOutline.title || prompt.trim().slice(0, 60);
+      const deckStartedAt = performance.now();
       const deck = await createDeck(token, { title: title.slice(0, 60) });
+      outlineDurationRef.current.add(performance.now() - deckStartedAt);
       const qs = new URLSearchParams({
         prompt: serializeOutline(finalOutline),
         lang: language,
       });
       qs.set("outline-cost-usd", outlineCostUsd === null ? "unknown" : String(outlineCostUsd));
+      qs.set("outline-duration-ms", String(outlineDurationRef.current.ms()));
       if (generationMode === "template" && themeId) qs.set("theme", themeId);
       if (generationMode === "html" && htmlThemeId) qs.set(HTML_THEME_PARAM, htmlThemeId);
       // Carry the attached documents into the editor — deck generation needs
@@ -533,6 +539,7 @@ export function OutlinePage() {
               onClearSelectedTexts={() => setSelectedTexts([])}
               onApplyRevision={applyRevision}
               onCost={addOutlineCost}
+              onDuration={(durationMs) => outlineDurationRef.current.add(durationMs)}
             />
           </div>
         </main>

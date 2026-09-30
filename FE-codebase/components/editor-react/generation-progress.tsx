@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { formatGenerationDuration } from "@/lib/generation-cost-total";
 
 export type ReviewFixKind = "text" | "image" | "resize" | "contrast";
 
@@ -59,6 +60,8 @@ interface GenerationProgressProps {
   finished: boolean;
   /** Provider-reported total for the full generation, including outline. */
   costUsd: number | null;
+  /** Active outline and deck generation time, excluding outline editing pauses. */
+  durationMs: number | null;
   onSelectSlide: (index: number) => void;
   onClose: () => void;
 }
@@ -77,6 +80,7 @@ export default function GenerationProgress({
   built,
   finished,
   costUsd,
+  durationMs,
   onSelectSlide,
   onClose,
 }: GenerationProgressProps) {
@@ -111,11 +115,16 @@ export default function GenerationProgress({
         </span>
         <div className="flex-1" />
         {finished && (
-          <span className="shrink-0 text-[10px] tabular-nums text-[var(--text-secondary)]" title="Total biaya AI untuk outline, slide, review, dan gambar">
-            {costUsd === null
-              ? "AI cost unavailable"
-              : `AI cost $${costUsd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 8 })}`}
-          </span>
+          <div className="flex shrink-0 items-center gap-2 text-[10px] tabular-nums text-[var(--text-secondary)]">
+            <span title="Total biaya AI untuk outline, slide, review, dan gambar">
+              {costUsd === null
+                ? "AI cost unavailable"
+                : `AI cost $${costUsd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 8 })}`}
+            </span>
+            <span className="border-l border-[var(--border)] pl-2" title="Total waktu aktif outline dan pembuatan seluruh slide">
+              {durationMs === null ? "Total duration unavailable" : `Total duration ${formatGenerationDuration(durationMs)}`}
+            </span>
+          </div>
         )}
         {determinate && (
           <span className="shrink-0 text-[10px] tabular-nums text-[var(--text-muted)]">

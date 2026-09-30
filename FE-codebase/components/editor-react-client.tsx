@@ -68,7 +68,7 @@ import { insertHtmlSlideAt } from "@/components/editor-react/html-slide-insertio
 import { buildSlidePhotoRequest } from "@/components/editor-react/slide-image-brief";
 import { parseOutline } from "@/components/outline/outline-markdown";
 import { resolveImageModelId } from "@/lib/image-models";
-import { GenerationCostTotal } from "@/lib/generation-cost-total";
+import { GenerationCostTotal, GenerationDurationTotal } from "@/lib/generation-cost-total";
 import type { StockImageResult } from "@/lib/stock-image-providers";
 import {
   DEFAULT_THEME_ID,
@@ -424,6 +424,8 @@ export default function EditorReactClient({
    *  the spinner. */
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
   const [generationCostUsd, setGenerationCostUsd] = useState<number | null>(null);
+  const [generationDurationMs, setGenerationDurationMs] = useState<number | null>(null);
+  const generationTotalsRef = useRef<{ cost: GenerationCostTotal; duration: GenerationDurationTotal } | null>(null);
   /** Per-slide build/review state, keyed by slide index — feeds the progress
    *  bar's activity log, the filmstrip badges and the canvas skeleton. Absent
    *  entries mean that slide never went through generation (an existing deck
@@ -2272,6 +2274,16 @@ export default function EditorReactClient({
     pinnedThemeId?: string | null,
   ) => {
     const cost = new GenerationCostTotal();
+    const outlineDuration = searchParams.get("outline-duration-ms");
+    const duration = new GenerationDurationTotal(outlineDuration === null ? 0 : Number(outlineDuration));
+    const startedAt = performance.now();
+    let durationRecorded = false;
+    const recordDuration = () => {
+      if (durationRecorded) return;
+      duration.add(performance.now() - startedAt);
+      durationRecorded = true;
+    };
+    generationTotalsRef.current = { cost, duration };
     const outlineCost = searchParams.get("outline-cost-usd");
     if (outlineCost !== null) {
       const value = Number(outlineCost);
@@ -2285,6 +2297,7 @@ export default function EditorReactClient({
     setGenerationError(null);
     setGenerationStatus(null);
     setGenerationCostUsd(null);
+    setGenerationDurationMs(null);
     setSlideProgress({});
     htmlSlideLogicalIndicesRef.current = [];
     setPendingPhotos({});
@@ -2313,7 +2326,9 @@ export default function EditorReactClient({
         buildCompleted = true;
         setGenerationStatus("Menyimpan semua slide…");
         await saveGeneratedDeck(completed, controller.signal);
+        recordDuration();
         setGenerationCostUsd(cost.usd());
+        setGenerationDurationMs(duration.ms());
         loadedDeckRef.current = { id: deckId, slideCount: built };
         setExpectedSlideCount(built);
       })
@@ -2333,6 +2348,7 @@ export default function EditorReactClient({
         });
       })
       .finally(() => {
+        recordDuration();
         if (generationAbortRef.current !== controller) return;
         generationAbortRef.current = null;
         setIsGenerating(false);
@@ -2375,19 +2391,33 @@ export default function EditorReactClient({
       const current = reduxStore.getState().presentationGeneration.presentationData;
       if (!current || current.id !== deckId) return;
       const failure = generationError;
+      const totals = generationTotalsRef.current;
+      const retryStartedAt = performance.now();
+      let retryDurationRecorded = false;
+      const recordRetryDuration = () => {
+        if (retryDurationRecorded) return;
+        totals?.duration.add(performance.now() - retryStartedAt);
+        retryDurationRecorded = true;
+      };
       const controller = new AbortController();
       generationAbortRef.current = controller;
       setGenerationError(null);
       setIsGenerating(true);
       setGenerationStatus("Menyimpan semua slide…");
       void saveGeneratedDeck(current, controller.signal)
-        .then(() => { loadedDeckRef.current = { id: deckId, slideCount: current.slides.length }; })
+        .then(() => {
+          recordRetryDuration();
+          setGenerationCostUsd(totals?.cost.usd() ?? null);
+          setGenerationDurationMs(totals?.duration.ms() ?? null);
+          loadedDeckRef.current = { id: deckId, slideCount: current.slides.length };
+        })
         .catch(error => {
           if (!controller.signal.aborted) setGenerationError({
             ...failure, message: error instanceof Error ? error.message : "Failed to save deck.",
           });
         })
         .finally(() => {
+          recordRetryDuration();
           if (generationAbortRef.current !== controller) return;
           generationAbortRef.current = null;
           setIsGenerating(false);
@@ -3048,6 +3078,7 @@ export default function EditorReactClient({
           built={slides.length}
           finished={!isGenerating}
           costUsd={generationCostUsd}
+          durationMs={generationDurationMs}
           onSelectSlide={handleGenerationProgressSelect}
           onClose={() => setProgressDismissed(true)}
         />

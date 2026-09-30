@@ -64,6 +64,7 @@ export function OutlineChat({
   onClearSelectedTexts,
   onApplyRevision,
   onCost,
+  onDuration,
 }: {
   token: string | null;
   language: string;
@@ -76,6 +77,7 @@ export function OutlineChat({
   onClearSelectedTexts: () => void;
   onApplyRevision: (pageId: string, revision: SlideRevision) => void;
   onCost?: (costUsd: number | null) => void;
+  onDuration?: (durationMs: number) => void;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -89,6 +91,7 @@ export function OutlineChat({
   const send = async () => {
     const text = input.trim();
     if (!text || !token || sending) return;
+    const startedAt = performance.now();
     setInput("");
     setSending(true);
 
@@ -176,6 +179,7 @@ export function OutlineChat({
         ),
       );
     } finally {
+      onDuration?.(performance.now() - startedAt);
       setSending(false);
     }
   };

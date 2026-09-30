@@ -62,7 +62,7 @@ class OutlineVisualAutofillTests(unittest.TestCase):
         repair_prompt = repair.call_args.kwargs["messages"][1]["content"]
         self.assertIn("Slide 1", repair_prompt)
         self.assertNotIn("Slide 2", repair_prompt)
-        self.assertEqual(events[-1], {"type": "done"})
+        self.assertEqual(events[-1], {"type": "done", "costUsd": None})
 
     def test_complete_outline_does_not_request_an_ai_repair(self):
         complete = """# Kopi

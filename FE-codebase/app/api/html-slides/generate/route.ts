@@ -22,6 +22,7 @@ import { createPhotoResolver } from "@/lib/html-slides/photo-resolver";
 import { generateImage } from "@/lib/api";
 import { resolveImageModelId } from "@/lib/image-models";
 import { createGenerationTrace } from "@/lib/html-slides/generation-trace.js";
+import { createGenerationCost, recordGenerationCost, withGenerationCost } from "@/lib/generation-cost.js";
 import { reviewSlideVisual } from "@/lib/ai-visual-review";
 import { callProvider } from "@/lib/ai-providers";
 import {
@@ -94,7 +95,10 @@ export async function POST(request: NextRequest) {
     imageSource,
     sessionToken,
     imageModel,
-    generateAi: generateImage,
+    generateAi: (token, prompt, options) => generateImage(token, prompt, {
+      ...options,
+      onCost: (costUsd) => recordGenerationCost(costUsd),
+    }),
     searchStock: searchStockImagesWithFallback,
     trackStockDownload: async (downloadLocation) => {
       await trackUnsplashDownload(downloadLocation);
@@ -113,6 +117,7 @@ export async function POST(request: NextRequest) {
   const generationId = crypto.randomUUID();
   const deckId = typeof body.deckId === "string" ? body.deckId.slice(0, 128) : null;
   const trace = createGenerationTrace({ generationId, deckId, signal: abort.signal, secrets: [sessionToken] });
+  const cost = createGenerationCost();
   let completedSlides = 0;
   console.info("[html-slides][generate]", JSON.stringify(trace.record({
     generationId, phase: "start", slideCount, provider, theme: theme?.id ?? "freestyle", imageSource, transitions, withReview,
@@ -132,7 +137,7 @@ export async function POST(request: NextRequest) {
         controller.enqueue(encoder.encode(`${JSON.stringify(clientEvent)}\n`));
       };
       try {
-        const deck = await trace.run(async () => {
+        const deck = await withGenerationCost(cost, () => trace.run(async () => {
           const result = await generateDeck({
           topic,
           slideCount,
@@ -151,8 +156,8 @@ export async function POST(request: NextRequest) {
           });
           trace.writeArtifact("deck.json", JSON.stringify(result));
           return result;
-        });
-        send({ type: "done", title: deck.title, count: deck.slides.length });
+        }));
+        send({ type: "done", title: deck.title, count: deck.slides.length, costUsd: cost.totalUsd() });
       } catch (error) {
         send({
           type: "error",

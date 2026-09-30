@@ -14,6 +14,9 @@ Supports:
 """
 import json
 import logging
+import math
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 
 from openai import OpenAI
@@ -23,6 +26,44 @@ logger = logging.getLogger(__name__)
 logger.info("[llm_client] default provider=%s", LLM_PROVIDER)
 
 _clients: dict[str, OpenAI] = {}
+
+
+class CostLedger:
+    def __init__(self):
+        self._total = 0.0
+        self._calls = 0
+        self._unknown = False
+
+    def add(self, usage):
+        self._calls += 1
+        cost = usage.get("cost") if isinstance(usage, dict) else getattr(usage, "cost", None)
+        if isinstance(cost, (int, float)) and not isinstance(cost, bool) and math.isfinite(cost) and cost >= 0:
+            self._total += cost
+        else:
+            self._unknown = True
+
+    @property
+    def total_usd(self):
+        return round(self._total, 8) if self._calls and not self._unknown else None
+
+
+_active_cost: ContextVar[CostLedger | None] = ContextVar("active_generation_cost", default=None)
+
+
+@contextmanager
+def track_cost():
+    ledger = CostLedger()
+    token = _active_cost.set(ledger)
+    try:
+        yield ledger
+    finally:
+        _active_cost.reset(token)
+
+
+def _record_usage(usage):
+    ledger = _active_cost.get()
+    if ledger is not None:
+        ledger.add(usage)
 
 
 def resolve_provider(provider: str | None) -> tuple[str, dict]:
@@ -64,12 +105,12 @@ def _client_for(provider: str | None) -> tuple[OpenAI, str]:
 def _extra_body(provider: str | None) -> dict:
     """Provider-specific request extras, sourced from PROVIDER_CONFIGS."""
     name, cfg = resolve_provider(provider)
-    body = {}
+    body = {"usage": {"include": True}}
     if cfg.get("disable_thinking"):
         body["thinking"] = {"type": "disabled"}
     if cfg.get("reasoning_effort"):
         body["reasoning"] = {"effort": cfg["reasoning_effort"]}
-    return {"extra_body": body} if body else {}
+    return {"extra_body": body}
 
 
 def _temperature_kwarg(provider: str | None, temperature: float) -> dict:
@@ -242,15 +283,21 @@ def chat_stream(
                 delta = getattr(event, "delta", None)
                 if delta:
                     yield delta
+            if getattr(event, "type", None) == "response.completed":
+                _record_usage(getattr(getattr(event, "response", None), "usage", None))
         return
     stream = client.chat.completions.create(
         model=model or default_model,
         messages=messages,
         stream=True,
+        stream_options={"include_usage": True},
         **_temperature_kwarg(provider, temperature),
         **_extra_body(provider),
     )
+    final_usage = None
     for chunk in stream:
+        if getattr(chunk, "usage", None) is not None:
+            final_usage = chunk.usage
         # Some OpenAI-compatible gateways end with a usage-only chunk whose
         # `choices` is empty; indexing it would fail the whole job at the end.
         if not chunk.choices:
@@ -258,6 +305,7 @@ def chat_stream(
         delta = chunk.choices[0].delta.content
         if delta:
             yield delta
+    _record_usage(final_usage)
 
 
 def chat(
@@ -277,6 +325,7 @@ def chat(
             **_max_output_tokens_kwarg(max_tokens),
             **_reasoning_kwarg(provider),
         )
+        _record_usage(getattr(resp, "usage", None))
         return _responses_text(resp)
     resp = client.chat.completions.create(
         model=model or default_model,
@@ -285,6 +334,7 @@ def chat(
         **({"max_tokens": max_tokens} if max_tokens else {}),
         **_extra_body(provider),
     )
+    _record_usage(getattr(resp, "usage", None))
     return resp.choices[0].message.content or ""
 
 
@@ -315,6 +365,7 @@ def chat_json(
             **({"text": {"format": {"type": "json_object"}}} if wants_json else {}),
             **_reasoning_kwarg(provider),
         )
+        _record_usage(getattr(resp, "usage", None))
         content = _responses_text(resp) or "{}"
         try:
             return json.loads(content)
@@ -328,6 +379,7 @@ def chat_json(
         **_temperature_kwarg(provider, temperature),
         **_extra_body(provider),
     )
+    _record_usage(getattr(resp, "usage", None))
     content = resp.choices[0].message.content or "{}"
     try:
         return json.loads(content)
@@ -359,6 +411,7 @@ def chat_tools(
             tool_choice="auto",
             **_reasoning_kwarg(provider),
         )
+        _record_usage(getattr(resp, "usage", None))
         return _from_responses_tool_reply(resp)
     resp = client.chat.completions.create(
         model=model or default_model,
@@ -368,6 +421,7 @@ def chat_tools(
         **_temperature_kwarg(provider, temperature),
         **_extra_body(provider),
     )
+    _record_usage(getattr(resp, "usage", None))
     return resp.choices[0].message
 
 

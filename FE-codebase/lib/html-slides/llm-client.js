@@ -8,6 +8,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { recordGenerationDiagnostic } from "./generation-trace.js";
+import { recordGenerationCost } from "../generation-cost.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, "..", "..", "..");
@@ -99,6 +100,7 @@ export async function chat({ provider, prompt, maxTokens = 4000, temperature = 0
         model,
         ...(!omitTemperature ? { temperature } : {}),
         max_tokens: maxTokens,
+        usage: { include: true },
         ...(reasoning ? { reasoning: { effort: reasoning } } : {}),
         messages: [{ role: "user", content: prompt }],
       }),
@@ -110,6 +112,7 @@ export async function chat({ provider, prompt, maxTokens = 4000, temperature = 0
       throw new Error(`${provider} ${response.status}: ${body.slice(0, 500)}`);
     }
     const data = await response.json();
+    recordGenerationCost(data?.usage ?? null);
     signal?.throwIfAborted();
     const text = data?.choices?.[0]?.message?.content ?? "";
     const reply = { text, model: data?.model ?? model, ms: Date.now() - started, usage: data?.usage ?? null, finishReason: data?.choices?.[0]?.finish_reason ?? null };

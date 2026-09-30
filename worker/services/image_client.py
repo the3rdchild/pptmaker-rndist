@@ -36,8 +36,8 @@ def generate_image(
     *,
     model: str | None = None,
     size: str = "1024x1024",
-) -> bytes:
-    """Generate one PNG with a whitelisted Runware model alias."""
+) -> tuple[bytes, float | None]:
+    """Generate one PNG and return Runware's billed USD amount."""
     if not RUNWARE_API_KEY:
         raise RuntimeError("RUNWARE_API_KEY is not configured")
     alias, air = resolve_image_model(model)
@@ -56,6 +56,7 @@ def generate_image(
             "numberResults": 1,
             "outputType": "URL",
             "outputFormat": "PNG",
+            "includeCost": True,
         }],
         timeout=180,
     )
@@ -70,4 +71,5 @@ def generate_image(
         raise RuntimeError("Runware returned no image URL")
     image_response = requests.get(image_url, timeout=60)
     image_response.raise_for_status()
-    return image_response.content
+    cost = data[0].get("cost")
+    return image_response.content, cost if isinstance(cost, (int, float)) and not isinstance(cost, bool) and cost >= 0 else None

@@ -20,8 +20,8 @@ def process(ctx: dict):
 
     logger.info("[image_service] job_id=%s size=%s prompt=%r", ctx["job_id"], size, prompt[:120])
 
-    image_bytes = image_client.generate_image(prompt, size=size, model=model)
+    image_bytes, cost_usd = image_client.generate_image(prompt, size=size, model=model)
     data_url = "data:image/png;base64," + base64.b64encode(image_bytes).decode("ascii")
 
-    save_result(ctx["request_id"], ctx["job_id"], "image", {"data_url": data_url})
+    save_result(ctx["request_id"], ctx["job_id"], "image", {"data_url": data_url, "cost_usd": cost_usd})
     logger.info("[image_service] done | job_id=%s bytes=%d", ctx["job_id"], len(image_bytes))

@@ -45,7 +45,7 @@ def test_openrouter_json_accepts_code_fences_from_claude(monkeypatch):
     assert result == {"ok": True}
     assert requests[0]["response_format"] == {"type": "json_object"}
     assert "temperature" not in requests[0]
-    assert requests[0]["extra_body"] == {"reasoning": {"effort": "low"}}
+    assert requests[0]["extra_body"] == {"usage": {"include": True}, "reasoning": {"effort": "low"}}
 
 
 def test_openrouter_tool_call_keeps_standard_chat_shape(monkeypatch):
@@ -62,4 +62,31 @@ def test_openrouter_tool_call_keeps_standard_chat_shape(monkeypatch):
     reply = llm_client.chat_tools([{"role": "user", "content": "Check slide"}], [{"type": "function", "function": {"name": "get_status"}}], provider="openrouter-gpt-sol")
     assert reply.tool_calls[0].function.name == "get_status"
     assert requests[0].get("stream") is None
-    assert requests[0]["extra_body"] == {"reasoning": {"effort": "low"}}
+    assert requests[0]["extra_body"] == {"usage": {"include": True}, "reasoning": {"effort": "low"}}
+
+
+def test_stream_cost_includes_usage_and_counts_final_usage_chunk(monkeypatch):
+    requests = []
+
+    def create(**kwargs):
+        requests.append(kwargs)
+        return iter([
+            Obj(choices=[Obj(delta=Obj(content="Slide"))], usage=None),
+            Obj(choices=[], usage=Obj(cost=0.012345)),
+        ])
+
+    client = Obj(chat=Obj(completions=Obj(create=create)))
+    monkeypatch.setattr(llm_client, "_client_for", lambda provider: (client, "openai/gpt-6-sol"))
+    with llm_client.track_cost() as ledger:
+        assert "".join(llm_client.chat_stream([{"role": "user", "content": "Deck"}])) == "Slide"
+    assert ledger.total_usd == 0.012345
+    assert requests[0]["stream_options"] == {"include_usage": True}
+    assert requests[0]["extra_body"]["usage"] == {"include": True}
+
+
+def test_missing_provider_cost_is_not_reported_as_zero(monkeypatch):
+    client = Obj(chat=Obj(completions=Obj(create=lambda **kwargs: Obj(choices=[Obj(message=Obj(content="OK"))], usage=None))))
+    monkeypatch.setattr(llm_client, "_client_for", lambda provider: (client, "openai/gpt-6-sol"))
+    with llm_client.track_cost() as ledger:
+        assert llm_client.chat([{"role": "user", "content": "OK"}]) == "OK"
+    assert ledger.total_usd is None

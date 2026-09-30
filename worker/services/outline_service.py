@@ -193,6 +193,11 @@ def ensure_outline_visuals(
 
 
 def process(ctx: dict):
+    with llm_client.track_cost() as ledger:
+        return _process(ctx, ledger)
+
+
+def _process(ctx: dict, ledger: llm_client.CostLedger):
     params = ctx["params"]
     prompt = params.get("prompt") or params.get("content", "")
     slide_count = int(params.get("slideCount") or params.get("slide_count") or 0)
@@ -252,10 +257,10 @@ def process(ctx: dict):
 
     if stream_mode == "raw":
         publish(ctx["job_id"], {"type": "chunk", "text": text})
-        publish(ctx["job_id"], {"type": "done"})
+        publish(ctx["job_id"], {"type": "done", "costUsd": ledger.total_usd})
         logger.info("[outline_service] raw stream done | job_id=%s len=%d", ctx["job_id"], len(text))
     else:
         outline = {"title": text.split("\n")[0].replace("#", "").strip() or prompt[:60], "markdown": text}
         save_result(ctx["request_id"], ctx["job_id"], "outline", outline)
-        publish(ctx["job_id"], {"type": "done", "result": outline, "resultType": "outline"})
+        publish(ctx["job_id"], {"type": "done", "result": outline, "resultType": "outline", "costUsd": ledger.total_usd})
         logger.info("[outline_service] json done | job_id=%s", ctx["job_id"])

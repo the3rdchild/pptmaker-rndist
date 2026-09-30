@@ -159,6 +159,7 @@ async function readJobStream(
 	onError?: (message: string) => void,
 	idleMs = 60000,
 	absoluteMs = 600000,
+	onDone?: (data: Record<string, unknown>) => void | Promise<void>,
 ): Promise<void> {
 	await new Promise<void>((resolve) => {
 		const cleanup = () => resolve()
@@ -171,7 +172,7 @@ async function readJobStream(
 			idle = setTimeout(cleanup, idleMs)
 		}
 
-		subscription.onMessage((message) => {
+		subscription.onMessage(async (message) => {
 			resetIdle()
 			try {
 				const data = JSON.parse(message)
@@ -185,6 +186,7 @@ async function readJobStream(
 					clearTimeout(absolute)
 					cleanup()
 				} else if (data.type === 'done') {
+					await onDone?.(data)
 					clearTimeout(idle)
 					clearTimeout(absolute)
 					cleanup()
@@ -215,6 +217,7 @@ async function runStreamingJob(
 	onChunk: (text: string) => void,
 	onError: ((message: string) => void) | undefined,
 	idleMs: number,
+	onDone?: (data: Record<string, unknown>) => void | Promise<void>,
 ): Promise<void> {
 	const jobId = crypto.randomUUID()
 	const subscription = await subscribeToJob(jobId)
@@ -232,7 +235,7 @@ async function runStreamingJob(
 		onError?.('Could not start the job')
 		return
 	}
-	await readJobStream(subscription, onChunk, onError, idleMs)
+	await readJobStream(subscription, onChunk, onError, idleMs, 600000, onDone)
 }
 
 function requireSession(c: { var: { sessionId?: string } }): string | null {
@@ -270,7 +273,9 @@ tools.post('/aippt_outline', async (c) => {
 			// strips this and shows the actual provider error instead of claiming
 			// the outline was merely empty.
 			s.write(`\n<!--ppt-error:${encodeURIComponent(message)}-->`).catch(() => {})
-		}, 180000)
+		}, 180000, (done) => {
+			return s.write(`\n<!--ppt-cost-usd:${typeof done.costUsd === 'number' ? done.costUsd : 'unknown'}-->`).then(() => undefined, () => undefined)
+		})
 	})
 })
 
@@ -304,7 +309,9 @@ tools.post('/aippt', async (c) => {
 		}, (message) => {
 			// Worker failure — tell the client WHY (e.g. provider quota habis)
 			s.write(JSON.stringify({ type: 'error', message }) + '\n').catch(() => {})
-		}, 180000)
+		}, 180000, (done) => {
+			return s.write(JSON.stringify({ type: 'generation_cost', costUsd: done.costUsd ?? null }) + '\n').then(() => undefined, () => undefined)
+		})
 	})
 })
 
@@ -370,7 +377,9 @@ tools.post('/outline_chat', async (c) => {
 			stream_mode: 'raw',
 		}, (text) => {
 			s.write(text).catch(() => {})
-		}, undefined, 30000)
+		}, undefined, 30000, (done) => {
+			return s.write(`\n<!--ppt-cost-usd:${typeof done.costUsd === 'number' ? done.costUsd : 'unknown'}-->`).then(() => undefined, () => undefined)
+		})
 	})
 })
 

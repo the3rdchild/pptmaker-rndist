@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 
 import { availableProviders, callProvider } from "./ai-providers.ts";
 import { createGenerationTrace } from "./html-slides/generation-trace.js";
+import { createGenerationCost, withGenerationCost } from "./generation-cost.js";
 
 async function withServer(handler, run) {
   const server = createServer(handler);
@@ -64,10 +65,13 @@ test("vision selector excludes text-only DeepSeek and uses OpenRouter JSON", asy
     assert.equal(request.url, "/chat/completions");
     assert.equal(body.model, "google/gemini-3-flash-preview");
     assert.equal(body.stream, undefined);
+    assert.deepEqual(body.usage, { include: true });
     response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({ choices: [{ message: { content: "OK" }, finish_reason: "stop" }] }));
+    response.end(JSON.stringify({ choices: [{ message: { content: "OK" }, finish_reason: "stop" }], usage: { cost: 0.00042 } }));
   }, async () => {
     assert.ok(!availableProviders({ vision: true }).some(({ id }) => id === "openrouter-deepseek-flash"));
-    assert.equal(await callProvider("openrouter-deepseek-flash", [{ role: "user", content: "Review" }], { maxTokens: 128, vision: true }), "OK");
+    const cost = createGenerationCost();
+    assert.equal(await withGenerationCost(cost, () => callProvider("openrouter-deepseek-flash", [{ role: "user", content: "Review" }], { maxTokens: 128, vision: true })), "OK");
+    assert.equal(cost.totalUsd(), 0.00042);
   });
 });

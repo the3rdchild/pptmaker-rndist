@@ -81,6 +81,11 @@ def _build_context_block(context: dict) -> str:
 
 
 def process(ctx: dict):
+    with llm_client.track_cost() as ledger:
+        return _process(ctx, ledger)
+
+
+def _process(ctx: dict, ledger: llm_client.CostLedger):
     params = ctx["params"]
     message = params.get("message", "")
     language = params.get("language", "Bahasa Indonesia")
@@ -112,13 +117,13 @@ def process(ctx: dict):
         for chunk in llm_client.chat_stream(messages, provider=provider, temperature=0.6):
             full += chunk
             publish(ctx["job_id"], {"type": "chunk", "text": chunk})
-        publish(ctx["job_id"], {"type": "done"})
+        publish(ctx["job_id"], {"type": "done", "costUsd": ledger.total_usd})
         logger.info("[outline_chat] raw stream done | job_id=%s len=%d", ctx["job_id"], len(full))
     else:
         text = llm_client.chat(messages, provider=provider, temperature=0.6)
         from core.db.repository import save_result
         save_result(ctx["request_id"], ctx["job_id"], "outline_chat", {"text": text})
-        publish(ctx["job_id"], {"type": "done", "result": {"text": text}, "resultType": "outline_chat"})
+        publish(ctx["job_id"], {"type": "done", "result": {"text": text}, "resultType": "outline_chat", "costUsd": ledger.total_usd})
         logger.info("[outline_chat] json done | job_id=%s", ctx["job_id"])
 
 

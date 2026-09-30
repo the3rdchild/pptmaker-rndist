@@ -9,7 +9,7 @@ const context = new AsyncLocalStorage();
 // Next runs from the FE project root. A relative new URL(import.meta.url)
 // makes Turbopack try to bundle this writable directory as a static asset.
 const TRACE_ROOT = join(process.cwd(), ".generation-traces");
-const FIELDS = new Set("type phase stage slide attempt provider model durationMs maxTokens nextMaxTokens finishReason usage outputChars rawOutputFile error message feedback ok checks issues screenshot source reason name description title slides count index heading elementCount summary fromApprovedOutline completedSlides slideCount theme imageSource transition transitions withReview".split(" "));
+const FIELDS = new Set("type phase stage slide attempt provider model durationMs maxTokens nextMaxTokens finishReason usage costUsd outputChars rawOutputFile error message feedback ok checks issues screenshot source reason name description title slides count index heading elementCount summary fromApprovedOutline completedSlides slideCount theme imageSource transition transitions withReview".split(" "));
 const SECRET_KEY = /api[_-]?key|session[_-]?token|authorization|secret|password|cookie/i;
 
 /** @param {{generationId?: string, deckId?: string|null, signal?: AbortSignal, secrets?: string[]}} options */

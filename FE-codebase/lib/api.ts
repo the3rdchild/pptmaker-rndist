@@ -256,6 +256,7 @@ export async function streamOutlineChat(
 export async function chooseThemeForTopic(
 	topic: string,
 	language?: string,
+	onCost?: (costUsd: number | null) => void,
 ): Promise<{ themeId: string; reason: string | null } | null> {
 	try {
 		const res = await fetch(`/api/ai/choose-theme`, {
@@ -263,14 +264,16 @@ export async function chooseThemeForTopic(
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ topic, language }),
 		})
-		if (!res.ok) return null
 		const json = await res.json()
+		if (Object.prototype.hasOwnProperty.call(json ?? {}, 'costUsd')) onCost?.(json.costUsd)
+		if (!res.ok) return null
 		if (typeof json?.theme_id !== 'string' || !json.theme_id) return null
 		return {
 			themeId: json.theme_id,
 			reason: typeof json.reason === 'string' ? json.reason : null,
 		}
 	} catch {
+		onCost?.(null)
 		return null
 	}
 }
@@ -313,23 +316,29 @@ export async function requestImage(
 export async function generateImage(
 	token: string,
 	prompt: string,
-	opts: { size?: string; model?: string; timeoutMs?: number; intervalMs?: number } = {},
+	opts: { size?: string; model?: string; timeoutMs?: number; intervalMs?: number; onCost?: (costUsd: number | null) => void } = {},
 ): Promise<string | null> {
-	const { size, model, timeoutMs = 180000, intervalMs = 1200 } = opts
+	const { size, model, timeoutMs = 180000, intervalMs = 1200, onCost } = opts
 	try {
 		const { jobId } = await requestImage(token, { prompt, size, model })
 		const deadline = Date.now() + timeoutMs
 		while (Date.now() < deadline) {
 			const status = await pollStatus(token, jobId)
 			if (status.status === 'completed') {
-				const result = status.result as { data_url?: string } | undefined
+				const result = status.result as { data_url?: string; cost_usd?: number | null } | undefined
+				onCost?.(typeof result?.cost_usd === 'number' ? result.cost_usd : null)
 				return result?.data_url ?? null
 			}
-			if (status.status === 'failed') return null
+			if (status.status === 'failed') {
+				onCost?.(null)
+				return null
+			}
 			await new Promise((resolve) => setTimeout(resolve, intervalMs))
 		}
+		onCost?.(null)
 		return null
 	} catch {
+		onCost?.(null)
 		return null
 	}
 }

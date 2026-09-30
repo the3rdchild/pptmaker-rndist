@@ -7,6 +7,7 @@
 import { NextResponse } from "next/server";
 
 import { repairSlotFills, reviewSlideVisual } from "@/lib/ai-visual-review";
+import { createGenerationCost, withGenerationCost } from "@/lib/generation-cost.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,7 +18,9 @@ export async function POST(request: Request) {
 		return NextResponse.json({ error: "Invalid body" }, { status: 400 });
 	}
 
+	const cost = createGenerationCost();
 	try {
+		return await withGenerationCost(cost, async () => {
 		if (body.mode === "verify") {
 			if (typeof body.image !== "string" || !body.image) {
 				return NextResponse.json({ error: "image is required" }, { status: 400 });
@@ -31,7 +34,7 @@ export async function POST(request: Request) {
 				photos: Array.isArray(body.photos) ? body.photos : undefined,
 				providerId: typeof body.provider === "string" ? body.provider : null,
 			});
-			return NextResponse.json({ issues });
+			return NextResponse.json({ issues, costUsd: cost.totalUsd() });
 		}
 		if (body.mode === "repair") {
 			const fills = await repairSlotFills({
@@ -41,12 +44,13 @@ export async function POST(request: Request) {
 				issues: Array.isArray(body.issues) ? body.issues : [],
 				providerId: typeof body.provider === "string" ? body.provider : null,
 			});
-			return NextResponse.json({ fills });
+			return NextResponse.json({ fills, costUsd: cost.totalUsd() });
 		}
 		return NextResponse.json({ error: "mode must be verify|repair" }, { status: 400 });
+		});
 	} catch (error) {
 		return NextResponse.json(
-			{ error: error instanceof Error ? error.message : "Visual review failed" },
+			{ error: error instanceof Error ? error.message : "Visual review failed", costUsd: cost.totalUsd() },
 			{ status: 502 },
 		);
 	}

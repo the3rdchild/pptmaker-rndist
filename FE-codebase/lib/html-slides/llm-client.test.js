@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 
 import { chat, firstConfiguredProvider, requireCompleteReply } from "./llm-client.js";
 import { createGenerationTrace, withGenerationStage } from "./generation-trace.js";
+import { createGenerationCost, withGenerationCost } from "../generation-cost.js";
 
 test("defaults HTML generation to OpenRouter Sol and ignores a saved CodeBuddy choice", () => {
   const previous = process.env.OPENROUTER_API_KEY;
@@ -32,7 +33,7 @@ test("identifies a truncated reply spent entirely on hidden reasoning", () => {
 });
 
 test("OpenRouter HTML generation records truncation diagnostics and sends nonstreaming JSON", async () => {
-  const usage = { prompt_tokens: 120, completion_tokens: 4000, total_tokens: 4120, completion_tokens_details: { reasoning_tokens: 2800 } };
+  const usage = { prompt_tokens: 120, completion_tokens: 4000, total_tokens: 4120, cost: 0.0234, completion_tokens_details: { reasoning_tokens: 2800 } };
   const server = createServer(async (request, response) => {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
@@ -41,6 +42,7 @@ test("OpenRouter HTML generation records truncation diagnostics and sends nonstr
     assert.equal(body.model, "openai/gpt-6-sol");
     assert.deepEqual(body.reasoning, { effort: "low" });
     assert.equal(body.stream, undefined);
+    assert.deepEqual(body.usage, { include: true });
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify({ model: "actual-provider-model", choices: [{ message: { content: "<section>unfinished" }, finish_reason: "length" }], usage }));
   });
@@ -50,7 +52,9 @@ test("OpenRouter HTML generation records truncation diagnostics and sends nonstr
   process.env.OPENROUTER_BASE_URL = `http://127.0.0.1:${server.address().port}`;
   try {
     const trace = createGenerationTrace({ generationId: `test-provider-${randomUUID()}` });
-    const reply = await trace.run(() => withGenerationStage({ stage: "slide-layout", slide: 3, attempt: 1 }, () => chat({ provider: "openrouter-gpt-sol", prompt: "Make a slide" })));
+    const cost = createGenerationCost();
+    const reply = await withGenerationCost(cost, () => trace.run(() => withGenerationStage({ stage: "slide-layout", slide: 3, attempt: 1 }, () => chat({ provider: "openrouter-gpt-sol", prompt: "Make a slide" }))));
+    assert.equal(cost.totalUsd(), 0.0234);
     assert.equal(reply.finishReason, "length");
     assert.equal(reply.model, "actual-provider-model");
     assert.deepEqual(reply.usage, usage);

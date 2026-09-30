@@ -15,6 +15,7 @@
 // free and keeps passing plain chat-style messages.
 
 import { recordGenerationDiagnostic } from "./html-slides/generation-trace.js";
+import { recordGenerationCost } from "./generation-cost.js";
 
 type Rec = Record<string, unknown>;
 
@@ -270,6 +271,7 @@ export async function callProvider(
         ...(cfg.reasoning_effort ? { reasoning: { effort: cfg.reasoning_effort } } : {}),
       };
   if (!cfg.omit_temperature) body.temperature = 1;
+  if (!useResponses) body.usage = { include: true };
   if (cfg.disable_thinking) body.thinking = { type: "disabled" };
 
   const endpoint = useResponses ? "responses" : "chat/completions";
@@ -291,6 +293,7 @@ export async function callProvider(
     throw new Error(`${cfg.id} API ${res.status}: ${text.slice(0, 200)}`);
   }
   const data: Rec = (await res.json()) as Rec;
+  recordGenerationCost(data.usage ?? null);
   opts.signal?.throwIfAborted();
   let content: unknown;
   if (useResponses) {

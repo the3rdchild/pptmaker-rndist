@@ -214,6 +214,11 @@ def _sanitize_line(clean: str, job_id: str) -> str | None:
 
 
 def process(ctx: dict):
+    with llm_client.track_cost() as ledger:
+        return _process(ctx, ledger)
+
+
+def _process(ctx: dict, ledger: llm_client.CostLedger):
     params = ctx["params"]
     outline = params.get("outline") or params.get("content") or ""
     language = params.get("language", "English")
@@ -303,5 +308,5 @@ def process(ctx: dict):
             if sanitized:
                 publish(ctx["job_id"], {"type": "chunk", "text": sanitized})
 
-    publish(ctx["job_id"], {"type": "done"})
+    publish(ctx["job_id"], {"type": "done", "costUsd": ledger.total_usd})
     logger.info("[deck_service] done | job_id=%s", ctx["job_id"])

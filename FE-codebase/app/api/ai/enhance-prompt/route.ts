@@ -6,6 +6,7 @@
 import { NextResponse } from "next/server";
 
 import { enhanceDeckPrompt } from "@/lib/ai-prompt-enhance";
+import { createGenerationCost, withGenerationCost } from "@/lib/generation-cost.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,16 +22,17 @@ export async function POST(request: Request) {
 		return NextResponse.json({ error: "topic is required" }, { status: 400 });
 	}
 
+	const cost = createGenerationCost();
 	try {
-		const enhanced = await enhanceDeckPrompt(
+		const enhanced = await withGenerationCost(cost, () => enhanceDeckPrompt(
 			topic,
 			typeof body?.language === "string" ? body.language : undefined,
 			typeof body?.provider === "string" ? body.provider : null,
-		);
-		return NextResponse.json({ enhanced });
+		));
+		return NextResponse.json({ enhanced, costUsd: cost.totalUsd() });
 	} catch (error) {
 		return NextResponse.json(
-			{ error: error instanceof Error ? error.message : "Prompt enhancement failed" },
+			{ error: error instanceof Error ? error.message : "Prompt enhancement failed", costUsd: cost.totalUsd() },
 			{ status: 502 },
 		);
 	}

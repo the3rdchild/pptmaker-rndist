@@ -8,6 +8,7 @@ import { NextResponse } from "next/server";
 import { buildThemeChoiceManifest } from "@/lib/templates/manifest";
 import { callChooseTheme } from "@/lib/templates/choose-theme";
 import { listThemeIds, readTheme } from "@/lib/templates/server/store";
+import { createGenerationCost, withGenerationCost } from "@/lib/generation-cost.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,6 +23,7 @@ export async function POST(request: Request) {
 		return NextResponse.json({ error: "topic is required" }, { status: 400 });
 	}
 
+	const cost = createGenerationCost();
 	try {
 		const ids = await listThemeIds();
 		const themes = (
@@ -31,15 +33,15 @@ export async function POST(request: Request) {
 			return NextResponse.json({ theme_id: null, reason: null });
 		}
 
-		const result = await callChooseTheme({
+		const result = await withGenerationCost(cost, () => callChooseTheme({
 			topic,
 			language: typeof body?.language === "string" ? body.language : undefined,
 			themes: buildThemeChoiceManifest(themes),
-		});
-		return NextResponse.json(result);
+		}));
+		return NextResponse.json({ ...result, costUsd: cost.totalUsd() });
 	} catch (error) {
 		return NextResponse.json(
-			{ error: error instanceof Error ? error.message : "Theme choice failed" },
+			{ error: error instanceof Error ? error.message : "Theme choice failed", costUsd: cost.totalUsd() },
 			{ status: 502 },
 		);
 	}

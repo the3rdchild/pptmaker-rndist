@@ -417,7 +417,7 @@ OpenRouter offers four presets through one server-side `OPENROUTER_API_KEY`:
 | `openrouter-gpt-sol` | `openai/gpt-6-sol` | Default slide generation; high quality |
 | `openrouter-deepseek-flash` | `deepseek/deepseek-v4-flash-0731` | Lower-cost text generation |
 | `openrouter-gemini-flash` | `google/gemini-3-flash-preview` | Medium tier; default vision review |
-| `openrouter-claude-sonnet` | `anthropic/claude-sonnet-4.6` | Premium option |
+| `openrouter-claude-sonnet` | `anthropic/claude-sonnet-5.5` | Premium option |
 
 DeepSeek Flash is text-only; vision calls fall back to Gemini Flash. Saved
 selections with retired provider ids fall back to GPT Sol.

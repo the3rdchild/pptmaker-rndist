@@ -47,7 +47,7 @@ PROVIDER_CONFIGS       = {
     "openrouter-gpt-sol": {"api_key": OPENROUTER_API_KEY, "base_url": OPENROUTER_BASE_URL, "model": "openai/gpt-6-sol", "omit_temperature": True, "reasoning_effort": "low"},
     "openrouter-deepseek-flash": {"api_key": OPENROUTER_API_KEY, "base_url": OPENROUTER_BASE_URL, "model": "deepseek/deepseek-v4-flash-0731"},
     "openrouter-gemini-flash": {"api_key": OPENROUTER_API_KEY, "base_url": OPENROUTER_BASE_URL, "model": "google/gemini-3-flash-preview"},
-    "openrouter-claude-sonnet": {"api_key": OPENROUTER_API_KEY, "base_url": OPENROUTER_BASE_URL, "model": "anthropic/claude-sonnet-4.6", "omit_temperature": True},
+    "openrouter-claude-sonnet": {"api_key": OPENROUTER_API_KEY, "base_url": OPENROUTER_BASE_URL, "model": "anthropic/claude-sonnet-5.5", "omit_temperature": True, "reasoning_effort": "low"},
 }
 
 _default_cfg = PROVIDER_CONFIGS.get(LLM_PROVIDER, PROVIDER_CONFIGS["openrouter-gpt-sol"])

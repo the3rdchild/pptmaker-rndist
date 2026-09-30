@@ -48,8 +48,9 @@ const PROVIDERS = {
     model: "google/gemini-3-flash-preview",
   },
   "openrouter-claude-sonnet": {
-    model: "anthropic/claude-sonnet-4.6",
+    model: "anthropic/claude-sonnet-5.5",
     omitTemperature: true,
+    reasoning: "low",
   },
 };
 

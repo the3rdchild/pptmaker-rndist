@@ -8,7 +8,7 @@ def test_openrouter_presets_and_legacy_fallback(monkeypatch):
         "openrouter-gpt-sol": "openai/gpt-6-sol",
         "openrouter-deepseek-flash": "deepseek/deepseek-v4-flash-0731",
         "openrouter-gemini-flash": "google/gemini-3-flash-preview",
-        "openrouter-claude-sonnet": "anthropic/claude-sonnet-4.6",
+        "openrouter-claude-sonnet": "anthropic/claude-sonnet-5.5",
     }
     assert {name: config["model"] for name, config in llm_client.PROVIDER_CONFIGS.items()} == expected
     for config in llm_client.PROVIDER_CONFIGS.values():
@@ -39,12 +39,13 @@ def test_openrouter_json_accepts_code_fences_from_claude(monkeypatch):
         return Obj(choices=[Obj(message=Obj(content='```json\n{"ok": true}\n```'))])
 
     client = Obj(chat=Obj(completions=Obj(create=create)))
-    monkeypatch.setattr(llm_client, "_client_for", lambda provider: (client, "anthropic/claude-sonnet-4.6"))
+    monkeypatch.setattr(llm_client, "_client_for", lambda provider: (client, "anthropic/claude-sonnet-5.5"))
     monkeypatch.setitem(llm_client.PROVIDER_CONFIGS["openrouter-claude-sonnet"], "api_key", "local-test")
     result = llm_client.chat_json([{"role": "user", "content": "Return JSON"}], provider="openrouter-claude-sonnet")
     assert result == {"ok": True}
     assert requests[0]["response_format"] == {"type": "json_object"}
     assert "temperature" not in requests[0]
+    assert requests[0]["extra_body"] == {"reasoning": {"effort": "low"}}
 
 
 def test_openrouter_tool_call_keeps_standard_chat_shape(monkeypatch):

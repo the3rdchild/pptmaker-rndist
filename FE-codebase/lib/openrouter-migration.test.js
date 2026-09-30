@@ -15,6 +15,7 @@ test("OpenRouter exposes four models and routes legacy and vision choices safely
     assert.equal(firstConfiguredProvider("codebuddy"), "openrouter-gpt-sol");
     assert.equal(requireProvider("codebuddy").model, "openai/gpt-6-sol");
     assert.equal(requireProvider("openrouter-deepseek-flash", { vision: true }).model, "google/gemini-3-flash-preview");
+    assert.equal(requireProvider("openrouter-claude-sonnet").model, "anthropic/claude-sonnet-5.5");
   } finally {
     if (previous === undefined) delete process.env.OPENROUTER_API_KEY;
     else process.env.OPENROUTER_API_KEY = previous;
@@ -34,7 +35,9 @@ test("both frontend AI clients send OpenRouter chat completions without CodeBudd
   try {
     assert.equal(await callProvider("openrouter-gpt-sol", [{ role: "user", content: "OK" }], { maxTokens: 128 }), "OK");
     assert.equal((await chat({ provider: "openrouter-deepseek-flash", prompt: "OK" })).text, "OK");
-    assert.deepEqual(requests.map(({ body }) => body.model), ["openai/gpt-6-sol", "deepseek/deepseek-v4-flash-0731"]);
+    assert.equal((await chat({ provider: "openrouter-claude-sonnet", prompt: "OK" })).text, "OK");
+    assert.deepEqual(requests.map(({ body }) => body.model), ["openai/gpt-6-sol", "deepseek/deepseek-v4-flash-0731", "anthropic/claude-sonnet-5.5"]);
+    assert.deepEqual(requests[2].body.reasoning, { effort: "low" });
     assert.ok(requests.every(({ url, body }) => url.endsWith("/chat/completions") && !body.stream));
   } finally {
     globalThis.fetch = originalFetch;

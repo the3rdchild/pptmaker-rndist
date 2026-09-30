@@ -78,12 +78,13 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   },
   {
     id: "openrouter-claude-sonnet",
-    label: "Claude Sonnet 4.6 · Premium",
+    label: "Claude Sonnet 5.5 · Premium",
     envKey: "OPENROUTER_API_KEY",
     base_url: "https://openrouter.ai/api/v1",
-    model: "anthropic/claude-sonnet-4.6",
+    model: "anthropic/claude-sonnet-5.5",
     vision: true,
     omit_temperature: true,
+    reasoning_effort: "low",
     base_url_env: "OPENROUTER_BASE_URL",
   },
 ];

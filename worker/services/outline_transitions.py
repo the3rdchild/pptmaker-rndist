@@ -36,9 +36,9 @@ Transitions are ON for this deck. Directly after each slide's Visual: line, add 
 Transition: <id> — <note>
 <id> is how the presentation moves INTO that slide, one of: morph, fade-black, fade-white, slide-left, slide-right, none.
 - Slide 1 always uses: Transition: none
-- Favour morph. Morph animates the elements that appear on both slides from their old position and size to their new ones, so plan consecutive slides that share a visual anchor: the cover title shrinking into the next slide's header, a hero photo sliding from full-bleed to one half, a big number becoming a labelled figure, an accent shape growing into a panel. Aim for morph on roughly half of the slides, including short chains of consecutive morph slides.
-- Use fade-black for a new section or a change of mood, and slide-left / slide-right for sequential steps. Never use none after slide 1.
-- Write the note in the requested language. For morph it must name the shared element(s) and say concretely how they move or resize (e.g. "judul cover mengecil ke pojok kiri atas, foto bergeser ke separuh kanan"). For other transitions, a few words on why.
+- Choose each transition from the visual continuity and rhythm of the story, with no fixed sequence or quota. Morph when the same elements truly continue; fade-black or fade-white for a mood change; slide-left or slide-right when directional motion fits; none for a deliberate hard cut. The closing slide may also morph when the story and visuals call for it. Do not automatically end with a fade.
+- For morph, plan every element that genuinely carries across, including stable text, photos, shapes, cards or diagram parts. An evolving visual may also change contour (a panel becoming a circle or triangle) or turn from a colored frame into a photo. Name that change in the note. There is no numeric limit; use as many coherent matches as the composition supports. Do not force unrelated elements to morph.
+- Write the note in the requested language. For morph, name the continuing elements and describe concretely how each moves or resizes. For other transitions, give a few words on why.
 - Keep the "Transition:" prefix and the id exactly as written, in English, even when the requested language is not English."""
 
 
@@ -122,8 +122,6 @@ def insert_transition_lines(markdown: str, plan: dict[int, tuple[str, str]]) -> 
             transition, note = "none", ""
         else:
             transition, note = plan.get(number, (_DEFAULT_TRANSITION, ""))
-            if transition == "none":
-                transition = _DEFAULT_TRANSITION
         insert_after[anchor] = format_transition_line(transition, note)
 
     output = []

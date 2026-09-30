@@ -4,13 +4,14 @@
 //   node FE-codebase/lib/html-slides/generate.js --topic "..." --slides 5 --theme paper
 //   node FE-codebase/lib/html-slides/generate.js --topic "..." --theme ai   # AI designs the theme
 //   node FE-codebase/lib/html-slides/generate.js --topic "..." --transitions # plan + build morph chains
+//   node FE-codebase/lib/html-slides/generate.js --topic "..." --out artifacts/review-1
 //   node FE-codebase/lib/html-slides/generate.js --reuse
 //
 // --reuse re-renders the HTML already in out/ instead of generating it again,
 // so a change to the extractor can be checked against the same slides for free.
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { generateDeck } from "./deck-pipeline.js";
@@ -19,7 +20,7 @@ import { STARTER_HTML_THEMES } from "../html-themes/seeds.js";
 import { describeElements, renderAndExtract } from "./render-extract.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const OUT_DIR = join(HERE, "out");
+const OUT_DIR = resolve(arg("out", join(HERE, "out")));
 
 function arg(name, fallback) {
   const index = process.argv.indexOf(`--${name}`);

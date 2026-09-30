@@ -1,10 +1,12 @@
 import unittest
 
 from services.outline_transitions import (
+    TRANSITIONS_PROMPT,
     insert_transition_lines,
     parse_transition_line,
     split_transition_lines,
 )
+from services.outline_service import SYSTEM_PROMPT
 
 OUTLINE = """# Kopi Nusantara
 ## Cover
@@ -25,6 +27,16 @@ Data ekspor.
 
 
 class OutlineTransitionTests(unittest.TestCase):
+    def test_outline_copy_avoids_ai_cliches_without_inventing_facts(self):
+        self.assertIn("plain, natural language", SYSTEM_PROMPT)
+        self.assertIn("Do not invent facts", SYSTEM_PROMPT)
+
+    def test_planning_prompt_has_no_fixed_morph_quota_or_closing_fade(self):
+        self.assertIn("no fixed sequence or quota", TRANSITIONS_PROMPT)
+        self.assertIn("closing slide", TRANSITIONS_PROMPT)
+        self.assertNotIn("roughly half", TRANSITIONS_PROMPT)
+        self.assertNotIn("Favour morph", TRANSITIONS_PROMPT)
+
     def test_parses_ids_aliases_and_notes(self):
         self.assertEqual(parse_transition_line("Transition: morph — judul mengecil"), ("morph", "judul mengecil"))
         self.assertEqual(parse_transition_line("transition: fade - babak baru"), ("fade-black", "babak baru"))
@@ -56,6 +68,10 @@ class OutlineTransitionTests(unittest.TestCase):
         # after the Visual line when there is one, after the description otherwise
         self.assertEqual(lines[lines.index("Visual: Biji kopi dijemur di bawah matahari.") + 1], transitions[1])
         self.assertEqual(lines[lines.index("Data ekspor.") + 1], "Transition: fade-black")
+
+    def test_keeps_deliberate_cut_after_first_slide(self):
+        result = insert_transition_lines("# Deck\n## Awal\nIntro.\n## Akhir\nSelesai.\n", {2: ("none", "cut langsung")})
+        self.assertIn("Transition: none — cut langsung", result)
 
 
 if __name__ == "__main__":

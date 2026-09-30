@@ -116,12 +116,20 @@ export async function buildOutline({ topic, slideCount, provider, signal, transi
   if (looksLikeOutline(topic)) {
     return { outline: outlineFromMarkdown(topic), fromApprovedOutline: true };
   }
-  const reply = await chat({
-    provider,
-    prompt: buildOutlinePrompt(topic, slideCount, { transitions }),
-    maxTokens: 1800,
-    temperature: 0.8,
-    signal,
-  });
-  return { outline: parseOutlineReply(reply.text), fromApprovedOutline: false };
+  const prompt = buildOutlinePrompt(topic, slideCount, { transitions });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const reply = await chat({
+      provider,
+      prompt: attempt === 0 ? prompt : `${prompt}\n\nBalas JSON lengkap dan valid saja. Jangan berhenti sebelum kurung penutup terakhir.`,
+      maxTokens: attempt === 0 ? 3500 : 6000,
+      temperature: attempt === 0 ? 0.8 : 0.4,
+      signal,
+    });
+    try {
+      return { outline: parseOutlineReply(reply.text), fromApprovedOutline: false };
+    } catch (error) {
+      if (attempt === 1) throw error;
+    }
+  }
+  throw new Error("Outline generation failed after two attempts.");
 }

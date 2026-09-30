@@ -9,11 +9,12 @@ import { STAGE_HEIGHT, STAGE_WIDTH } from "./slide-document.js";
 
 export function buildOutlinePrompt(topic, slideCount, { transitions = false } = {}) {
   const transitionFields = transitions
-    ? ',"transition":"<morph|fade-black|fade-white|slide-left|slide-right|none>","transitionNote":"<untuk morph: elemen apa yang sama dengan slide sebelumnya dan bagaimana ia bergerak/berubah ukuran>"'
+    ? ',"transition":"<morph|fade-black|fade-white|slide-left|slide-right|none>","transitionNote":"<untuk morph: semua elemen yang berlanjut dari slide sebelumnya dan bagaimana posisi/ukurannya berubah; untuk transisi lain: alasan singkat>"'
     : "";
   const transitionRules = transitions
     ? `
-- "transition" = cara masuk KE slide itu. Slide pertama "none". Utamakan "morph" bila dua slide berurutan bisa berbagi elemen (judul mengecil jadi header, foto bergeser dari penuh ke separuh, angka besar jadi label) — kira-kira separuh slide. "fade-black" untuk ganti bagian, "slide-left"/"slide-right" untuk langkah berurutan.`
+- "transition" = cara masuk KE slide itu. Slide pertama "none". Pilih setiap transisi dari hubungan visual dan ritme cerita antar slide, tanpa pola urutan atau kuota jenis transisi. Morph bila elemen yang sama benar-benar berlanjut; fade-black/fade-white untuk pergantian suasana, slide-left/slide-right untuk gerak yang punya arah, none untuk potongan langsung yang disengaja. Slide penutup juga bebas memakai morph atau transisi lain bila sesuai ceritanya. Jangan otomatis mengakhiri deck dengan fade.
+- Untuk morph, rencanakan semua elemen yang memang berlanjut (teks yang tetap sama, foto, bentuk, kartu, diagram), bukan hanya satu jangkar. Satu elemen visual juga boleh berubah bentuk, misalnya panel membulat jadi lingkaran atau bidang warna menjadi foto. Sebutkan perubahan bentuk, posisi, dan ukurannya di transitionNote. Tidak ada batas jumlah bila komposisinya tetap jelas. Jangan memasangkan benda yang tidak punya kesinambungan visual.`
     : "";
   return `Kamu perancang presentasi. Buat outline untuk deck ${slideCount} slide tentang: "${topic}".
 
@@ -23,10 +24,14 @@ Balas HANYA JSON (tanpa fence, tanpa komentar):
 Aturan:
 - Tepat ${slideCount} slide. Slide pertama role "cover", terakhir "closing".
 - Satu gagasan utama per slide. Judul menyatakan kesimpulan spesifik, bukan label topik yang generik.
+- Judul maksimal 9 kata. Pilih tindakan atau akibat yang bisa dibayangkan pembaca; hindari judul meta seperti "empat keputusan", "unsur utama", atau "perjalanan menuju" ketika bisa menyebut hal konkretnya.
 - Role "stat" hanya bila ada angka nyata di input. "comparison" hanya untuk dua hal yang memang dibandingkan. "process" hanya untuk langkah berurutan. "quote" hanya bila ada kutipan dan narasumber nyata. Jangan mengarang angka, kutipan, nama, atau sumber.
 - Setiap visual harus konkret: foto yang relevan, diagram dari data yang tersedia, atau render 3D untuk objek/geografi yang memang membantu penjelasan. Hindari logo, watermark, dan instruksi generik seperti "buat menarik".
 - Variasikan role dan komposisi antar slide — jangan lima slide bentuk yang sama.
-- Bahasa Indonesia. Konkret, bukan generik.${transitionRules}`;
+- Tulis dalam bahasa Indonesia yang alami untuk orang yang akan mendengar presentasi ini. Pakai kata kerja dan kalimat yang biasa dipakai orang, dengan ritme yang tidak seragam. Tiap kalimat harus menambah informasi nyata.
+- Baca ulang setiap judul dan brief seperti akan diucapkan kepada teman. Ganti frasa kabur seperti "saling cocok" atau "membantu menelusuri" dengan tindakan yang jelas, tanpa mengubah fakta.
+- Hindari frasa klise seperti "di era modern", "tak sekadar X, melainkan Y", "menjadi kunci", "menandai langkah penting", atau penutup kosong. Jangan memaksakan tiga poin sejajar bila materinya tidak menuntut itu.
+- Pertahankan nama, angka, tanggal, kutipan, dan hubungan sebab-akibat dari input; perjelas kalimat tanpa menambah fakta. Jangan mengarang sumber.${transitionRules}`;
 }
 
 const BANNED = [
@@ -59,15 +64,15 @@ Rencana: ${morph.from.note || "elemen utama slide sebelumnya berlanjut dan berpi
 Elemen slide sebelumnya yang bisa dilanjutkan:
 ${morph.from.anchors.map(describeAnchor).join("\n") || "- (tidak ada)"}
 Aturan morph:
-- Pakai ULANG atribut data-morph yang sama pada elemen yang merupakan benda yang sama di slide ini (judul yang sama, foto yang sama, bentuk aksen yang sama). Minimal satu.
+- Pakai ULANG atribut data-morph yang sama pada semua elemen yang merupakan kelanjutan visual di slide ini, termasuk shape yang berubah kontur atau frame yang berubah menjadi foto. Gunakan sebanyak yang mendukung komposisi, tanpa batas jumlah; setiap id harus unik pada satu slide. Jangan pasangkan benda yang tidak punya kesinambungan visual.
 - Ubah posisi dan/atau ukurannya sesuai rencana — itulah yang membuat morph terasa. Jangan taruh di koordinat yang persis sama.
 - Foto dengan data-morph yang sama otomatis memakai gambar yang sama; tetap tulis data-brief-nya.
-- Teks yang dipakai ulang boleh diringkas atau diperkecil, tapi tetap satu elemen daun.`);
+- Isi teks yang dipakai ulang harus identik persis agar player memasangkannya; posisi, ukuran, dan gaya visualnya boleh berubah. Jika isi teks berubah, tampilkan sebagai elemen baru.`);
   }
   if (morph?.toNext) {
     parts.push(`SLIDE BERIKUTNYA AKAN MORPH DARI SLIDE INI:
 Rencana: ${morph.toNext.note || "elemen utama berlanjut ke slide berikutnya"}
-Tandai 1-3 elemen kunci yang akan berlanjut dengan atribut data-morph="<id-pendek>" (huruf kecil, mis. title, hero, stat, accent). Pasang langsung pada elemen daunnya: <h1>/<p>, <div class="photo">, atau <div> bentuk dekoratif — bukan pada pembungkus.`);
+Tandai semua elemen yang akan berlanjut dengan atribut data-morph="<id-pendek>" yang unik (huruf kecil, mis. title, hero, stat, accent). Tanpa batas jumlah: judul, foto, angka, bentuk, atau bagian diagram boleh morph bersama. Rencanakan juga perubahan kontur shape dan perubahan bidang warna menjadi foto bila membantu cerita. Untuk bentuk bebas seperti segitiga, gunakan satu <svg data-morph="id"><path .../></svg> dengan satu path agar kontur tetap vektor. Pasang id pada elemen daunnya, termasuk <div class="photo">; jangan pada pembungkus. Pertahankan isi teks persis sama pada slide berikutnya.`);
   }
   return parts.join("\n\n");
 }
@@ -112,6 +117,8 @@ TEKS:
 - Tiap potongan teks tinggal di elemen daunnya sendiri (<h1>, <p>, <span>, <li>). JANGAN campur teks langsung dengan elemen blok di satu induk.
 - JANGAN pecah satu kalimat menjadi banyak <span> terpisah. Satu kalimat = satu elemen <p> atau <span>. Hanya gunakan <span> di dalam kalimat bila memang perlu warna/gaya berbeda untuk sebagian teks.
 - Teks singkat dan padat — ini slide, bukan dokumen. Judul <= 9 kata, paragraf <= 28 kata.
+- Tulis ulang frasa kaku di ISI menjadi bahasa lisan yang alami, tanpa menambah fakta atau mengubah angka/nama. Hindari slogan, frasa "tak sekadar X, melainkan Y", penutup kosong, dan tiga poin yang dipaksakan. JUDUL yang sudah diberikan tetap dipertahankan.
+- Jika font yang dipakai Public Sans, letter-spacing wajib 0 pada semua teks, termasuk label kecil, judul, dan teks yang memakai var(--font-body)/var(--font-heading).
 
 VISUAL:
 - JANGAN pakai <img> dan JANGAN karang URL. Untuk tiap foto, tulis:

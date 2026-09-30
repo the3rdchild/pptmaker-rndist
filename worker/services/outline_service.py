@@ -49,6 +49,9 @@ Rules:
 - Do NOT use ### subsections.
 - Write ALL content in the specified language.
 - Be specific and engaging, not generic.
+- Write in plain, natural language for someone hearing the presentation. Every sentence should add a concrete point. Vary sentence rhythm and use ordinary verbs.
+- Avoid staged openers, empty closers, inflated claims, forced sets of three, and formulaic contrasts such as "not just X, but Y". Keep headings useful rather than slogan-like.
+- Do not invent facts, numbers, names, dates, quotations, sources, or causal claims. Rewrite awkward phrasing while preserving every supported claim.
 
 When a SOURCE DOCUMENT is supplied, it replaces your own knowledge as the material:
 - Build the outline from the document's actual sections, terms and findings. Do not pad it with general background it does not contain, and never contradict it.

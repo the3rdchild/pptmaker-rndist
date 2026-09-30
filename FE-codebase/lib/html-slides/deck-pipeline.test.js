@@ -117,6 +117,7 @@ test(failure === "cancellation" ? "aborts a morph chain without recovering cance
     const slides = events.filter((event) => event.type === "slide");
     assert.deepEqual(slides.map((slide) => slide.index), [0, 1, 2, 3, 4]);
     assert.deepEqual(slides.map((slide) => slide.transition), ["none", "morph", "morph", "morph", "morph"]);
+    assert.deepEqual(deck.slides.map((slide) => slide.transition), ["none", "morph", "morph", "morph", "morph"], "saved decks retain the planned transition");
     if (failure === "token limit") {
       assert.deepEqual(budgets, [4000, 8000]);
       assert.ok(slides[1].ui.elements.some((element) => element.position.x === 100 && element.runs?.some((run) => run.text === "Biliar 2")), "the larger reply must supply slide 2 instead of the fallback");

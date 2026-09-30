@@ -61,3 +61,10 @@ test("a linked card backdrop still morphs when other content overlaps it", () =>
     "both author links remain recognized, including the covered card",
   );
 });
+
+test("a linked shape and image pair in either direction", () => {
+  const frame = { type: "rectangle", morph_id: "hero", position: { x: 50, y: 50 }, size: { width: 200, height: 100 } };
+  const picture = { type: "image", morph_id: "hero", position: { x: 50, y: 50 }, size: { width: 200, height: 100 }, data: "photo.png" };
+  assert.equal(matchMorphPairs(slide(frame), slide(picture)).pairs.length, 1);
+  assert.equal(matchMorphPairs(slide(picture), slide(frame)).pairs.length, 1);
+});

@@ -446,7 +446,7 @@ export async function generateDeck({
       });
       for (const warning of warnings) onEvent({ type: "warning", ...warning });
       return {
-        slide: { ...rendered, ui },
+        slide: { ...rendered, ui, ...(slide.transition ? { transition: slide.transition } : {}) },
         warnings,
         anchors: morphAnchorsFrom(ui),
         morphPhotos: fragment.morphPhotos ?? {},

@@ -12,6 +12,9 @@ import { collectMediaOverlays } from "@/components/editor-react/present-media-ov
 import { PresentOverview } from "@/components/editor-react/present-overview";
 import { recoverPartialAutoEntrance } from "@/components/editor-react/auto-entrance";
 import { matchMorphPairs, morphGeometry, walkSlideElements } from "@/components/editor-react/morph";
+import { canAddMorphTexture } from "@/components/editor-react/morph-budget.js";
+import { contourPolygonAt, shapeImageMorphPlan, shapeMorphPlan, type ShapeMorphPlan } from "@/components/editor-react/morph-shape";
+import { MorphShapeFlight } from "@/components/editor-react/morph-shape-flight";
 import { borderRadius, getElementAtSelection } from "@/components/slide-editor/model/model";
 import type { RawUi } from "@/components/slide-editor/model/core";
 import {
@@ -60,11 +63,9 @@ const SLIDE_DURATION = 450;
 // Konva surface this used to mount for the outgoing slide: building a stage
 // costs hundreds of milliseconds of main thread, and it landed squarely inside
 // the animation window.
-/** Each flight is a composited layer of its own; cap what one morph can spawn. */
-const MAX_MORPH_FLIGHTS = 24;
 // One flight may use at most a full slide at the scene's 4x ceiling.
-// Oversized pairs keep the ordinary slide crossfade instead of allocating an
-// unbounded texture or stretching a deliberately undersized one.
+// Oversized pairs keep the ordinary slide crossfade. A separate total pixel
+// budget allows many small flights without allocating unlimited canvas memory.
 const MAX_MORPH_TEXTURE_PIXELS = SLIDE_W * SLIDE_H * 4 * 4;
 const MAX_MORPH_TEXTURE_EDGE = 8192;
 /** How long the first run waits for the dynamically imported surface to hand
@@ -74,7 +75,12 @@ const MAX_STAGE_WAIT_MS = 1500;
 interface MorphFlight {
   /** nodeRefs key of this element on the INCOMING slide. */
   key: string;
-  canvas: HTMLCanvasElement;
+  canvas: HTMLCanvasElement | null;
+  targetCanvas?: HTMLCanvasElement | null;
+  targetImage?: string | null;
+  imageSource?: boolean;
+  kind: "raster" | "shape" | "crossfade";
+  shape?: ShapeMorphPlan | null;
   from: FlightRect;
   to: FlightRect;
   /** Images resize their clipped viewport while their bitmap keeps its ratio. */
@@ -135,6 +141,28 @@ interface MorphCapture {
 
 const NO_MORPH: MorphCapture = { flights: [], sources: [] };
 
+/** A detached snapshot of one Konva node, scaled to cover both endpoints. */
+function captureMorphCanvas(node: Konva.Node, rect: FlightRect, width: number, height: number, ratio: number) {
+  const absolute = node.getAbsoluteTransform().copy();
+  const captureTransform = absolute.copy();
+  captureTransform.reset();
+  captureTransform.scale(width / rect.width, height / rect.height);
+  captureTransform.translate(-rect.x, -rect.y);
+  captureTransform.multiply(absolute);
+  const snapshot = node.clone({
+    ...captureTransform.decompose(),
+    offsetX: 0,
+    offsetY: 0,
+    opacity: node.getAbsoluteOpacity(),
+    transformsEnabled: "all",
+  });
+  try {
+    return fillHost(snapshot.toCanvas({ x: 0, y: 0, width, height, pixelRatio: ratio }));
+  } finally {
+    snapshot.destroy();
+  }
+}
+
 /** Freezes the matched elements of the outgoing slide into bitmaps, read off
  *  the live stage *before* navigating — so they are guaranteed fully painted
  *  and no second Konva surface has to be mounted to produce them. */
@@ -158,7 +186,14 @@ function captureMorphFlights(
       Math.abs(from.box.width - to.box.width) < 0.5 &&
       Math.abs(from.box.height - to.box.height) < 0.5 &&
       Math.abs(from.rotation - to.rotation) < 0.01;
-    return still ? [] : [{ pair, from, to }];
+    const sourceElement = getElementAtSelection(uiA as RawUi, pair.selectionA);
+    const targetElement = getElementAtSelection(uiB as RawUi, pair.selectionB);
+    const changedAppearance = sourceElement?.type !== targetElement?.type ||
+      JSON.stringify(sourceElement?.border_radius ?? null) !== JSON.stringify(targetElement?.border_radius ?? null) ||
+      JSON.stringify(sourceElement?.fill ?? null) !== JSON.stringify(targetElement?.fill ?? null) ||
+      JSON.stringify(sourceElement?.stroke ?? null) !== JSON.stringify(targetElement?.stroke ?? null) ||
+      sourceElement?.d !== targetElement?.d || sourceElement?.data !== targetElement?.data;
+    return still && !changedAppearance ? [] : [{ pair, from, to, sourceElement, targetElement }];
   });
 
   moved.sort(
@@ -168,17 +203,32 @@ function captureMorphFlights(
 
   const flights: MorphFlight[] = [];
   const sources: Konva.Node[] = [];
-  for (const entry of moved.slice(0, MAX_MORPH_FLIGHTS)) {
+  let usedPixels = 0;
+  for (const entry of moved) {
     const node = refs.get(entry.pair.keyA);
     const rect = rectFromNode(node);
     if (!node || !rect) continue;
-    const sourceElement = getElementAtSelection(uiA as RawUi, entry.pair.selectionA);
-    const targetElement = getElementAtSelection(uiB as RawUi, entry.pair.selectionB);
+    const sourceElement = entry.sourceElement;
+    const targetElement = entry.targetElement;
+    const shape = shapeMorphPlan(sourceElement, targetElement);
+    const crossfade = !shape && (sourceElement?.type === "image" || targetElement?.type === "image") &&
+      (sourceElement?.type !== targetElement?.type || sourceElement?.data !== targetElement?.data);
+    const imageContour = crossfade ? shapeImageMorphPlan(sourceElement, targetElement) : null;
     const cropImage = sourceElement?.type === "image" && targetElement?.type === "image";
     const radius = cropImage ? borderRadius(targetElement) : 0;
     const borderRadiusCss = Array.isArray(radius)
       ? radius.map((value) => `${Math.max(0, value)}px`).join(" ")
       : `${Math.max(0, radius)}px`;
+    if (shape) {
+      flights.push({
+        key: entry.pair.keyB, kind: "shape", canvas: null, shape,
+        from: rect,
+        to: { x: entry.to.box.x, y: entry.to.box.y, width: entry.to.box.width, height: entry.to.box.height },
+        cropImage: false, borderRadius: "0px",
+      });
+      sources.push(node);
+      continue;
+    }
     const ratio = layerPixelRatio(node.getLayer());
     // The image snapshot stays at its source aspect. Its viewport will grow
     // and crop during the flight; pre-stretching this bitmap would bake in
@@ -190,41 +240,29 @@ function captureMorphFlights(
     if (
       pixelWidth > MAX_MORPH_TEXTURE_EDGE ||
       pixelHeight > MAX_MORPH_TEXTURE_EDGE ||
-      pixelWidth * pixelHeight > MAX_MORPH_TEXTURE_PIXELS
+      pixelWidth * pixelHeight > MAX_MORPH_TEXTURE_PIXELS ||
+      !canAddMorphTexture(usedPixels, pixelWidth, pixelHeight) ||
+      (crossfade && !canAddMorphTexture(usedPixels + pixelWidth * pixelHeight,
+        Math.ceil(entry.to.box.width * ratio), Math.ceil(entry.to.box.height * ratio)))
     ) continue;
     let canvas: HTMLCanvasElement;
     try {
-      // Capture enough pixels for BOTH endpoints, independently per axis.
-      // Increasing pixelRatio alone overallocates the long axis when a thin
-      // line grows in height. A detached clone also avoids altering the live
-      // stage and removes its position from Konva's temporary buffer bounds.
-      const absolute = node.getAbsoluteTransform().copy();
-      const captureTransform = absolute.copy();
-      captureTransform.reset();
-      captureTransform.scale(width / rect.width, height / rect.height);
-      captureTransform.translate(-rect.x, -rect.y);
-      captureTransform.multiply(absolute);
-      const snapshot = node.clone({
-        ...captureTransform.decompose(),
-        offsetX: 0,
-        offsetY: 0,
-        opacity: node.getAbsoluteOpacity(),
-        transformsEnabled: "all",
-      });
-      try {
-        canvas = snapshot.toCanvas({ x: 0, y: 0, width, height, pixelRatio: ratio });
-        if (cropImage) canvas.style.objectFit = "cover";
-      } finally {
-        snapshot.destroy();
-      }
+      canvas = captureMorphCanvas(node, rect, width, height, ratio);
+      if (cropImage) canvas.style.objectFit = "cover";
     } catch {
       // toCanvas only draws (never reads pixels), so a tainted canvas is fine
       // here. A node that cannot be captured keeps the slide crossfade.
       continue;
     }
+    usedPixels += pixelWidth * pixelHeight + (crossfade
+      ? Math.ceil(entry.to.box.width * ratio) * Math.ceil(entry.to.box.height * ratio) : 0);
     flights.push({
       key: entry.pair.keyB,
-      canvas: fillHost(canvas),
+      kind: crossfade ? "crossfade" : "raster",
+      canvas,
+      shape: imageContour,
+      imageSource: sourceElement?.type === "image",
+      targetImage: crossfade && targetElement?.type === "image" && typeof targetElement.data === "string" ? targetElement.data : null,
       from: rect,
       to: {
         x: entry.to.box.x,
@@ -497,6 +535,15 @@ export default function PresentMode({
       const flights = run.flights.map((flight) => {
         const node = refs?.get(flight.key);
         const rect = rectFromNode(node);
+        let targetCanvas: HTMLCanvasElement | null = null;
+        if (flight.kind === "crossfade" && node && rect) {
+          try {
+            targetCanvas = captureMorphCanvas(node, rect, rect.width, rect.height, layerPixelRatio(node.getLayer()));
+            targetCanvas.style.objectFit = "cover";
+          } catch {
+            // A linked remote image can still render directly from its URL.
+          }
+        }
         // The incoming copy hides for the flight, otherwise it sits at the
         // destination in plain sight while a duplicate flies towards it.
         if (node) {
@@ -504,7 +551,7 @@ export default function PresentMode({
           node.opacity(0);
           morphRestoreRef.current.push(() => node.opacity(original));
         }
-        return rect ? { ...flight, to: rect } : flight;
+        return rect ? { ...flight, to: rect, targetCanvas } : flight;
       });
       if (morphRestoreRef.current.length > 0) {
         stageRef.current?.getLayers().forEach((layer) => layer.draw());
@@ -1092,11 +1139,52 @@ export default function PresentMode({
               const { from, to } = flight;
               const atStart =
                 transition.stage === "preparing" || transition.stage === "staged";
+              if (flight.kind === "shape" && flight.shape) {
+                return <MorphShapeFlight key={flight.key} plan={flight.shape} from={from} to={to} atStart={atStart} />;
+              }
+              if (flight.kind === "crossfade" && flight.canvas) {
+                const move = `left ${MORPH_DURATION}ms cubic-bezier(0.77, 0, 0.175, 1), top ${MORPH_DURATION}ms cubic-bezier(0.77, 0, 0.175, 1), width ${MORPH_DURATION}ms cubic-bezier(0.77, 0, 0.175, 1), height ${MORPH_DURATION}ms cubic-bezier(0.77, 0, 0.175, 1)`;
+                // Reveal the photo evenly throughout the move. The position
+                // can ease, but easing opacity the same way hides most of the
+                // photo until the final frames and looks like a sudden pop.
+                const fade = `opacity ${MORPH_DURATION}ms linear`;
+                const clip = flight.shape
+                  ? contourPolygonAt(flight.shape.from, flight.shape.to, atStart ? 0 : 1)
+                  : undefined;
+                const clipTransition = flight.shape ? `, clip-path ${MORPH_DURATION}ms cubic-bezier(0.77, 0, 0.175, 1)` : "";
+                const sourceClip = Boolean(flight.shape && flight.imageSource);
+                const targetClip = Boolean(flight.shape && !flight.imageSource);
+                return (
+                  <div key={flight.key}>
+                    <div
+                      className="morph-flight morph-content-flight pointer-events-none absolute overflow-hidden"
+                      style={{
+                        zIndex: 4,
+                        left: atStart ? from.x : to.x,
+                        top: atStart ? from.y : to.y,
+                        width: atStart ? from.width : to.width,
+                        height: atStart ? from.height : to.height,
+                        borderRadius: flight.shape ? 0 : flight.borderRadius,
+                        willChange: "left, top, width, height",
+                        transition: move,
+                      }}
+                    >
+                      <CanvasHost canvas={flight.canvas} className="morph-source-content absolute inset-0" style={{ opacity: atStart ? 1 : 0, transition: fade + (sourceClip ? clipTransition : ""), ...(sourceClip ? { clipPath: clip } : {}) }} />
+                      {flight.targetCanvas ? (
+                        <CanvasHost canvas={flight.targetCanvas} className="morph-target-content absolute inset-0" style={{ opacity: atStart ? 0 : 1, transition: fade + (targetClip ? clipTransition : ""), ...(targetClip ? { clipPath: clip } : {}) }} />
+                      ) : flight.targetImage ? (
+                        <img src={flight.targetImage} alt="" className="morph-target-content absolute inset-0 h-full w-full object-cover" style={{ opacity: atStart ? 0 : 1, transition: fade + (targetClip ? clipTransition : ""), ...(targetClip ? { clipPath: clip } : {}) }} />
+                      ) : null}
+                    </div>
+                    {flight.shape ? <MorphShapeFlight plan={flight.shape} from={from} to={to} atStart={atStart} outlineOnly /> : null}
+                  </div>
+                );
+              }
               if (flight.cropImage) {
                 return (
                   <CanvasHost
                     key={flight.key}
-                    canvas={flight.canvas}
+                    canvas={flight.canvas!}
                     className="morph-flight morph-image-flight pointer-events-none absolute overflow-hidden"
                     style={{
                       zIndex: 4,
@@ -1118,7 +1206,7 @@ export default function PresentMode({
               return (
                 <CanvasHost
                   key={flight.key}
-                  canvas={flight.canvas}
+                  canvas={flight.canvas!}
                   className="morph-flight pointer-events-none absolute"
                   style={{
                     zIndex: 4,

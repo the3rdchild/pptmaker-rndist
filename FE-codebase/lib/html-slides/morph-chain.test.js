@@ -8,7 +8,7 @@ import {
   pairHeadingsIfUnmatched,
   sharedMorphIds,
 } from "./morph-chain.js";
-import { buildMorphSection } from "./slide-prompt.js";
+import { buildMorphSection, buildOutlinePrompt } from "./slide-prompt.js";
 
 const text = (content, size, extra = {}) => ({
   type: "text",
@@ -66,4 +66,30 @@ test("the prompt shows the previous slide's anchors and asks for tags when the n
   assert.match(section, /data-morph="title" — teks "Kopi", x=64 y=200 lebar=900 tinggi=120/);
   assert.match(section, /SLIDE BERIKUTNYA AKAN MORPH[\s\S]*foto geser ke kanan/);
   assert.equal(buildMorphSection(undefined), "");
+});
+
+test("transition planning leaves the sequence open to the content", () => {
+  const prompt = buildOutlinePrompt("Kopi Nusantara", 5, { transitions: true });
+  assert.match(prompt, /tanpa pola urutan atau kuota/);
+  assert.match(prompt, /slide penutup/i);
+  assert.doesNotMatch(prompt, /kira-kira separuh slide|Utamakan "morph"/);
+});
+
+test("morph prompt can carry more than three distinct elements", () => {
+  const anchors = ["title", "hero", "stat", "accent"].map((id) => ({
+    id, kind: "shape", text: "", box: { x: 0, y: 0, width: 100, height: 100 },
+  }));
+  const section = buildMorphSection({ from: { note: "susun ulang", anchors }, toNext: { note: "lanjut" } });
+  for (const id of ["title", "hero", "stat", "accent"]) assert.match(section, new RegExp(`data-morph="${id}"`));
+  assert.match(section, /tanpa batas jumlah/);
+  assert.match(section, /teks.*identik/);
+  assert.doesNotMatch(section, /1-3 elemen/);
+});
+
+test("generation prompts ask for natural, factual Indonesian copy", () => {
+  const outline = buildOutlinePrompt("Karhutla", 5);
+  assert.match(outline, /bahasa Indonesia yang alami/i);
+  assert.match(outline, /tanpa menambah fakta/i);
+  assert.match(outline, /Judul maksimal 9 kata/i);
+  assert.match(outline, /frasa kabur/i);
 });

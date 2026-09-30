@@ -36,6 +36,17 @@ test("preserves the theme-background marker while filling its photo", async () =
   assert.match(result.html, /<img class="photo theme-background"[^>]*data-theme-background/);
 });
 
+test("fills a photo container that also has overlay content", async () => {
+  const result = await fillPhotos(
+    '<section class="slide"><div class="photo" data-morph="cup" data-brief="brewed coffee"><div class="note">Taste</div></div></section>',
+    { reusePhotos: { cup: "https://example.test/cup.jpg" } },
+  );
+  assert.equal(result.count, 1);
+  assert.match(result.html, /<div class="photo"[^>]*><img class="photo-fill-image"[^>]*data-morph="cup"[^>]*src="https:\/\/example\.test\/cup\.jpg"/);
+  assert.match(result.html, /<div class="note">Taste<\/div>/);
+  assert.equal((result.html.match(/data-morph="cup"/g) ?? []).length, 1);
+});
+
 test("fills only an exact photo class token and leaves photo decorations intact", async () => {
   const decorations = [
     '<div class="photo-frame" data-brief="wooden frame"></div>',

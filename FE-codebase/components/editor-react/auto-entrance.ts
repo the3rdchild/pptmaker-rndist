@@ -61,8 +61,8 @@ export function applyAutoEntrance(ui: Record<string, unknown> | null | undefined
 }
 
 /** The homepage animation toggle never leaves a dense generated slide with a
- *  partial entrance. Dense slides use one fade for all unmatched content;
- *  a real morph keeps its linked-element transition. */
+ *  partial entrance. The outline's transition still plays when the entrance
+ *  build is too dense to animate safely. */
 export function prepareGeneratedEntrance(
   ui: Record<string, unknown> | null | undefined,
   transition: SlideTransition,
@@ -70,7 +70,7 @@ export function prepareGeneratedEntrance(
   const animated = applyAutoEntrance(ui);
   return {
     ui: animated ?? ui,
-    transition: !animated && transition !== "morph" ? "fade-black" as const : transition,
+    transition,
   };
 }
 

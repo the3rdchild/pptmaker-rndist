@@ -8,6 +8,32 @@ import { ChromeSession } from "./chrome-session.js";
 import { extractSlide } from "./dom-extract.js";
 import { fillPhotos } from "./photo-fill.js";
 
+test("extracts a linked triangle as a vector path and zeros Public Sans tracking", async () => {
+  const fixturePath = join(tmpdir(), `dom-extract-morph-path-${process.pid}.html`);
+  await writeFile(fixturePath, `<!doctype html><style>
+    * { box-sizing:border-box;margin:0;padding:0 }
+    .slide { position:relative;width:1280px;height:720px;background:white }
+    svg { position:absolute;left:100px;top:100px;width:200px;height:200px }
+    p { position:absolute;left:100px;top:340px;font:28px 'Public Sans';letter-spacing:2px }
+  </style><section class="slide">
+    <svg data-morph="accent" viewBox="0 0 100 100"><path d="M 50 0 L 100 100 L 0 100 Z" fill="none" stroke="#123456" stroke-width="3"/></svg>
+    <p>Contoh</p>
+  </section>`);
+  const chrome = await ChromeSession.launch();
+  try {
+    await chrome.loadFile(fixturePath);
+    const extracted = await chrome.evaluate(`(${extractSlide.toString()})()`);
+    const shape = extracted.elements.find((element) => element.morph_id === "accent");
+    assert.equal(shape.type, "path");
+    assert.match(shape.d, /M 50 0 L 100 100 L 0 100 Z/);
+    const text = extracted.elements.find((element) => element.type === "text" && element.runs?.[0]?.text === "Contoh");
+    assert.equal(text.font.letter_spacing, 0);
+  } finally {
+    await chrome.close();
+    await rm(fixturePath, { force: true });
+  }
+});
+
 test("merges styled fragments only inside the same horizontal text flow", async () => {
   const fixturePath = join(tmpdir(), `dom-extract-${process.pid}.html`);
   await writeFile(

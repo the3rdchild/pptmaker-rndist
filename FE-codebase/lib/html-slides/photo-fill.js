@@ -94,7 +94,9 @@ export function ensureThemeBackgroundPlaceholder(sectionHtml, brief) {
  *   new search — a morph between two different pictures reads as a glitch.
  */
 export async function fillPhotos(sectionHtml, { resolvePhoto = findPhoto, photoContext, reusePhotos = {} } = {}) {
-  const placeholder = /<div\b((?:[^<>"']|"[^"]*"|'[^']*')*)>\s*<\/div\s*>/gi;
+  // An image slot may contain a caption or annotation. Match its opening tag
+  // too, so the photo can sit behind those children instead of staying blank.
+  const placeholder = /<div\b((?:[^<>"']|"[^"]*"|'[^']*')*)>(\s*<\/div\s*>)?/gi;
   const slots = [];
   for (const match of sectionHtml.matchAll(placeholder)) {
     const parsed = photoAttributes(match[1]);
@@ -114,7 +116,7 @@ export async function fillPhotos(sectionHtml, { resolvePhoto = findPhoto, photoC
   });
 
   let index = 0;
-  const filled = sectionHtml.replace(placeholder, (full, attrs) => {
+  const filled = sectionHtml.replace(placeholder, (full, attrs, emptyClose) => {
     const parsed = photoAttributes(attrs);
     if (!parsed) return full;
     const brief = parsed["data-brief"];
@@ -133,7 +135,11 @@ export async function fillPhotos(sectionHtml, { resolvePhoto = findPhoto, photoC
       extra?.credit_url ? ` data-credit-url="${escapeAttribute(extra.credit_url)}"` : "",
       extra?.source_url ? ` data-source-url="${escapeAttribute(extra.source_url)}"` : "",
     ].join("");
-    return `<img class="${className}" data-brief="${escapeAttribute(brief)}"${themeBackground}${themeOverlay}${morph}${attribution}${style} src="${escapeAttribute(url)}" alt="">`;
+    if (emptyClose) {
+      return `<img class="${className}" data-brief="${escapeAttribute(brief)}"${themeBackground}${themeOverlay}${morph}${attribution}${style} src="${escapeAttribute(url)}" alt="">`;
+    }
+    const wrapperAttrs = attrs.replace(/\sdata-morph\s*=\s*(?:"[^"]*"|'[^']*')/i, "");
+    return `<div${wrapperAttrs}><img class="photo-fill-image" data-brief="${escapeAttribute(brief)}"${themeBackground}${themeOverlay}${morph}${attribution} style="width:100%;height:100%;object-fit:cover;display:block" src="${escapeAttribute(url)}" alt="">`;
   });
 
   return { html: filled, count: slots.length - unresolved.length, unresolved, morphPhotos };

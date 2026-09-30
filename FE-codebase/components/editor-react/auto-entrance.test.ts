@@ -47,13 +47,13 @@ test("a dense generated slide animates every eligible element up to the flight b
   assert.ok(MAX_ANIMATION_FLIGHTS >= 62);
 });
 
-test("over-budget auto entrance falls back as a whole instead of leaving static stragglers", () => {
+test("over-budget auto entrance leaves the planned slide transition intact", () => {
   const tooDense = { elements: Array.from({ length: MAX_ANIMATION_FLIGHTS + 1 }, (_, index) => ({
     type: "text", ...box(40, index * 9, 180, 20), runs: [{ text: `Item ${index}` }],
   })) };
   assert.equal(applyAutoEntrance(tooDense), null);
-  assert.equal(prepareGeneratedEntrance(tooDense, "none").transition, "fade-black");
-  assert.equal(prepareGeneratedEntrance(tooDense, "slide-left").transition, "fade-black");
+  assert.equal(prepareGeneratedEntrance(tooDense, "none").transition, "none");
+  assert.equal(prepareGeneratedEntrance(tooDense, "slide-left").transition, "slide-left");
   assert.equal(prepareGeneratedEntrance(tooDense, "morph").transition, "morph");
 });
 

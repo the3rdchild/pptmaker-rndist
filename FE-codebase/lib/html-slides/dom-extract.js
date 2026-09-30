@@ -239,7 +239,7 @@ export function extractSlide() {
       italic: style.fontStyle === "italic",
       underline: String(style.textDecorationLine || "").includes("underline"),
       line_height: size > 0 ? round(lineHeight / size) : 1.2,
-      letter_spacing: round(spacing),
+      letter_spacing: family.toLowerCase() === "public sans" ? 0 : round(spacing),
     };
   }
 
@@ -426,6 +426,55 @@ export function extractSlide() {
     };
   }
 
+  // A single linked SVG outline is a real vector shape. Keep its path so
+  // Present Mode can interpolate the contour and stroke into another shape.
+  // Multi-part SVG artwork still travels as one raster image.
+  function linkedSvgPathFor(el, box) {
+    if (!el.dataset.morph || el.children.length !== 1) return null;
+    const child = el.children[0];
+    const tag = child.tagName.toLowerCase();
+    const view = el.viewBox.baseVal;
+    const width = view.width || box.width;
+    const height = view.height || box.height;
+    let d = "";
+    if (tag === "path") d = child.getAttribute("d") || "";
+    else if (tag === "polygon" || tag === "polyline") {
+      const points = (child.getAttribute("points") || "").trim().split(/[\s,]+/).map(Number);
+      if (points.length >= 6 && points.length % 2 === 0 && points.every(Number.isFinite)) {
+        d = "M " + points[0] + " " + points[1];
+        for (let i = 2; i < points.length; i += 2) d += " L " + points[i] + " " + points[i + 1];
+        if (tag === "polygon") d += " Z";
+      }
+    } else if (tag === "rect") {
+      const x = num(child.getAttribute("x"));
+      const y = num(child.getAttribute("y"));
+      const w = num(child.getAttribute("width"));
+      const h = num(child.getAttribute("height"));
+      const r = Math.min(w / 2, h / 2, num(child.getAttribute("rx")));
+      if (w > 0 && h > 0) d = `M ${x + r} ${y} H ${x + w - r} Q ${x + w} ${y} ${x + w} ${y + r} V ${y + h - r} Q ${x + w} ${y + h} ${x + w - r} ${y + h} H ${x + r} Q ${x} ${y + h} ${x} ${y + h - r} V ${y + r} Q ${x} ${y} ${x + r} ${y} Z`;
+    } else if (tag === "circle" || tag === "ellipse") {
+      const cx = num(child.getAttribute("cx"));
+      const cy = num(child.getAttribute("cy"));
+      const rx = num(child.getAttribute(tag === "circle" ? "r" : "rx"));
+      const ry = tag === "circle" ? rx : num(child.getAttribute("ry"));
+      if (rx > 0 && ry > 0) d = `M ${cx} ${cy - ry} A ${rx} ${ry} 0 1 1 ${cx} ${cy + ry} A ${rx} ${ry} 0 1 1 ${cx} ${cy - ry} Z`;
+    }
+    if (!d || !width || !height) return null;
+    const style = getComputedStyle(child);
+    const fill = parseColor(style.fill);
+    const stroke = parseColor(style.stroke);
+    const lineWidth = num(style.strokeWidth);
+    return {
+      type: "path",
+      position: { x: box.x, y: box.y },
+      size: { width: box.width, height: box.height },
+      d,
+      view_box: { width, height },
+      fill: fill ? { color: fill.color, opacity: fill.opacity } : null,
+      stroke: stroke && lineWidth > 0 ? { color: stroke.color, opacity: stroke.opacity, width: lineWidth } : null,
+    };
+  }
+
   function imageElementFor(el, style, box) {
     const parent = el.parentElement;
     const parentStyle = parent ? getComputedStyle(parent) : null;
@@ -561,7 +610,7 @@ export function extractSlide() {
     };
 
     if (el instanceof SVGSVGElement) {
-      emit(applyOpacity(svgElementFor(el, box)), el);
+      emit(applyOpacity(linkedSvgPathFor(el, box) || svgElementFor(el, box)), el);
       return;
     }
     if (el.tagName === "IMG") {

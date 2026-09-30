@@ -1,4 +1,5 @@
 import { renderMarkdownTextRuns } from "@/components/slide-editor/text/markdown-text";
+import { letterSpacingForFont } from "@/components/slide-editor/text/public-sans-tracking.js";
 import type { Font, TextRun } from "@/components/slide-editor/types";
 import { effectiveLineHeight } from "@/components/slide-editor/text/text-line-height";
 import { textRunsContent } from "@/components/slide-editor/text/text-runs";
@@ -93,10 +94,10 @@ export function fontFromRecord(
       readNumber(font?.line_height) ??
       readNumber(font?.lineHeight) ??
       fallback.lineHeight,
-    letterSpacing:
-      readNumber(font?.letter_spacing) ??
-      readNumber(font?.letterSpacing) ??
-      fallback.letterSpacing,
+    letterSpacing: letterSpacingForFont(
+      readString(font?.family) ?? fallback.family,
+      readNumber(font?.letter_spacing) ?? readNumber(font?.letterSpacing) ?? fallback.letterSpacing,
+    ),
     opacity: readNumber(font?.opacity) ?? fallback.opacity,
   };
 }
@@ -110,7 +111,7 @@ export function fontToSource(font: RenderTextFont): Font {
     italic: font.italic,
     underline: font.underline,
     line_height: font.lineHeight,
-    letter_spacing: font.letterSpacing,
+    letter_spacing: letterSpacingForFont(font.family, font.letterSpacing),
     opacity: font.opacity,
   };
 }
@@ -143,7 +144,7 @@ export function applyTextStyle(
     italic: style.italic,
     underline: style.underline,
     line_height: style.lineHeight,
-    letter_spacing: style.letterSpacing,
+    letter_spacing: letterSpacingForFont(style.family, style.letterSpacing),
     opacity: style.opacity,
   };
   const runs = readArray(element.runs);

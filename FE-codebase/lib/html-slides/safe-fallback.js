@@ -22,8 +22,8 @@ export function buildSafeFallbackFragment({ slide, index, total }) {
   return {
     styleBlock: `<style>
 .safe-fallback-panel { position:absolute; left:64px; top:64px; width:600px; max-height:592px; overflow:hidden; padding:44px; border:1px solid var(--color-border); background:var(--color-surface); color:var(--color-text); }
-.safe-fallback-index { margin-bottom:26px; color:var(--color-accent); font-family:var(--font-body); font-size:var(--fs-small); font-weight:700; letter-spacing:0.16em; }
-.safe-fallback-heading { font-family:var(--font-heading); font-size:var(--fs-h1); line-height:1.02; letter-spacing:-0.04em; }
+.safe-fallback-index { margin-bottom:26px; color:var(--color-accent); font-family:var(--font-body); font-size:var(--fs-small); font-weight:700; letter-spacing:0; }
+.safe-fallback-heading { font-family:var(--font-heading); font-size:var(--fs-h1); line-height:1.02; letter-spacing:0; }
 .safe-fallback-body { margin-top:26px; color:var(--color-muted); font-family:var(--font-body); font-size:var(--fs-body); line-height:1.45; }
 .safe-fallback-rule { width:88px; height:4px; margin-top:30px; background:var(--color-accent); }
 </style>`,

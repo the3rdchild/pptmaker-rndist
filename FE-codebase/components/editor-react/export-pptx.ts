@@ -108,7 +108,7 @@ function runsToText(runs: unknown): { text: string; opts: pptxgen.TextPropsOptio
       fontFace: fontFamily,
       // charSpacing is in points — same px→pt factor as fontSize.
       charSpacing:
-        letterSpacing != null && letterSpacing !== 0
+        fontFamily !== "Public Sans" && letterSpacing != null && letterSpacing !== 0
           ? Math.round(letterSpacing * PX_TO_IN_Y * 72 * 100) / 100
           : undefined,
     },

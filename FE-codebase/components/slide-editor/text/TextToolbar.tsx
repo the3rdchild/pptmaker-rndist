@@ -226,7 +226,7 @@ export function TextToolbar({
   );
   const updateFontFamily = (family: string) => {
     loadFontFamily(family);
-    updateFont({ family });
+    updateFont({ family, ...(family === "Public Sans" ? { letter_spacing: 0 } : {}) });
   };
   const commitFontSize = (nextSize: number) => {
     if (!Number.isFinite(nextSize)) return;
@@ -284,7 +284,7 @@ export function TextToolbar({
   const updateLetterSpacing = (nextLetterSpacing: number) => {
     if (!Number.isFinite(nextLetterSpacing)) return;
     updateFont({
-      letter_spacing: clampMetric(
+      letter_spacing: font.family === "Public Sans" ? 0 : clampMetric(
         nextLetterSpacing,
         MIN_LETTER_SPACING,
         MAX_LETTER_SPACING,

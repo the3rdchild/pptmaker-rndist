@@ -571,10 +571,11 @@ function clampPosition(position: number, maxPosition: number) {
 }
 
 function normalizeFont(font: TextRun["font"], baseFont: Font): Font {
-  return {
+  const merged = {
     ...baseFont,
     ...(font ?? {}),
   };
+  return { ...merged, letter_spacing: merged.family === "Public Sans" ? 0 : merged.letter_spacing };
 }
 
 function fontToRunStyleAttrs(font: Font): RunStyleAttrs {
@@ -586,13 +587,13 @@ function fontToRunStyleAttrs(font: Font): RunStyleAttrs {
     italic: font.italic,
     underline: font.underline,
     lineHeight: font.line_height,
-    letterSpacing: font.letter_spacing,
+    letterSpacing: font.family === "Public Sans" ? 0 : font.letter_spacing,
     opacity: font.opacity,
   };
 }
 
 function fontFromRunStyleAttrs(attrs: RunStyleAttrs, baseFont: Font): Font {
-  return {
+  const merged = {
     ...baseFont,
     family: attrs.family ?? baseFont.family,
     size: attrs.size ?? baseFont.size,
@@ -604,6 +605,7 @@ function fontFromRunStyleAttrs(attrs: RunStyleAttrs, baseFont: Font): Font {
     letter_spacing: attrs.letterSpacing ?? baseFont.letter_spacing,
     opacity: attrs.opacity ?? baseFont.opacity,
   };
+  return { ...merged, letter_spacing: merged.family === "Public Sans" ? 0 : merged.letter_spacing };
 }
 
 function runStyleAttrsToCss(attrs: RunStyleAttrs) {
@@ -619,7 +621,7 @@ function runStyleAttrsToCss(attrs: RunStyleAttrs) {
       ? `text-decoration:${attrs.underline ? "underline" : "none"}`
       : null,
     attrs.lineHeight != null ? `line-height:${attrs.lineHeight}` : null,
-    attrs.letterSpacing != null ? `letter-spacing:${attrs.letterSpacing}px` : null,
+    attrs.letterSpacing != null ? `letter-spacing:${attrs.family === "Public Sans" ? 0 : attrs.letterSpacing}px` : null,
     attrs.opacity != null ? `opacity:${attrs.opacity}` : null,
   ].filter(Boolean);
   return styles.join(";");
@@ -644,7 +646,7 @@ function tiptapEditorStyle(font: Font, runs: TextRun[]) {
     font.italic ? "font-style:italic" : "font-style:normal",
     font.underline ? "text-decoration:underline" : "text-decoration:none",
     `line-height:${rootLineHeight}px`,
-    `letter-spacing:${font.letter_spacing ?? 0}px`,
+    `letter-spacing:${font.family === "Public Sans" ? 0 : (font.letter_spacing ?? 0)}px`,
   ].join(";");
 }
 

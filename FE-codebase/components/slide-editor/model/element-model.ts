@@ -15,6 +15,7 @@ import type {
   TextListElement,
   TextRun,
 } from "@/components/slide-editor/types";
+import { letterSpacingForFont } from "@/components/slide-editor/text/public-sans-tracking.js";
 import {
   applyTextRunFontToSelection,
   replaceTextRunsContent,
@@ -122,7 +123,7 @@ export function elementFont(element: {
     italic: element.font?.italic ?? null,
     underline: element.font?.underline ?? null,
     lineHeight: element.font?.line_height ?? null,
-    letterSpacing: element.font?.letter_spacing ?? null,
+    letterSpacing: letterSpacingForFont(element.font?.family ?? DEFAULT_FONT_FAMILY, element.font?.letter_spacing ?? null),
     ellipsis: element.font?.ellipsis ?? null,
     opacity: element.font?.opacity ?? null,
   };

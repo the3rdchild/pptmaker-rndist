@@ -847,9 +847,10 @@ function fontFromRecord(
       readNumber(font?.lineHeight) ??
       fallback.lineHeight,
     letterSpacing:
-      readNumber(font?.letter_spacing) ??
-      readNumber(font?.letterSpacing) ??
-      fallback.letterSpacing,
+      (readString(font?.family) ?? fallback.family) === "Public Sans" ? 0 :
+        (readNumber(font?.letter_spacing) ??
+        readNumber(font?.letterSpacing) ??
+        fallback.letterSpacing),
     opacity: readNumber(font?.opacity) ?? fallback.opacity,
   };
 }

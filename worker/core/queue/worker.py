@@ -13,7 +13,7 @@ def start(handler, queue_name: str = QUEUE_NAME, max_workers: int = 4):
     Dengarkan job dari Redis pakai BRPOP, proses secara paralel.
 
     Jobs di-submit ke ThreadPoolExecutor (max_workers) karena kerjaannya
-    I/O-bound (DeepInfra streaming). BRPOP loop tetap single-threaded
+    I/O-bound (OpenRouter streaming). BRPOP loop tetap single-threaded
     (Redis connection tidak thread-safe untuk blocking commands), tapi
     handler jalan di thread pool.
 

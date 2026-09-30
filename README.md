@@ -66,9 +66,9 @@ Four pieces: a **Next.js** app (dashboard + editor + template authoring), a
     agent · image (FLUX)                        │
          │                                      │
          ▼                                      ▼
-    LLM providers                        S3 / DO Spaces
-    deepinfra · gpt · codex · glm ·      templates · elements
-    glm-flash · kimi · *-vl              fonts · uploads
+    OpenRouter models                    S3 / DO Spaces
+    GPT Sol · DeepSeek Flash ·          templates · elements
+    Gemini Flash · Claude Sonnet         fonts · uploads
 ```
 
 Two independent LLM paths, on purpose:
@@ -107,8 +107,7 @@ Both resolve providers from their own mirrored registry with matching ids — se
 
 - Docker Desktop
 - [Bun](https://bun.sh) (for the Next.js app)
-- At least one LLM API key (CodeBuddy is the default provider; DeepInfra is
-  also available)
+- An OpenRouter API key for text and vision models
 - An S3-compatible bucket + credentials — **required**, the template themes no
   longer ship in the repo
 
@@ -186,7 +185,7 @@ files are the authority, this is the map.
 | `S3_USE_OBJECT_ACL` | `true` for AWS S3 / DO Spaces; leave unset for R2 / MinIO |
 | `TEMPLATE_ASSETS_PROXY` | Serve bucket images same-origin. Defaults on, and **required while the bucket has no CORS policy** — canvas export taints without it |
 | `TEMPLATE_ENGINE_WRITES` | `true` to allow template authoring in a production build. Off by default because those routes have no auth |
-| `CODEBUDDY_API_KEY`, `DEEPINFRA_API_KEY` | Text and vision providers for the `/api/ai/*` routes |
+| `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL` | Text and vision models for the `/api/ai/*` routes; keep the key server-side |
 | `PEXELS_API_KEY`, `UNSPLASH_ACCESS_KEY`, `PIXABAY_API_KEY` | Stock photo search. The first key set becomes the default provider |
 
 > Bucket names containing dots need the **path-style** endpoint form
@@ -206,13 +205,11 @@ match what the API's SSE route subscribes to), plus:
 
 | Key | Purpose |
 |---|---|
-| `LLM_PROVIDER` | Default text provider: `codebuddy` (default), `deepinfra`, `qwen-vl`, `gemma-vl`, or `llama-vl` |
-| `CODEBUDDY_*` | International API key, base URL, and model for the CodeBuddy preset |
-| `DEEPINFRA_*` | Alternative text and vision models |
+| `LLM_PROVIDER` | Default text provider: `openrouter-gpt-sol` |
+| `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL` | OpenRouter credentials and endpoint |
 | `RUNWARE_*` | Image generation provider and model |
 
-> Both local and Docker worker env files should set `LLM_PROVIDER=codebuddy`
-> when using the CodeBuddy key.
+> Both local and Docker worker env files should set `LLM_PROVIDER=openrouter-gpt-sol`.
 
 ---
 
@@ -406,20 +403,24 @@ The agent's `replace_image` mirrors the photo predicate on purpose
 
 ## AI provider layer
 
-Providers are presets in **two mirrored registries** whose ids match
+Providers are presets in **three mirrored registries** whose ids match
 one-for-one:
 
 - `FE-codebase/lib/ai-providers.ts` → `PROVIDER_PRESETS` (Next.js routes)
+- `FE-codebase/lib/html-slides/llm-client.js` → `PROVIDERS` (HTML generation)
 - `worker/core/configs/env.py` → `PROVIDER_CONFIGS` (worker)
 
-CodeBuddy is the default text and vision provider (`codebuddy`, model `hy3`).
-The text-only `codebuddy-luna`, `codebuddy-terra`, and `codebuddy-sol` presets
-use GPT-5.6 Luna, Terra, and Sol through the same CodeBuddy key. Vision review
-continues to use a vision-capable preset such as Hy3.
-Configure `CODEBUDDY_API_KEY` only on the server; `CODEBUDDY_BASE_URL` and
-`CODEBUDDY_MODEL` can override the international API defaults. Its chat API
-requires a system message and streamed responses. The frontend and worker
-collect those chunks for callers that need a complete reply.
+OpenRouter offers four presets through one server-side `OPENROUTER_API_KEY`:
+
+| Selector | Model | Use |
+|---|---|---|
+| `openrouter-gpt-sol` | `openai/gpt-6-sol` | Default slide generation; high quality |
+| `openrouter-deepseek-flash` | `deepseek/deepseek-v4-flash-0731` | Lower-cost text generation |
+| `openrouter-gemini-flash` | `google/gemini-3-flash-preview` | Medium tier; default vision review |
+| `openrouter-claude-sonnet` | `anthropic/claude-sonnet-4.6` | Premium option |
+
+DeepSeek Flash is text-only; vision calls fall back to Gemini Flash. Saved
+selections with retired provider ids fall back to GPT Sol.
 
 Unknown ids degrade to the default rather than erroring — convenient in
 production, treacherous in testing (see [Traps](#traps-that-will-bite-you)).
@@ -441,15 +442,11 @@ for the answer alone gets HTTP 200 with empty text and `status:"incomplete"`.
 Both layers floor it at 4000 (`RESPONSES_MIN_OUTPUT_TOKENS`) and keep
 `reasoning.effort` low.
 
-Timeouts: vision calls and any `responses` preset get 180s, plain text 60s.
+Timeouts: frontend provider calls and HTML generation use 180s bounds.
 There is **no client-side timeout** on the editor panel's fetch, so a slow
 provider shows as an indefinite spinner rather than an error.
 
-Measured (single run, same 149KB PNG, 2026-08-14): auto-label 6.6s on codex vs
-13.8s on qwen-vl; visual-review verify 2.3s vs 6.6s. `llama-vl` is 2-5x slower
-than `qwen-vl` and wildly variable — don't make it a default. Payload weight
-dominates at the top end, which is why `captureSlidePng` sends a 1x JPEG rather
-than a 2x PNG.
+The vision reviewer sends a 1x JPEG to keep image payloads bounded.
 
 ---
 

@@ -8,18 +8,9 @@ REDIS_URL           = os.getenv("REDIS_URL", "redis://localhost:6379")
 QUEUE_NAME          = os.getenv("PPT_QUEUE_NAME", "PPT_QUEUE")
 JOB_NAME            = os.getenv("PPT_JOB_NAME", "PROCESS_PPT")
 
-# DeepInfra (OpenAI-compatible) — used by llm_client
-DEEPINFRA_API_KEY      = os.getenv("DEEPINFRA_API_KEY", "")
-DEEPINFRA_BASE_URL     = os.getenv("DEEPINFRA_BASE_URL", "https://api.deepinfra.com/v1/openai")
-DEEPINFRA_MODEL        = os.getenv("DEEPINFRA_MODEL", "deepseek-ai/DeepSeek-V3.1-Terminus")
-
-# CodeBuddy international chat API requires streamed responses.
-CODEBUDDY_API_KEY  = os.getenv("CODEBUDDY_API_KEY", "")
-CODEBUDDY_BASE_URL = os.getenv("CODEBUDDY_BASE_URL", "https://www.codebuddy.ai/v2")
-CODEBUDDY_MODEL    = os.getenv("CODEBUDDY_MODEL", "hy3")
-CODEBUDDY_LUNA_MODEL = os.getenv("CODEBUDDY_LUNA_MODEL", "gpt-5.6-luna")
-CODEBUDDY_TERRA_MODEL = os.getenv("CODEBUDDY_TERRA_MODEL", "gpt-5.6-terra")
-CODEBUDDY_SOL_MODEL = os.getenv("CODEBUDDY_SOL_MODEL", "gpt-5.6-sol")
+# OpenRouter (OpenAI-compatible) serves the text and vision model presets.
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 
 # Runware image generation. Requests send a safe UI alias; only these aliases
 # can resolve to billable Runware AIR model ids.
@@ -34,10 +25,10 @@ RUNWARE_IMAGE_MODELS    = {
 
 # Which text-LLM provider llm_client.py talks to by default — any key of
 # PROVIDER_CONFIGS below. Swapping providers is just this one var; all configs
-# stay present so switching back doesn't need any code change. Individual jobs
+# stay present so switching models doesn't need any code change. Individual jobs
 # also override the provider per-request (see llm_client): the homepage model
 # picker sends it as `model`, and so does the editor's chat model switcher.
-LLM_PROVIDER           = os.getenv("LLM_PROVIDER", "codebuddy").strip().lower()
+LLM_PROVIDER           = os.getenv("LLM_PROVIDER", "openrouter-gpt-sol").strip().lower()
 
 # name -> config dict. The single source of truth for every text-LLM provider
 # the worker can talk to. Per-provider quirks live next to the credentials so
@@ -53,17 +44,13 @@ LLM_PROVIDER           = os.getenv("LLM_PROVIDER", "codebuddy").strip().lower()
 # the id every layer understands — the editor's chat switcher reads its list
 # from the frontend but the call executes here.
 PROVIDER_CONFIGS       = {
-    "codebuddy": {"api_key": CODEBUDDY_API_KEY, "base_url": CODEBUDDY_BASE_URL, "model": CODEBUDDY_MODEL, "omit_temperature": True, "codebuddy": True},
-    "codebuddy-luna": {"api_key": CODEBUDDY_API_KEY, "base_url": CODEBUDDY_BASE_URL, "model": CODEBUDDY_LUNA_MODEL, "omit_temperature": True, "codebuddy": True},
-    "codebuddy-terra": {"api_key": CODEBUDDY_API_KEY, "base_url": CODEBUDDY_BASE_URL, "model": CODEBUDDY_TERRA_MODEL, "omit_temperature": True, "codebuddy": True},
-    "codebuddy-sol": {"api_key": CODEBUDDY_API_KEY, "base_url": CODEBUDDY_BASE_URL, "model": CODEBUDDY_SOL_MODEL, "omit_temperature": True, "codebuddy": True},
-    "deepinfra": {"api_key": DEEPINFRA_API_KEY, "base_url": DEEPINFRA_BASE_URL, "model": DEEPINFRA_MODEL},
-    "qwen-vl":   {"api_key": DEEPINFRA_API_KEY, "base_url": DEEPINFRA_BASE_URL, "model": "Qwen/Qwen2.5-VL-32B-Instruct"},
-    "gemma-vl":  {"api_key": DEEPINFRA_API_KEY, "base_url": DEEPINFRA_BASE_URL, "model": "google/gemma-4-26B-A4B-it"},
-    "llama-vl":  {"api_key": DEEPINFRA_API_KEY, "base_url": DEEPINFRA_BASE_URL, "model": "meta-llama/Llama-3.2-11B-Vision-Instruct"},
+    "openrouter-gpt-sol": {"api_key": OPENROUTER_API_KEY, "base_url": OPENROUTER_BASE_URL, "model": "openai/gpt-6-sol", "omit_temperature": True, "reasoning_effort": "low"},
+    "openrouter-deepseek-flash": {"api_key": OPENROUTER_API_KEY, "base_url": OPENROUTER_BASE_URL, "model": "deepseek/deepseek-v4-flash-0731"},
+    "openrouter-gemini-flash": {"api_key": OPENROUTER_API_KEY, "base_url": OPENROUTER_BASE_URL, "model": "google/gemini-3-flash-preview"},
+    "openrouter-claude-sonnet": {"api_key": OPENROUTER_API_KEY, "base_url": OPENROUTER_BASE_URL, "model": "anthropic/claude-sonnet-4.6", "omit_temperature": True},
 }
 
-_default_cfg = PROVIDER_CONFIGS.get(LLM_PROVIDER, PROVIDER_CONFIGS["deepinfra"])
+_default_cfg = PROVIDER_CONFIGS.get(LLM_PROVIDER, PROVIDER_CONFIGS["openrouter-gpt-sol"])
 LLM_API_KEY, LLM_BASE_URL, LLM_MODEL = _default_cfg["api_key"], _default_cfg["base_url"], _default_cfg["model"]
 
 STREAM_CHANNEL_PREFIX  = os.getenv("STREAM_CHANNEL_PREFIX", "ppt:stream")

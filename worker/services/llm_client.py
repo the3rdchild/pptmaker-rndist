@@ -1,6 +1,6 @@
 """
 Text-LLM client (OpenAI-compatible). Providers are registered in
-core/configs/env.py's PROVIDER_CONFIGS (CodeBuddy plus DeepInfra).
+core/configs/env.py's PROVIDER_CONFIGS (OpenRouter presets).
 The global default comes from LLM_PROVIDER; any call can
 override it per-request via the `provider` kwarg (job params carry it from
 the homepage model picker). Image generation is handled separately by Runware.
@@ -42,15 +42,9 @@ def resolve_provider(provider: str | None) -> tuple[str, dict]:
                 name, LLM_PROVIDER,
             )
         fallback_cfg = PROVIDER_CONFIGS.get(LLM_PROVIDER)
-        name = LLM_PROVIDER if (fallback_cfg and fallback_cfg.get("api_key")) else "deepinfra"
+        name = LLM_PROVIDER if (fallback_cfg and fallback_cfg.get("api_key")) else "openrouter-gpt-sol"
         cfg = PROVIDER_CONFIGS[name]
     return name, cfg
-
-
-def _is_codebuddy(provider: str | None) -> bool:
-    """Check the resolved preset, including the default and GPT tiers."""
-    _name, cfg = resolve_provider(provider)
-    return bool(cfg.get("codebuddy"))
 
 
 def _client_for(provider: str | None) -> tuple[OpenAI, str]:
@@ -68,13 +62,14 @@ def _client_for(provider: str | None) -> tuple[OpenAI, str]:
 
 
 def _extra_body(provider: str | None) -> dict:
-    """Provider-specific request extras, sourced from PROVIDER_CONFIGS flags
-    (disable_thinking) so adding a reasoning model is a config edit, not a
-    code change here."""
+    """Provider-specific request extras, sourced from PROVIDER_CONFIGS."""
     name, cfg = resolve_provider(provider)
+    body = {}
     if cfg.get("disable_thinking"):
-        return {"extra_body": {"thinking": {"type": "disabled"}}}
-    return {}
+        body["thinking"] = {"type": "disabled"}
+    if cfg.get("reasoning_effort"):
+        body["reasoning"] = {"effort": cfg["reasoning_effort"]}
+    return {"extra_body": body} if body else {}
 
 
 def _temperature_kwarg(provider: str | None, temperature: float) -> dict:
@@ -83,35 +78,6 @@ def _temperature_kwarg(provider: str | None, temperature: float) -> dict:
     if cfg.get("omit_temperature"):
         return {}
     return {"temperature": temperature}
-
-
-def _chat_messages(messages: list[dict], provider: str | None) -> list[dict]:
-    """CodeBuddy requires the first message to be a system prompt."""
-    if _is_codebuddy(provider) and (not messages or messages[0].get("role") != "system"):
-        return [{"role": "system", "content": "You are a helpful assistant."}, *messages]
-    return messages
-
-
-def _collect_chat_stream(stream) -> "_ToolMessage":
-    content: list[str] = []
-    calls: dict[int, dict] = {}
-    for chunk in stream:
-        for choice in chunk.choices or []:
-            delta = choice.delta
-            if delta.content:
-                content.append(delta.content)
-            for tool in getattr(delta, "tool_calls", None) or []:
-                call = calls.setdefault(tool.index, {"id": "", "name": "", "arguments": ""})
-                if tool.id:
-                    call["id"] = tool.id
-                function = getattr(tool, "function", None)
-                if function:
-                    call["name"] += function.name or ""
-                    call["arguments"] += function.arguments or ""
-    return _ToolMessage(
-        content="".join(content) or None,
-        tool_calls=[_ToolCall(id=call["id"], function=_ToolFunction(name=call["name"], arguments=call["arguments"])) for _, call in sorted(calls.items())],
-    )
 
 
 # ── Optional Responses API support ────────────────────────────────────────
@@ -279,7 +245,7 @@ def chat_stream(
         return
     stream = client.chat.completions.create(
         model=model or default_model,
-        messages=_chat_messages(messages, provider),
+        messages=messages,
         stream=True,
         **_temperature_kwarg(provider, temperature),
         **_extra_body(provider),
@@ -312,14 +278,6 @@ def chat(
             **_reasoning_kwarg(provider),
         )
         return _responses_text(resp)
-    if _is_codebuddy(provider):
-        stream = client.chat.completions.create(
-            model=model or default_model,
-            messages=_chat_messages(messages, provider),
-            stream=True,
-            **({"max_tokens": max_tokens} if max_tokens else {}),
-        )
-        return _collect_chat_stream(stream).content or ""
     resp = client.chat.completions.create(
         model=model or default_model,
         messages=messages,
@@ -358,18 +316,6 @@ def chat_json(
             **_reasoning_kwarg(provider),
         )
         content = _responses_text(resp) or "{}"
-        try:
-            return json.loads(content)
-        except json.JSONDecodeError:
-            logger.warning("[llm] response bukan JSON murni, coba ekstrak: %s", content[:200])
-            return _extract_json(content)
-    if _is_codebuddy(provider):
-        stream = client.chat.completions.create(
-            model=model or default_model,
-            messages=_chat_messages(messages, provider),
-            stream=True,
-        )
-        content = _collect_chat_stream(stream).content or "{}"
         try:
             return json.loads(content)
         except json.JSONDecodeError:
@@ -414,15 +360,6 @@ def chat_tools(
             **_reasoning_kwarg(provider),
         )
         return _from_responses_tool_reply(resp)
-    if _is_codebuddy(provider):
-        stream = client.chat.completions.create(
-            model=model or default_model,
-            messages=_chat_messages(messages, provider),
-            tools=tools,
-            tool_choice="auto",
-            stream=True,
-        )
-        return _collect_chat_stream(stream)
     resp = client.chat.completions.create(
         model=model or default_model,
         messages=messages,

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="id">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Log Tes Generate Siklus Air</title>
+<style>
+  body { margin: 0; background: #0a1020; color: #f4f7ff; font: 16px/1.55 system-ui, sans-serif; }
+  main { max-width: 900px; margin: 5vh auto; padding: 32px; }
+  a { color: #76cfff; }
+  h1 { font-size: clamp(30px, 5vw, 52px); line-height: 1.1; }
+  .card { background: #14213a; border: 1px solid #304363; border-radius: 16px; padding: 24px; margin: 22px 0; }
+  .metric { font-size: 34px; font-weight: 700; color: #76cfff; }
+  table { width: 100%; border-collapse: collapse; }
+  td, th { border-bottom: 1px solid #304363; padding: 10px; text-align: left; }
+  small { color: #a9bdd8; }
+  .scroll { overflow-x: auto; }
+</style>
+<main>
+  <small>30 September 2026 · Tes generate tersimpan</small>
+  <h1>Siklus Air untuk Pelajar</h1>
+  <p>Deck uji ini disimpan di sesi dashboard yang sama dengan deck Anda. Deck lama tetap ada.</p>
+  <p><a href="/editor-react/1f43cc8c-0f78-4e2d-8530-57233dca4d96">Buka deck tiga slide di editor →</a></p>
+  <div class="card">
+    <div>Total biaya AI yang dilaporkan provider</div>
+    <div class="metric">$0.01233901</div>
+    <div>Durasi generate: 632,2 detik (10 menit 32 detik) · 3 slide · DeepSeek V4 Flash · gambar stok</div>
+  </div>
+  <div class="card">
+    <h2>Slide</h2>
+    <ol><li>Evaporasi</li><li>Kondensasi</li><li>Presipitasi</li></ol>
+    <p>Slide ketiga memakai layout cadangan setelah permintaan layout ke model timeout. Peringatan ini disimpan bersama hasil tes.</p>
+  </div>
+  <div class="card scroll">
+    <h2>Pemanggilan model yang melaporkan biaya</h2>
+    <table>
+      <thead><tr><th>Tahap</th><th>Slide</th><th>Model</th><th>Biaya</th><th>Durasi</th></tr></thead>
+      <tbody>
+        <tr><td>slide-layout</td><td>2</td><td>deepseek/deepseek-v4-flash-0731</td><td>$0.00169933</td><td>91,189 ms</td></tr>
+        <tr><td>slide-layout</td><td>1</td><td>deepseek/deepseek-v4-flash-0731</td><td>$0.00169951</td><td>109,697 ms</td></tr>
+        <tr><td>slide-layout</td><td>1</td><td>deepseek/deepseek-v4-flash-0731</td><td>$0.00033534</td><td>36,736 ms</td></tr>
+        <tr><td>slide-layout</td><td>2</td><td>deepseek/deepseek-v4-flash-0731</td><td>$0.00112952</td><td>117,849 ms</td></tr>
+        <tr><td>slide-layout</td><td>3</td><td>deepseek/deepseek-v4-flash-0731</td><td>$0.00501663</td><td>117,588 ms</td></tr>
+        <tr><td>slide-layout</td><td>2</td><td>deepseek/deepseek-v4-flash-0731</td><td>$0.00245868</td><td>93,365 ms</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h2>Peringatan pipeline</h2>
+    <p>Slide 3: AI layout was replaced with a safe bounded layout. openrouter-deepseek-flash timed out after 180s.</p>
+  </div>
+  <p><a href="/generation-tests/siklus-air-api-smoke-2026-09-30.html">Lihat log tes API awal →</a></p>
+  <small>Generation ID: 7f44c2d8-2612-4d00-868b-44ae38bf0173</small>
+</main>
+</html>
